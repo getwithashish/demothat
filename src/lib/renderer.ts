@@ -2,6 +2,8 @@ import { EditorState, RenderableState, WebcamPosition } from '../types'
 import { calculateZoomTransform, findLastMetadataIndex } from './transform'
 import { EASING_MAP } from './easing'
 import { DEFAULTS } from './constants'
+import { isTiltActive } from './perspective'
+import { drawTiltedLayer } from './tilt-renderer'
 
 type Rect = { x: number; y: number; width: number; height: number }
 
@@ -159,47 +161,21 @@ const drawBackground = async (
 }
 
 /**
- * Main rendering function with enhanced visuals
+ * Draws the video frame (shadow, border, zoom/pan transform), click ripples and the cursor.
+ * Everything here is drawn flat in output-canvas coordinates; perspective tilt is applied by the caller.
  */
-export const drawScene = async (
+const drawFrameLayer = (
   ctx: CanvasRenderingContext2D,
   state: RenderableState,
   videoElement: HTMLVideoElement,
-  webcamVideoElement: HTMLVideoElement | null,
   currentTime: number,
-  outputWidth: number,
-  outputHeight: number,
-  preloadedBgImage: HTMLImageElement | null,
-): Promise<void> => {
-  if (!state.videoDimensions.width || !state.videoDimensions.height) return
+  frameX: number,
+  frameY: number,
+  frameContentWidth: number,
+  frameContentHeight: number,
+): void => {
+  const { frameStyles } = state
 
-  // Enable high-quality rendering
-  ctx.imageSmoothingEnabled = true
-  ctx.imageSmoothingQuality = 'high'
-
-  // --- 1. Draw Background ---
-  await drawBackground(ctx, outputWidth, outputHeight, state.frameStyles.background, preloadedBgImage)
-
-  // --- 2. Calculate Frame and Content Dimensions ---
-  const { frameStyles, videoDimensions } = state
-  const paddingPercent = frameStyles.padding / 100
-  const availableWidth = outputWidth * (1 - 2 * paddingPercent)
-  const availableHeight = outputHeight * (1 - 2 * paddingPercent)
-  const videoAspectRatio = videoDimensions.width / videoDimensions.height
-
-  let frameContentWidth, frameContentHeight
-  if (availableWidth / availableHeight > videoAspectRatio) {
-    frameContentHeight = availableHeight
-    frameContentWidth = frameContentHeight * videoAspectRatio
-  } else {
-    frameContentWidth = availableWidth
-    frameContentHeight = frameContentWidth / videoAspectRatio
-  }
-
-  const frameX = (outputWidth - frameContentWidth) / 2
-  const frameY = (outputHeight - frameContentHeight) / 2
-
-  // --- 3. Main video frame transform and drawing ---
   ctx.save()
 
   const { scale, translateX, translateY, transformOrigin } = calculateZoomTransform(
@@ -349,6 +325,59 @@ export const drawScene = async (
   }
 
   ctx.restore() // Restore from video's transform
+}
+
+/**
+ * Main rendering function with enhanced visuals
+ */
+export const drawScene = async (
+  ctx: CanvasRenderingContext2D,
+  state: RenderableState,
+  videoElement: HTMLVideoElement,
+  webcamVideoElement: HTMLVideoElement | null,
+  currentTime: number,
+  outputWidth: number,
+  outputHeight: number,
+  preloadedBgImage: HTMLImageElement | null,
+): Promise<void> => {
+  if (!state.videoDimensions.width || !state.videoDimensions.height) return
+
+  // Enable high-quality rendering
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
+
+  // --- 1. Draw Background ---
+  await drawBackground(ctx, outputWidth, outputHeight, state.frameStyles.background, preloadedBgImage)
+
+  // --- 2. Calculate Frame and Content Dimensions ---
+  const { frameStyles, videoDimensions } = state
+  const paddingPercent = frameStyles.padding / 100
+  const availableWidth = outputWidth * (1 - 2 * paddingPercent)
+  const availableHeight = outputHeight * (1 - 2 * paddingPercent)
+  const videoAspectRatio = videoDimensions.width / videoDimensions.height
+
+  let frameContentWidth, frameContentHeight
+  if (availableWidth / availableHeight > videoAspectRatio) {
+    frameContentHeight = availableHeight
+    frameContentWidth = frameContentHeight * videoAspectRatio
+  } else {
+    frameContentWidth = availableWidth
+    frameContentHeight = frameContentWidth / videoAspectRatio
+  }
+
+  const frameX = (outputWidth - frameContentWidth) / 2
+  const frameY = (outputHeight - frameContentHeight) / 2
+
+  // --- 3-5. Draw the video frame, click effects and cursor ---
+  const drawFrame = (target: CanvasRenderingContext2D) =>
+    drawFrameLayer(target, state, videoElement, currentTime, frameX, frameY, frameContentWidth, frameContentHeight)
+
+  if (isTiltActive(frameStyles)) {
+    // Render the frame flat into an offscreen layer, then project it with perspective.
+    drawTiltedLayer(ctx, drawFrame, frameStyles, outputWidth, outputHeight)
+  } else {
+    drawFrame(ctx)
+  }
 
   // --- 6. Draw Webcam ---
   const { webcamPosition, webcamStyles, isWebcamVisible } = state

@@ -76,6 +76,11 @@ export const DEFAULTS = {
       DEFAULT_COLOR_HEX: '#ffffff',
       DEFAULT_COLOR_RGBA: 'rgba(255, 255, 255, 0.2)',
     },
+    TILT: {
+      X: { min: -45, max: 45, step: 1, defaultValue: 0 },
+      Y: { min: -45, max: 45, step: 1, defaultValue: 0 },
+      PERSPECTIVE: { min: 0, max: 100, step: 1, defaultValue: 50 },
+    },
   },
   CAMERA: {
     STYLE: {

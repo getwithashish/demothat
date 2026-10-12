@@ -17,6 +17,9 @@ export const initialFrameState: FrameState = {
     shadowColor: 'rgba(0, 0, 0, 0.8)',
     borderWidth: 4,
     borderColor: 'rgba(255, 255, 255, 0.2)',
+    tiltX: 0,
+    tiltY: 0,
+    perspective: 50,
   },
   aspectRatio: '16:9' as AspectRatio,
 }

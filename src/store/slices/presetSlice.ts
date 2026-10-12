@@ -47,6 +47,12 @@ export const createPresetSlice: Slice<PresetState, PresetActions> = (set, get) =
           p.styles.borderColor = DEFAULT_PRESET_STYLES.borderColor
           wasModified = true
         }
+        if (p.styles && p.styles.tiltX === undefined) {
+          p.styles.tiltX = DEFAULT_PRESET_STYLES.tiltX
+          p.styles.tiltY = DEFAULT_PRESET_STYLES.tiltY
+          p.styles.perspective = DEFAULT_PRESET_STYLES.perspective
+          wasModified = true
+        }
         if (p.webcamStyles && p.webcamStyles.shape === undefined) {
           p.webcamStyles.shape = 'circle'
           wasModified = true

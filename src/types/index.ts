@@ -23,6 +23,10 @@ export interface FrameStyles {
   shadowColor: string
   borderWidth: number
   borderColor: string
+  // Perspective tilt (degrees / 0-100). All zero tilt means the frame is drawn flat.
+  tiltX: number
+  tiltY: number
+  perspective: number
 }
 
 export interface CursorStyles {

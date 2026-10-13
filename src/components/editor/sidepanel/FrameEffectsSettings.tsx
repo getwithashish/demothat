@@ -4,7 +4,7 @@ import { ColorPicker } from '../../ui/color-picker'
 import { Slider } from '../../ui/slider'
 import { Collapse } from '../../ui/collapse'
 import { rgbaToHexAlpha, hexToRgb } from '../../../lib/utils'
-import { BoxPadding, Shadow, BorderAll, Perspective } from 'tabler-icons-react'
+import { BoxPadding, Shadow, BorderAll } from 'tabler-icons-react'
 import { DEFAULTS } from '../../../lib/constants'
 
 export function FrameEffectsSettings() {
@@ -58,14 +58,6 @@ export function FrameEffectsSettings() {
       shadowOffsetX: DEFAULTS.FRAME.SHADOW.OFFSET_X.defaultValue,
       shadowOffsetY: DEFAULTS.FRAME.SHADOW.OFFSET_Y.defaultValue,
       shadowColor: DEFAULTS.FRAME.SHADOW.DEFAULT_COLOR_RGBA,
-    })
-  }
-
-  const handleResetTilt = () => {
-    updateFrameStyle({
-      tiltX: DEFAULTS.FRAME.TILT.X.defaultValue,
-      tiltY: DEFAULTS.FRAME.TILT.Y.defaultValue,
-      perspective: DEFAULTS.FRAME.TILT.PERSPECTIVE.defaultValue,
     })
   }
 
@@ -173,59 +165,6 @@ export function FrameEffectsSettings() {
                 onChange={handleShadowOpacityChange}
               />
             </div>
-          </div>
-        </div>
-      </Collapse>
-
-      {/* 3D Tilt Section */}
-      <Collapse
-        title="3D Tilt"
-        description="Tilt the screen in perspective"
-        icon={<Perspective />}
-        defaultOpen={false}
-        onReset={handleResetTilt}
-      >
-        <div className="space-y-4">
-          <div className="space-y-2.5">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Tilt up / down</span>
-              <span className="text-xs font-semibold text-primary tabular-nums">{frameStyles.tiltX ?? 0}°</span>
-            </div>
-            <Slider
-              min={DEFAULTS.FRAME.TILT.X.min}
-              max={DEFAULTS.FRAME.TILT.X.max}
-              step={DEFAULTS.FRAME.TILT.X.step}
-              value={frameStyles.tiltX ?? 0}
-              onChange={(v) => handleStyleChange('tiltX', v)}
-            />
-          </div>
-          <div className="space-y-2.5">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Tilt left / right</span>
-              <span className="text-xs font-semibold text-primary tabular-nums">{frameStyles.tiltY ?? 0}°</span>
-            </div>
-            <Slider
-              min={DEFAULTS.FRAME.TILT.Y.min}
-              max={DEFAULTS.FRAME.TILT.Y.max}
-              step={DEFAULTS.FRAME.TILT.Y.step}
-              value={frameStyles.tiltY ?? 0}
-              onChange={(v) => handleStyleChange('tiltY', v)}
-            />
-          </div>
-          <div className="space-y-2.5">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Perspective</span>
-              <span className="text-xs font-semibold text-primary tabular-nums">
-                {frameStyles.perspective ?? DEFAULTS.FRAME.TILT.PERSPECTIVE.defaultValue}%
-              </span>
-            </div>
-            <Slider
-              min={DEFAULTS.FRAME.TILT.PERSPECTIVE.min}
-              max={DEFAULTS.FRAME.TILT.PERSPECTIVE.max}
-              step={DEFAULTS.FRAME.TILT.PERSPECTIVE.step}
-              value={frameStyles.perspective ?? DEFAULTS.FRAME.TILT.PERSPECTIVE.defaultValue}
-              onChange={(v) => handleStyleChange('perspective', v)}
-            />
           </div>
         </div>
       </Collapse>

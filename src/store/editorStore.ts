@@ -61,6 +61,7 @@ export const useEditorStore = create(
         // Only include properties that should be part of the undo/redo history.
         const {
           frameStyles,
+          cameraMotions,
           aspectRatio,
           zoomRegions,
           cutRegions,
@@ -74,6 +75,7 @@ export const useEditorStore = create(
 
         return {
           frameStyles,
+          cameraMotions,
           aspectRatio,
           zoomRegions,
           cutRegions,

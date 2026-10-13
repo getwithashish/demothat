@@ -1,5 +1,5 @@
 import React from 'react'
-import { Scissors, ZoomIn, Trash, ArrowBackUp, ArrowForwardUp, PlayerTrackNext } from 'tabler-icons-react'
+import { Scissors, ZoomIn, Trash, ArrowBackUp, ArrowForwardUp, PlayerTrackNext, Camera } from 'tabler-icons-react'
 import { useEditorStore } from '../../store/editorStore'
 import type { AspectRatio } from '../../types'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
@@ -41,6 +41,12 @@ export function PreviewControls() {
     addZoomRegion,
     addCutRegion,
     addSpeedRegion,
+    addCameraMotion,
+    currentTime,
+    duration,
+    setSelectedRegionId,
+    cameraMotions,
+    deleteCameraMotion,
     timelineZoom,
     setTimelineZoom,
     selectedRegionId,
@@ -53,7 +59,9 @@ export function PreviewControls() {
 
   const handleDelete = () => {
     if (selectedRegionId) {
-      deleteRegion(selectedRegionId)
+      if (cameraMotions.some((motion) => motion.id === selectedRegionId)) deleteCameraMotion(selectedRegionId)
+      else deleteRegion(selectedRegionId)
+      setSelectedRegionId(null)
     }
   }
 
@@ -64,6 +72,15 @@ export function PreviewControls() {
           <ToolbarButton title="Add Zoom Region" onClick={() => addZoomRegion()} disabled={!!selectedRegionId}>
             <ZoomIn className="w-4 h-4" />
             <span>Zoom</span>
+          </ToolbarButton>
+          <ToolbarButton title="Add Cinematic 3D Camera" onClick={() => {
+            const start = Math.max(0, Math.min(currentTime, Math.max(0, duration - 0.1)))
+            addCameraMotion('dolly-in', start, Math.min(duration || start + 2, start + 2))
+            const added = useEditorStore.getState().cameraMotions.at(-1)
+            if (added) setSelectedRegionId(added.id)
+          }}>
+            <Camera className="w-4 h-4" />
+            <span>3D Camera</span>
           </ToolbarButton>
           <ToolbarButton title="Add Cut Region" onClick={() => addCutRegion()} disabled={!!selectedRegionId}>
             <Scissors className="w-4 h-4" />

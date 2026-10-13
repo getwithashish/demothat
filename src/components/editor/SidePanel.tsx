@@ -11,6 +11,7 @@ import { useEffect, useMemo } from 'react'
 import { cn } from '../../lib/utils'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip'
 import { AudioSettings } from './sidepanel/AudioSettings'
+import { CameraMotionSettings } from './sidepanel/CameraMotionSettings'
 
 interface TabButtonProps {
   label: string
@@ -85,9 +86,11 @@ export function SidePanel() {
     selectedRegionId,
     zoomRegions,
     cutRegions,
+    cameraMotions,
     webcamVideoUrl,
     hasAudioTrack,
     setSelectedRegionId,
+    deleteCameraMotion,
     activeSidePanelTab,
     setActiveSidePanelTab,
   } = useEditorStore(
@@ -95,15 +98,19 @@ export function SidePanel() {
       selectedRegionId: state.selectedRegionId,
       zoomRegions: state.zoomRegions,
       cutRegions: state.cutRegions,
+      cameraMotions: state.cameraMotions,
       webcamVideoUrl: state.webcamVideoUrl,
       hasAudioTrack: state.hasAudioTrack,
       setSelectedRegionId: state.setSelectedRegionId,
+      deleteCameraMotion: state.deleteCameraMotion,
       activeSidePanelTab: state.activeSidePanelTab,
       setActiveSidePanelTab: state.setActiveSidePanelTab,
     })),
   )
 
   // Optimize region lookup using useMemo
+  const selectedCameraMotion = useMemo(() => cameraMotions.find((motion) => motion.id === selectedRegionId) ?? null, [cameraMotions, selectedRegionId])
+
   const selectedRegion = useMemo(() => {
     if (!selectedRegionId) return null
     return zoomRegions[selectedRegionId] || cutRegions[selectedRegionId]
@@ -111,21 +118,29 @@ export function SidePanel() {
 
   // Auto switch to 'general' tab when a region is selected
   useEffect(() => {
-    if (selectedRegion) {
+    if (selectedRegion || selectedCameraMotion) {
       setActiveSidePanelTab('general')
     }
-  }, [selectedRegion, setActiveSidePanelTab])
+  }, [selectedRegion, selectedCameraMotion, setActiveSidePanelTab])
 
   // Handle Escape key to clear selection
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && selectedRegionId) {
         setSelectedRegionId(null)
+        return
       }
+      if ((event.key !== 'Delete' && event.key !== 'Backspace') || !selectedRegionId) return
+      const target = event.target as HTMLElement | null
+      if (target?.isContentEditable || target?.closest('input, textarea, select, [contenteditable="true"]')) return
+      if (!cameraMotions.some((motion) => motion.id === selectedRegionId)) return
+      event.preventDefault()
+      deleteCameraMotion(selectedRegionId)
+      setSelectedRegionId(null)
     }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [selectedRegionId, setSelectedRegionId])
+    window.addEventListener('keydown', handleKeyDown, true)
+    return () => window.removeEventListener('keydown', handleKeyDown, true)
+  }, [selectedRegionId, cameraMotions, deleteCameraMotion, setSelectedRegionId])
 
   return (
     <div className="h-full flex">
@@ -134,7 +149,7 @@ export function SidePanel() {
         {/* Render all panels but only show the active one.
             This prevents unmounting and preserves the internal state of components like Collapse. */}
         <div className="h-full" hidden={activeSidePanelTab !== 'general'}>
-          {selectedRegion ? <RegionSettingsPanel region={selectedRegion} /> : <FrameSettingsPanel />}
+          {selectedCameraMotion ? <CameraMotionSettings /> : selectedRegion ? <RegionSettingsPanel region={selectedRegion} /> : <FrameSettingsPanel />}
         </div>
         <div className="h-full" hidden={activeSidePanelTab !== 'camera'}>
           <CameraSettings />

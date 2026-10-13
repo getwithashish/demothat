@@ -1,8 +1,12 @@
 import { WALLPAPERS } from '../../lib/constants'
+import { getCameraPoseAtTime } from '../../lib/camera-motion'
 import type { FrameState, FrameActions, Slice } from '../../types'
-import type { AspectRatio, FrameStyles } from '../../types'
+import type { AspectRatio, FrameStyles, CameraMotionTrack, CameraMoveKind, CameraPose } from '../../types'
+
+const DEFAULT_CAMERA_POSE: CameraPose = { x: 0, y: 0, scale: 1, rotationX: 0, rotationY: 0, rotationZ: 0, perspective: 50 }
 
 export const initialFrameState: FrameState = {
+  cameraMotions: [],
   frameStyles: {
     padding: 5,
     background: {
@@ -17,9 +21,6 @@ export const initialFrameState: FrameState = {
     shadowColor: 'rgba(0, 0, 0, 0.8)',
     borderWidth: 4,
     borderColor: 'rgba(255, 255, 255, 0.2)',
-    tiltX: 0,
-    tiltY: 0,
-    perspective: 50,
   },
   aspectRatio: '16:9' as AspectRatio,
 }
@@ -62,6 +63,33 @@ export const recalculateCanvasDimensions = (state: {
 
 export const createFrameSlice: Slice<FrameState, FrameActions> = (set, get) => ({
   ...initialFrameState,
+  addCameraMotion: (kind: CameraMoveKind, startTime: number, endTime: number) => {
+    const state = get()
+    // Start from the camera's actual pose at this timeline position. If no 3D
+    // New camera clips begin at the currently rendered camera pose, or the neutral pose.
+    const currentPose = getCameraPoseAtTime(state.cameraMotions, startTime) ?? { ...DEFAULT_CAMERA_POSE }
+    const from = { ...currentPose }
+    const to = { ...currentPose }
+    switch (kind) {
+      case 'dolly-in': to.scale = from.scale * 1.18; to.rotationY = from.rotationY - 3; break
+      case 'dolly-out': to.scale = from.scale / 1.18; to.rotationY = from.rotationY + 3; break
+      case 'pan-left': to.x = from.x - 8; to.rotationY = from.rotationY + 5; break
+      case 'pan-right': to.x = from.x + 8; to.rotationY = from.rotationY - 5; break
+      case 'entrance': to.y = from.y - 10; to.scale = from.scale * 1.12; to.rotationX = from.rotationX - 4; to.rotationY = from.rotationY + 6; break
+      case 'orbit': to.rotationY = from.rotationY + 24; to.rotationX = from.rotationX + 3; break
+      case 'reset': Object.assign(to, { ...DEFAULT_CAMERA_POSE }); break
+      case 'breathing': to.scale = from.scale * 1.035; break
+      default: break
+    }
+    const names: Record<CameraMoveKind, string> = { custom: 'Custom move', 'dolly-in': 'Dolly in', 'dolly-out': 'Dolly out', 'pan-left': 'Pan left', 'pan-right': 'Pan right', entrance: 'Entrance', orbit: 'Orbit', reset: 'Reset', breathing: 'Breathing' }
+    const track: CameraMotionTrack = { id: `camera-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name: names[kind], kind, startTime: Math.max(0, startTime), endTime: Math.max(startTime + 0.1, endTime), easing: 'Balanced', from, to }
+    set((state) => { state.cameraMotions.push(track) })
+  },
+  updateCameraMotion: (id, updates) => set((state) => {
+    const track = state.cameraMotions.find((item) => item.id === id)
+    if (track) Object.assign(track, updates)
+  }),
+  deleteCameraMotion: (id) => set((state) => { state.cameraMotions = state.cameraMotions.filter((item) => item.id !== id) }),
   updateFrameStyle: (style: Partial<Omit<FrameStyles, 'background'>>) => {
     set((state) => {
       Object.assign(state.frameStyles, style)

@@ -42,6 +42,8 @@ export const useExportProcess = () => {
       duration: fullState.duration,
       frameStyles: fullState.frameStyles,
       aspectRatio: fullState.aspectRatio,
+      // Preserve cinematic 3D camera tracks in the state sent to the export renderer.
+      cameraMotions: fullState.cameraMotions,
       zoomRegions: fullState.zoomRegions,
       cutRegions: fullState.cutRegions,
       speedRegions: fullState.speedRegions,

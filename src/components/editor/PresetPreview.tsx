@@ -4,7 +4,6 @@ import { WALLPAPERS } from '../../lib/constants'
 import type { FrameStyles, AspectRatio, WebcamStyles, WebcamPosition } from '../../types'
 import { Video } from 'tabler-icons-react'
 import { cn } from '../../lib/utils'
-import { isTiltActive } from '../../lib/perspective'
 
 interface PresetPreviewProps {
   styles: FrameStyles
@@ -57,11 +56,6 @@ export function PresetPreview({
         ? `${styles.shadowOffsetX}px ${styles.shadowOffsetY}px ${styles.shadowBlur}px ${styles.shadowColor}`
         : 'none'
 
-    const hasTilt = isTiltActive(styles)
-    // Rough CSS equivalent of the canvas perspective: stronger perspective means a closer camera.
-    const perspectiveStrength = Math.min(1, Math.max(0, (styles.perspective ?? 50) / 100))
-    const cssPerspective = Math.round(260 * (4.5 - 3.7 * perspectiveStrength))
-
     return {
       width: '100%',
       height: '100%',
@@ -69,9 +63,6 @@ export function PresetPreview({
       boxShadow: shadowString,
       border: `${styles.borderWidth}px solid ${styles.borderColor}`,
       boxSizing: 'border-box' as const, // Ensure border is part of the element's size
-      ...(hasTilt && {
-        transform: `perspective(${cssPerspective}px) rotateX(${styles.tiltX ?? 0}deg) rotateY(${styles.tiltY ?? 0}deg)`,
-      }),
     }
   }, [styles])
 

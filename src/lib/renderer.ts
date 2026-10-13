@@ -4,6 +4,7 @@ import { EASING_MAP } from './easing'
 import { DEFAULTS } from './constants'
 import { isTiltActive } from './perspective'
 import { drawTiltedLayer } from './tilt-renderer'
+import { getCameraPoseAtTime } from './camera-motion'
 
 type Rect = { x: number; y: number; width: number; height: number }
 
@@ -350,7 +351,9 @@ export const drawScene = async (
   await drawBackground(ctx, outputWidth, outputHeight, state.frameStyles.background, preloadedBgImage)
 
   // --- 2. Calculate Frame and Content Dimensions ---
-  const { frameStyles, videoDimensions } = state
+  const camera = getCameraPoseAtTime(state.cameraMotions, currentTime) ?? { x: 0, y: 0, scale: 1, rotationX: 0, rotationY: 0, rotationZ: 0, perspective: 50 }
+  const frameStyles = { ...state.frameStyles, tiltX: camera.rotationX, tiltY: camera.rotationY, perspective: camera.perspective }
+  const { videoDimensions } = state
   const paddingPercent = frameStyles.padding / 100
   const availableWidth = outputWidth * (1 - 2 * paddingPercent)
   const availableHeight = outputHeight * (1 - 2 * paddingPercent)
@@ -365,14 +368,24 @@ export const drawScene = async (
     frameContentHeight = frameContentWidth / videoAspectRatio
   }
 
-  const frameX = (outputWidth - frameContentWidth) / 2
-  const frameY = (outputHeight - frameContentHeight) / 2
+  frameContentWidth *= camera.scale
+  frameContentHeight *= camera.scale
+  const frameX = (outputWidth - frameContentWidth) / 2 + (camera.x / 100) * outputWidth
+  const frameY = (outputHeight - frameContentHeight) / 2 + (camera.y / 100) * outputHeight
 
   // --- 3-5. Draw the video frame, click effects and cursor ---
-  const drawFrame = (target: CanvasRenderingContext2D) =>
+  const drawFrame = (target: CanvasRenderingContext2D) => {
+    if (Math.abs(camera.rotationZ) > 0.001) {
+      target.save()
+      target.translate(outputWidth / 2, outputHeight / 2)
+      target.rotate((camera.rotationZ * Math.PI) / 180)
+      target.translate(-outputWidth / 2, -outputHeight / 2)
+    }
     drawFrameLayer(target, state, videoElement, currentTime, frameX, frameY, frameContentWidth, frameContentHeight)
+    if (Math.abs(camera.rotationZ) > 0.001) target.restore()
+  }
 
-  if (isTiltActive(frameStyles)) {
+  if (isTiltActive(frameStyles) || Math.abs(camera.rotationZ) > 0.001 || Math.abs(camera.x) > 0.001 || Math.abs(camera.y) > 0.001 || Math.abs(camera.scale - 1) > 0.001) {
     // Render the frame flat into an offscreen layer, then project it with perspective.
     drawTiltedLayer(ctx, drawFrame, frameStyles, outputWidth, outputHeight)
   } else {

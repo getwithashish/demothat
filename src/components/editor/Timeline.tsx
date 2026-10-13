@@ -10,6 +10,7 @@ import { Scissors } from 'tabler-icons-react'
 import { formatTime, calculateRulerInterval } from '../../lib/utils'
 import { useTimelineInteraction } from '../../hooks/useTimelineInteraction'
 import { FlipScissorsIcon } from '../ui/icons'
+import { Camera } from 'tabler-icons-react'
 
 // Memoized Ruler component (không thay đổi)
 const Ruler = memo(
@@ -56,7 +57,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
       isPlaying: state.isPlaying,
     })),
   )
-  const { setCurrentTime, setSelectedRegionId } = useEditorStore()
+  const { setCurrentTime, setSelectedRegionId, updateCameraMotion } = useEditorStore()
 
   const containerRef = useRef<HTMLDivElement>(null)
   const timelineRef = useRef<HTMLDivElement>(null)
@@ -153,6 +154,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
   }, [currentTime, isPlaying, timeToPx])
 
   const { zoomRegions, cutRegions, speedRegions } = useAllRegions()
+  const cameraMotions = useEditorStore((state) => state.cameraMotions)
 
   const hasSpeedRegions = useMemo(() => Object.keys(speedRegions).length > 0, [speedRegions])
 
@@ -198,6 +200,47 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
             <Ruler ticks={rulerTicks} timeToPx={timeToPx} formatTime={formatTime} />
 
             <div className="absolute top-12 left-0 w-full" style={{ height: 'calc(100% - 3rem)' }}>
+              {cameraMotions.map((motion) => {
+                const left = timeToPx(motion.startTime)
+                const width = Math.max(30, timeToPx(motion.endTime - motion.startTime))
+                const selected = selectedRegionId === motion.id
+                return <div key={motion.id} data-region-id={motion.id} className="absolute top-0 h-14" style={{ left: `${left}px`, width: `${width}px`, zIndex: selected ? 120 : 5 }}>
+                  <div
+                    role="button" tabIndex={0} aria-label={`Cinematic 3D Camera: ${motion.name}`}
+                    className={cn('group/camera relative flex h-full w-full cursor-grab select-none items-center justify-center overflow-hidden rounded-xl border-2 backdrop-blur-sm', selected ? 'border-primary bg-primary/20 shadow-lg shadow-primary/10' : 'border-violet-500/60 bg-violet-500/15 hover:border-violet-400 hover:bg-violet-500/25')}
+                    onMouseDown={(event) => {
+                      event.stopPropagation()
+                      event.preventDefault()
+                      setSelectedRegionId(motion.id)
+                      const startX = event.clientX
+                      const initialStart = motion.startTime
+                      const initialEnd = motion.endTime
+                      const target = event.target as HTMLElement
+                      const edge = target.closest('[data-camera-edge]')?.getAttribute('data-camera-edge')
+                      const move = (moveEvent: MouseEvent) => {
+                        const delta = pxToTime(moveEvent.clientX - startX)
+                        if (edge === 'left') {
+                          const nextStart = Math.max(0, Math.min(initialEnd - 0.1, initialStart + delta))
+                          updateCameraMotion(motion.id, { startTime: nextStart })
+                        } else if (edge === 'right') {
+                          updateCameraMotion(motion.id, { endTime: Math.max(initialStart + 0.1, Math.min(duration, initialEnd + delta)) })
+                        } else {
+                          const span = initialEnd - initialStart
+                          const nextStart = Math.max(0, Math.min(Math.max(0, duration - span), initialStart + delta))
+                          updateCameraMotion(motion.id, { startTime: nextStart, endTime: nextStart + span })
+                        }
+                      }
+                      const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up) }
+                      window.addEventListener('mousemove', move)
+                      window.addEventListener('mouseup', up)
+                    }}
+                  >
+                    <span data-camera-edge="left" className="absolute left-0 top-0 z-10 flex h-full w-3 cursor-ew-resize items-center justify-center"><span className="h-7 w-1 rounded-full bg-violet-500 group-hover/camera:h-9" /></span>
+                    <span className="pointer-events-none flex items-center gap-2 px-4 text-xs font-semibold tracking-wide text-foreground"><Camera className="h-4 w-4 shrink-0 text-violet-500" /><span className="truncate">3D CAMERA · {motion.name}</span></span>
+                    <span data-camera-edge="right" className="absolute right-0 top-0 z-10 flex h-full w-3 cursor-ew-resize items-center justify-center"><span className="h-7 w-1 rounded-full bg-violet-500 group-hover/camera:h-9" /></span>
+                  </div>
+                </div>
+              })}
               {allRegionsToRender.map((region) => {
                 const isSelected = selectedRegionId === region.id
                 const zIndex = isSelected ? 100 : (region.zIndex ?? 1)

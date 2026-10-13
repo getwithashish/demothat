@@ -23,10 +23,6 @@ export interface FrameStyles {
   shadowColor: string
   borderWidth: number
   borderColor: string
-  // Perspective tilt (degrees / 0-100). All zero tilt means the frame is drawn flat.
-  tiltX: number
-  tiltY: number
-  perspective: number
 }
 
 export interface CursorStyles {
@@ -202,11 +198,38 @@ export interface PlaybackActions {
   seekForward: (seconds: number) => void
 }
 
+export type CameraMoveKind = 'custom' | 'dolly-in' | 'dolly-out' | 'pan-left' | 'pan-right' | 'entrance' | 'orbit' | 'reset' | 'breathing'
+
+export interface CameraPose {
+  x: number // horizontal offset as a percentage of output width
+  y: number // vertical offset as a percentage of output height
+  scale: number
+  rotationX: number
+  rotationY: number
+  rotationZ: number
+  perspective: number
+}
+
+export interface CameraMotionTrack {
+  id: string
+  name: string
+  kind: CameraMoveKind
+  startTime: number
+  endTime: number
+  easing: string
+  from: CameraPose
+  to: CameraPose
+}
+
 export interface FrameState {
   frameStyles: FrameStyles
   aspectRatio: AspectRatio
+  cameraMotions: CameraMotionTrack[]
 }
 export interface FrameActions {
+  addCameraMotion: (kind: CameraMoveKind, startTime: number, endTime: number) => void
+  updateCameraMotion: (id: string, updates: Partial<CameraMotionTrack>) => void
+  deleteCameraMotion: (id: string) => void
   updateFrameStyle: (style: Partial<Omit<FrameStyles, 'background'>>) => void
   updateBackground: (bg: Partial<Background>) => void
   setAspectRatio: (ratio: AspectRatio) => void
@@ -296,6 +319,7 @@ export type RenderableState = Pick<
   EditorState,
   | 'platform'
   | 'frameStyles'
+  | 'cameraMotions'
   | 'videoDimensions'
   | 'aspectRatio'
   | 'webcamPosition'

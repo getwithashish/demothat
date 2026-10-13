@@ -115,6 +115,7 @@ export function SidePanel() {
   // Optimize region lookup using useMemo
   const selectedCameraMotion = useMemo(() => cameraMotions.find((motion) => motion.id === selectedRegionId) ?? null, [cameraMotions, selectedRegionId])
   const selectedAudioClip = useMemo(() => audioClips.find((clip) => clip.id === selectedRegionId) ?? null, [audioClips, selectedRegionId])
+  const selectedVisualEffect = useEditorStore((state) => state.visualEffects.some((effect) => effect.id === selectedRegionId))
 
   const selectedRegion = useMemo(() => {
     if (!selectedRegionId) return null
@@ -125,10 +126,10 @@ export function SidePanel() {
   useEffect(() => {
     if (selectedAudioClip) {
       setActiveSidePanelTab('audio')
-    } else if (selectedRegion || selectedCameraMotion) {
+    } else if (selectedRegion || selectedCameraMotion || selectedVisualEffect) {
       setActiveSidePanelTab('general')
     }
-  }, [selectedRegion, selectedCameraMotion, selectedAudioClip, setActiveSidePanelTab])
+  }, [selectedRegion, selectedCameraMotion, selectedAudioClip, selectedVisualEffect, setActiveSidePanelTab])
 
   // Handle Escape key to clear selection
   useEffect(() => {

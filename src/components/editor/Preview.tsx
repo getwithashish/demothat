@@ -15,6 +15,7 @@ import { Slider } from '../ui/slider'
 import { Button } from '../ui/button'
 import { drawScene } from '../../lib/renderer'
 import { cn } from '../../lib/utils'
+import type { VisualEffectRegion } from '../../types'
 
 export const Preview = memo(
   ({
@@ -80,6 +81,11 @@ export const Preview = memo(
     const webcamVideoRef = useRef<HTMLVideoElement>(null)
     const animationFrameId = useRef<number>()
     const [controlBarWidth, setControlBarWidth] = useState(0)
+    const [effectOverlayBounds, setEffectOverlayBounds] = useState({ left: 0, top: 0, width: 0, height: 0 })
+    const visualEffects = useEditorStore(state => state.visualEffects)
+    const selectedRegionId = useEditorStore(state => state.selectedRegionId)
+    const setSelectedRegionId = useEditorStore(state => state.setSelectedRegionId)
+    const updateVisualEffect = useEditorStore(state => state.updateVisualEffect)
 
     // --- Start of Changes for Fullscreen Controls ---
     const [isControlBarVisible, setIsControlBarVisible] = useState(false)
@@ -152,6 +158,71 @@ export const Preview = memo(
         resizeObserver.disconnect()
       }
     }, [canvasDimensions])
+
+    // Keep the interaction overlay aligned to the already-sized canvas. The canvas
+    // dimensions and aspect-ratio styling are deliberately left untouched.
+    useEffect(() => {
+      const canvas = canvasRef.current
+      const container = previewContainerRef.current
+      if (!canvas || !container) return
+      const syncBounds = () => {
+        const canvasRect = canvas.getBoundingClientRect()
+        const containerRect = container.getBoundingClientRect()
+        setEffectOverlayBounds({
+          left: canvasRect.left - containerRect.left,
+          top: canvasRect.top - containerRect.top,
+          width: canvasRect.width,
+          height: canvasRect.height,
+        })
+      }
+      syncBounds()
+      const observer = new ResizeObserver(syncBounds)
+      observer.observe(canvas)
+      observer.observe(container)
+      window.addEventListener('resize', syncBounds)
+      const frame = requestAnimationFrame(syncBounds)
+      return () => {
+        observer.disconnect()
+        window.removeEventListener('resize', syncBounds)
+        cancelAnimationFrame(frame)
+      }
+    }, [canvasDimensions, isPreviewFullScreen, videoUrl])
+
+    const beginEffectTransform = (event: React.MouseEvent, effect: VisualEffectRegion, mode: 'move' | 'resize') => {
+      event.preventDefault()
+      event.stopPropagation()
+      setSelectedRegionId(effect.id)
+      const startX = event.clientX
+      const startY = event.clientY
+      const initial = { x: effect.x, y: effect.y, width: effect.width, height: effect.height }
+      const bounds = canvasRef.current?.getBoundingClientRect()
+      if (!bounds || !bounds.width || !bounds.height) return
+      const move = (moveEvent: MouseEvent) => {
+        const dx = (moveEvent.clientX - startX) / bounds.width
+        const dy = (moveEvent.clientY - startY) / bounds.height
+        if (mode === 'move') {
+          updateVisualEffect(effect.id, {
+            x: Math.max(0, Math.min(1 - initial.width, initial.x + dx)),
+            y: Math.max(0, Math.min(1 - initial.height, initial.y + dy)),
+          })
+          return
+        }
+        let width = Math.max(0.01, Math.min(1 - initial.x, initial.width + dx))
+        let height = Math.max(0.01, Math.min(1 - initial.y, initial.height + dy))
+        if (effect.shape === 'square' || effect.shape === 'circle') {
+          const side = Math.max(0.01, Math.min(width, height, 1 - initial.x, 1 - initial.y))
+          width = side
+          height = side
+        }
+        updateVisualEffect(effect.id, { width, height })
+      }
+      const up = () => {
+        window.removeEventListener('mousemove', move)
+        window.removeEventListener('mouseup', up)
+      }
+      window.addEventListener('mousemove', move)
+      window.addEventListener('mouseup', up)
+    }
 
     useEffect(() => {
       const background = frameStyles.background
@@ -361,6 +432,32 @@ export const Preview = memo(
             </div>
           )}
         </div>
+
+        {videoUrl && effectOverlayBounds.width > 0 && effectOverlayBounds.height > 0 && (
+          <div
+            className="absolute z-20"
+            style={{ left: effectOverlayBounds.left, top: effectOverlayBounds.top, width: effectOverlayBounds.width, height: effectOverlayBounds.height, pointerEvents: 'none' }}
+            aria-label="Visual effects positioning overlay"
+          >
+            {visualEffects.filter(effect => selectedRegionId === effect.id || (currentTime >= effect.startTime && currentTime < effect.startTime + effect.duration)).map((effect) => {
+              const selected = selectedRegionId === effect.id
+              const shapeStyle: React.CSSProperties = {
+                position: 'absolute',
+                left: `${effect.x * 100}%`, top: `${effect.y * 100}%`,
+                width: `${effect.width * 100}%`, height: `${effect.height * 100}%`,
+                border: `${selected ? 2 : 1}px ${selected ? 'solid' : 'dashed'} ${effect.color}`,
+                backgroundColor: selected ? `${effect.color}22` : `${effect.color}0c`,
+                borderRadius: effect.shape === 'circle' ? '9999px' : '2px',
+                clipPath: effect.shape === 'freeform' ? `polygon(${effect.points.map(point => `${point.x * 100}% ${point.y * 100}%`).join(',')})` : undefined,
+                boxSizing: 'border-box', pointerEvents: 'auto', cursor: 'move', touchAction: 'none',
+              }
+              return <div key={effect.id} role="button" tabIndex={selected ? 0 : -1} aria-label={`Move ${effect.kind} effect`} onMouseDown={event => beginEffectTransform(event, effect, 'move')} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') setSelectedRegionId(effect.id) }} style={shapeStyle} title={`${effect.kind} — drag to move${selected ? ', use corner handle to resize' : ''}`}>
+                <span className="absolute -left-px -top-5 rounded px-1.5 py-0.5 text-[10px] font-semibold capitalize text-white shadow" style={{ backgroundColor: effect.color, maxWidth: 120, overflow: 'hidden', whiteSpace: 'nowrap' }}>{effect.kind}</span>
+                {selected && <span role="presentation" onMouseDown={event => beginEffectTransform(event, effect, 'resize')} className="absolute -bottom-1.5 -right-1.5 h-3.5 w-3.5 rounded-sm border-2 border-white shadow-md" style={{ backgroundColor: effect.color, cursor: 'nwse-resize', pointerEvents: 'auto' }} />}
+              </div>
+            })}
+          </div>
+        )}
 
         <video
           ref={videoRef}

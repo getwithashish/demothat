@@ -76,6 +76,15 @@ export interface CutRegion {
   zIndex: number
 }
 
+export interface VideoClip {
+  id: string
+  name: string
+  filePath: string
+  startTime: number
+  duration: number
+  sourceDuration: number
+}
+
 export interface SpeedRegion {
   id: string
   type: 'speed'
@@ -280,6 +289,7 @@ export interface TimelineState {
   zoomRegions: Record<string, ZoomRegion>
   cutRegions: Record<string, CutRegion>
   speedRegions: Record<string, SpeedRegion>
+  videoClips: VideoClip[]
   previewCutRegion: CutRegion | null
   selectedRegionId: string | null
   activeZoomRegionId: string | null
@@ -290,6 +300,9 @@ export interface TimelineActions {
   addZoomRegion: () => void
   addCutRegion: (regionData?: Partial<CutRegion>) => void
   addSpeedRegion: () => void
+  addVideoClip: (clip: Omit<VideoClip, 'id'>) => void
+  updateVideoClip: (id: string, updates: Partial<VideoClip>) => void
+  deleteVideoClip: (id: string) => void
   updateRegion: (id: string, updates: Partial<TimelineRegion>) => void
   deleteRegion: (id: string) => void
   setSelectedRegionId: (id: string | null) => void

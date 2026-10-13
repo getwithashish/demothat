@@ -6,6 +6,7 @@ export const initialTimelineState: TimelineState = {
   zoomRegions: {},
   cutRegions: {},
   speedRegions: {},
+  videoClips: [],
   previewCutRegion: null,
   selectedRegionId: null,
   activeZoomRegionId: null,
@@ -104,6 +105,21 @@ export const createTimelineSlice: Slice<TimelineState, TimelineActions> = (set, 
       recalculateZIndices(state)
     })
   },
+  addVideoClip: (clip) => {
+    const id = `video-clip-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+    set((state) => {
+      state.videoClips.push({ ...clip, id })
+      state.selectedRegionId = id
+    })
+  },
+  updateVideoClip: (id, updates) => set((state) => {
+    const clip = state.videoClips.find((item) => item.id === id)
+    if (clip) Object.assign(clip, updates)
+  }),
+  deleteVideoClip: (id) => set((state) => {
+    state.videoClips = state.videoClips.filter((clip) => clip.id !== id)
+    if (state.selectedRegionId === id) state.selectedRegionId = null
+  }),
   addSpeedRegion: () => {
     const { currentTime, duration } = get()
     if (duration === 0) return

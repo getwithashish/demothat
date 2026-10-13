@@ -25,6 +25,8 @@ export function registerIpcHandlers() {
   ipcMain.on('desktop:set-cursor-scale', desktopHandlers.handleSetCursorScale)
   ipcMain.handle('dialog:showSaveDialog', desktopHandlers.showSaveDialog)
   ipcMain.handle('dialog:openAudioFile', desktopHandlers.handleOpenAudioFile)
+  ipcMain.handle('dialog:openVideoFiles', desktopHandlers.handleOpenVideoFiles)
+  ipcMain.handle('video:detectSilence', desktopHandlers.handleDetectSilence)
   ipcMain.handle('dialog:showMessageBox', desktopHandlers.showMessageBox)
   ipcMain.handle('permission:check-screen-recording', desktopHandlers.checkScreenRecordingPermission)
   ipcMain.handle('video:get-frame', desktopHandlers.getVideoFrame)

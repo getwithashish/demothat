@@ -161,6 +161,8 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
   const updateCompositionLayout = useEditorStore((state) => state.updateCompositionLayout)
   const cameraMotions = useEditorStore((state) => state.cameraMotions)
   const audioClips = useEditorStore((state) => state.audioClips)
+  const videoClips = useEditorStore((state) => state.videoClips)
+  const updateVideoClip = useEditorStore((state) => state.updateVideoClip)
   const mouseClickSoundsEnabled = useEditorStore((state) => state.mouseClickSoundsEnabled)
   const clickClips = useMemo(() => audioClips.filter((clip) => clip.kind === 'click'), [audioClips])
 
@@ -221,6 +223,19 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
                   <span className="absolute left-2 top-1 z-[1] rounded bg-background/80 px-1.5 py-0.5 text-[8px] font-bold tracking-wider text-muted-foreground/80">{track.label}</span>
                 </div>
               ))}
+              {videoClips.map((clip) => {
+                const selected = selectedRegionId === clip.id
+                return <div key={clip.id} data-region-id={clip.id} className="absolute top-1 h-9" style={{ left: `${timeToPx(clip.startTime)}px`, width: `${Math.max(28, timeToPx(clip.duration))}px`, zIndex: selected ? 140 : 14 }}>
+                  <div role="button" tabIndex={0} title={`${clip.name} · ${formatTime(clip.startTime)}`} aria-label={`Video clip ${clip.name}`} className={cn('flex h-full w-full cursor-grab select-none items-center overflow-hidden rounded-md border px-2 text-[10px] font-semibold', selected ? 'border-primary bg-sky-500/35 text-foreground' : 'border-sky-600/60 bg-sky-500/20 text-foreground hover:bg-sky-500/30')} onMouseDown={(event) => {
+                    event.stopPropagation(); event.preventDefault(); setSelectedRegionId(clip.id)
+                    const startX = event.clientX; const initialStart = clip.startTime
+                    const move = (moveEvent: MouseEvent) => updateVideoClip(clip.id, { startTime: Math.max(0, Math.min(Math.max(0, duration - clip.duration), initialStart + pxToTime(moveEvent.clientX - startX))) })
+                    const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up) }
+                    window.addEventListener('mousemove', move); window.addEventListener('mouseup', up)
+                  }}><Camera className="mr-1 h-3 w-3 shrink-0 text-sky-600 dark:text-sky-300" /><span className="truncate">{clip.name}</span></div>
+                </div>
+              })}
+
               {audioClips.filter((clip) => clip.kind !== 'click').map((clip) => {
                 const left = timeToPx(clip.startTime)
                 const width = Math.max(28, timeToPx(clip.duration))

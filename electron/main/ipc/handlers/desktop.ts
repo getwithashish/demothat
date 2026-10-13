@@ -1,7 +1,7 @@
 // Handlers for desktop-related IPC (displays, sources, cursor).
 
 import { IpcMainEvent, IpcMainInvokeEvent, BrowserWindow, screen, dialog, app, shell, desktopCapturer } from 'electron'
-import { exec } from 'node:child_process'
+import { exec, spawn } from 'node:child_process'
 import log from 'electron-log/main'
 import fs from 'node:fs/promises'
 import path from 'node:path'
@@ -212,4 +212,50 @@ export async function handleOpenAudioFile(event: IpcMainInvokeEvent): Promise<{ 
   const importedPath = path.join(assetDirectory, `${Date.now()}-${path.basename(sourcePath)}`)
   await fs.copyFile(sourcePath, importedPath)
   return { canceled: false, filePath: importedPath, fileName: path.basename(sourcePath) }
+}
+
+
+export async function handleOpenVideoFiles(event: IpcMainInvokeEvent): Promise<{ canceled: boolean; files?: { filePath: string; fileName: string }[] }> {
+  const parent = BrowserWindow.fromWebContents(event.sender) ?? undefined
+  const result = await dialog.showOpenDialog(parent, {
+    title: 'Import video clips', properties: ['openFile', 'multiSelections'],
+    filters: [{ name: 'Video', extensions: ['mp4', 'mov', 'mkv', 'webm', 'avi', 'm4v'] }],
+  })
+  if (result.canceled || result.filePaths.length === 0) return { canceled: true }
+  const assetDirectory = path.join(app.getPath('userData'), 'video-assets')
+  await fs.mkdir(assetDirectory, { recursive: true })
+  const files: { filePath: string; fileName: string }[] = []
+  for (const sourcePath of result.filePaths) {
+    const importedPath = path.join(assetDirectory, `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${path.basename(sourcePath)}`)
+    await fs.copyFile(sourcePath, importedPath)
+    files.push({ filePath: importedPath, fileName: path.basename(sourcePath) })
+  }
+  return { canceled: false, files }
+}
+
+export async function handleDetectSilence(_event: IpcMainInvokeEvent, videoPath: string): Promise<{ start: number; end: number; duration: number }[]> {
+  const ffmpegPath = getFFmpegPath()
+  return new Promise((resolve, reject) => {
+    const child = spawn(ffmpegPath, ['-hide_banner', '-i', videoPath, '-vn', '-af', 'silencedetect=noise=-35dB:d=0.45', '-f', 'null', '-'])
+    let stderr = ''
+    child.stderr.setEncoding('utf8')
+    child.stderr.on('data', (chunk: string) => { stderr += chunk })
+    child.on('error', reject)
+    child.on('close', (code) => {
+      if (code !== 0 && !stderr.includes('silence_end')) return reject(new Error('FFmpeg could not analyze this video audio track.'))
+      const silences: { start: number; end: number; duration: number }[] = []
+      let pendingStart: number | null = null
+      for (const line of stderr.split(/\r?\n/)) {
+        const startMatch = line.match(/silence_start:\s*(-?[\d.]+)/)
+        if (startMatch) pendingStart = Math.max(0, Number(startMatch[1]))
+        const endMatch = line.match(/silence_end:\s*([\d.]+).*silence_duration:\s*([\d.]+)/)
+        if (endMatch) {
+          const end = Number(endMatch[1]); const duration = Number(endMatch[2]); const start = pendingStart ?? Math.max(0, end - duration)
+          if (duration >= 0.45) silences.push({ start, end, duration })
+          pendingStart = null
+        }
+      }
+      resolve(silences)
+    })
+  })
 }

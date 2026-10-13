@@ -16,21 +16,20 @@ export function buildFfmpegArgs(
   const webcamIndex = hasMic ? (hasWebcam ? 1 : -1) : hasWebcam ? 0 : -1
   const screenIndex = (hasMic ? 1 : 0) + (hasWebcam ? 1 : 0)
 
-  finalArgs.push(
-    '-map',
-    `${screenIndex}:v`,
-    '-c:v',
-    'libx264',
-    '-preset',
-    'ultrafast',
-    '-pix_fmt',
-    'yuv420p',
-    screenOut,
-  )
-
+  // Map screen video and microphone audio to the SAME output. Previously the
+  // mic mapping appended screenOut a second time, creating a second output
+  // file target; FFmpeg could overwrite/fail on the video file, leaving an
+  // audio-only MP4 that appears black or will not play in the editor.
+  finalArgs.push('-map', `${screenIndex}:v`)
   if (hasMic) {
-    finalArgs.push('-map', `${micIndex}:a`, '-c:a', 'aac', '-b:a', '192k', screenOut)
+    finalArgs.push('-map', `${micIndex}:a`)
   }
+
+  finalArgs.push('-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p')
+  if (hasMic) {
+    finalArgs.push('-c:a', 'aac', '-b:a', '192k')
+  }
+  finalArgs.push(screenOut)
 
   if (hasWebcam && webcamOut) {
     finalArgs.push(

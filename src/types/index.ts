@@ -221,10 +221,35 @@ export interface CameraMotionTrack {
   to: CameraPose
 }
 
+export type VisualEffectKind = 'mask' | 'blur' | 'focus' | 'border'
+export type EffectShape = 'rectangle' | 'square' | 'circle' | 'freeform'
+export interface VisualEffectRegion {
+  id: string
+  kind: VisualEffectKind
+  shape: EffectShape
+  startTime: number
+  duration: number
+  x: number // normalized 0..1 output coordinate
+  y: number
+  width: number
+  height: number
+  points: { x: number; y: number }[] // normalized polygon points for freeform masks
+  color: string
+  borderWidth: number
+  blur: number
+  dimOutside: number
+  scale: number
+  animated: boolean
+  direction: 'in' | 'out' | 'both'
+  loop: boolean
+  enterDuration: number
+  exitDuration: number
+}
 export interface FrameState {
   frameStyles: FrameStyles
   aspectRatio: AspectRatio
   cameraMotions: CameraMotionTrack[]
+  visualEffects: VisualEffectRegion[]
 }
 export interface FrameActions {
   addCameraMotion: (kind: CameraMoveKind, startTime: number, endTime: number) => void
@@ -233,6 +258,9 @@ export interface FrameActions {
   updateFrameStyle: (style: Partial<Omit<FrameStyles, 'background'>>) => void
   updateBackground: (bg: Partial<Background>) => void
   setAspectRatio: (ratio: AspectRatio) => void
+  addVisualEffect: (kind: VisualEffectKind) => void
+  updateVisualEffect: (id: string, updates: Partial<VisualEffectRegion>) => void
+  deleteVisualEffect: (id: string) => void
 }
 
 export interface TimelineState {
@@ -349,6 +377,7 @@ export type RenderableState = Pick<
   | 'platform'
   | 'frameStyles'
   | 'cameraMotions'
+  | 'visualEffects'
   | 'videoDimensions'
   | 'aspectRatio'
   | 'webcamPosition'

@@ -7,6 +7,7 @@ const DEFAULT_CAMERA_POSE: CameraPose = { x: 0, y: 0, scale: 1, rotationX: 0, ro
 
 export const initialFrameState: FrameState = {
   cameraMotions: [],
+  visualEffects: [],
   frameStyles: {
     padding: 5,
     background: {
@@ -63,6 +64,15 @@ export const recalculateCanvasDimensions = (state: {
 
 export const createFrameSlice: Slice<FrameState, FrameActions> = (set, get) => ({
   ...initialFrameState,
+  addVisualEffect: (kind) => {
+    const { currentTime, duration } = get()
+    if (duration <= 0) return
+    const defaults = { mask: { color: '#111827', blur: 0 }, blur: { color: '#ffffff', blur: 18 }, focus: { color: '#ffffff', blur: 8 }, border: { color: '#38bdf8', blur: 0 } }[kind]
+    const effect = { id: `effect-${Date.now()}`, kind, shape: 'rectangle' as const, startTime: currentTime, duration: Math.max(0.5, Math.min(3, duration-currentTime)), x: 0.3, y: 0.3, width: 0.4, height: 0.3, points: [{x:0,y:0},{x:1,y:0.08},{x:0.82,y:0.62},{x:0.55,y:1},{x:0.12,y:0.78}], color: defaults.color, borderWidth: 5, blur: defaults.blur, dimOutside: 0.65, scale: 1.5, animated: kind === 'border' || kind === 'focus', direction: 'both' as const, loop: false, enterDuration: 0.25, exitDuration: 0.25 }
+    set((state) => { state.visualEffects.push(effect) })
+  },
+  updateVisualEffect: (id, updates) => set((state) => { const effect = state.visualEffects.find((item) => item.id === id); if (effect) Object.assign(effect, updates) }),
+  deleteVisualEffect: (id) => set((state) => { state.visualEffects = state.visualEffects.filter((item) => item.id !== id) }),
   addCameraMotion: (kind: CameraMoveKind, startTime: number, endTime: number) => {
     const state = get()
     // Start from the camera's actual pose at this timeline position. If no 3D

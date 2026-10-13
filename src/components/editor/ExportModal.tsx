@@ -18,6 +18,7 @@ export type ExportSettings = {
 interface ExportModalProps {
   isOpen: boolean
   onClose: () => void
+  onMinimize?: () => void
   onStartExport: (settings: ExportSettings, outputPath: string) => void
   onCancelExport: () => void
   isExporting: boolean
@@ -294,6 +295,7 @@ const ResultView = ({ result, onClose }: { result: NonNullable<ExportModalProps[
 export function ExportModal({
   isOpen,
   onClose,
+  onMinimize,
   onStartExport,
   onCancelExport,
   isExporting,
@@ -315,6 +317,7 @@ export function ExportModal({
   return (
     <div className="modal-backdrop z-50 flex items-center justify-center">
       <div className="card-clean w-full max-w-2xl m-4 flex flex-col" onClick={(e) => e.stopPropagation()}>
+        {isExporting && onMinimize && <div className="flex justify-end px-4 pt-3"><Button variant="ghost" size="sm" onClick={onMinimize}>Minimize to background</Button></div>}
         {renderContent()}
       </div>
     </div>

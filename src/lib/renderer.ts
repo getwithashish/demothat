@@ -580,4 +580,51 @@ export const drawScene = async (
     ctx.drawImage(webcamVideo, sx, sy, sWidth, sHeight, drawX, webcamY, webcamWidth, webcamHeight)
     ctx.restore()
   }
+
+  // Timeline-scoped visual effects are rendered into the same canvas as the video,
+  // so they are present in both preview and the exported frames.
+  for (const effect of state.visualEffects || []) {
+    if (currentTime < effect.startTime || currentTime >= effect.startTime + effect.duration) continue
+    const x = Math.max(0, effect.x * outputWidth), y = Math.max(0, effect.y * outputHeight)
+    const w = Math.min(outputWidth - x, effect.width * outputWidth), h = Math.min(outputHeight - y, effect.height * outputHeight)
+    if (w <= 0 || h <= 0) continue
+    const activeProgress = Math.min(1, (currentTime - effect.startTime) / Math.max(0.01, effect.enterDuration))
+    const remaining = Math.min(1, (effect.startTime + effect.duration - currentTime) / Math.max(0.01, effect.exitDuration))
+    const alpha = Math.max(0, Math.min(activeProgress, remaining))
+    ctx.save()
+    ctx.globalAlpha = effect.animated ? alpha : 1
+    const makeEffectPath = () => {
+      const shapePath = new Path2D()
+      if (effect.shape === 'circle') shapePath.ellipse(x + w/2, y + h/2, w/2, h/2, 0, 0, Math.PI*2)
+      else if (effect.shape === 'freeform') { effect.points.forEach((point, index) => index === 0 ? shapePath.moveTo(x + point.x*w, y + point.y*h) : shapePath.lineTo(x + point.x*w, y + point.y*h)); shapePath.closePath() }
+      else shapePath.rect(x, y, effect.shape === 'square' ? Math.min(w,h) : w, effect.shape === 'square' ? Math.min(w,h) : h)
+      return shapePath
+    }
+    const path = makeEffectPath()
+    if (effect.kind === 'mask') {
+      ctx.fillStyle = effect.color
+      ctx.fill(path)
+    } else if (effect.kind === 'blur') {
+      const patch = document.createElement('canvas'); patch.width = Math.max(1, Math.ceil(w)); patch.height = Math.max(1, Math.ceil(h))
+      const patchCtx = patch.getContext('2d')
+      if (patchCtx) { patchCtx.filter = `blur(${Math.max(0, effect.blur)}px)`; patchCtx.drawImage(ctx.canvas, x, y, w, h, 0, 0, patch.width, patch.height); ctx.save(); ctx.beginPath(); ctx.clip(path); ctx.drawImage(patch, x, y, w, h); ctx.restore() }
+    } else if (effect.kind === 'focus') {
+      // Fill only the area outside the focus shape (evenodd preserves the video in the hole).
+      const dimPath = new Path2D(); dimPath.rect(0, 0, outputWidth, outputHeight)
+      dimPath.addPath(path)
+      ctx.fillStyle = `rgba(0,0,0,${Math.max(0, Math.min(.9, effect.dimOutside))})`
+      ctx.fill(dimPath, 'evenodd')
+      if (effect.scale > 1) {
+        const snapshot = document.createElement('canvas'); snapshot.width = outputWidth; snapshot.height = outputHeight
+        const snapshotCtx = snapshot.getContext('2d'); if (snapshotCtx) { snapshotCtx.drawImage(ctx.canvas, 0, 0); const cropW = w / effect.scale, cropH = h / effect.scale; ctx.save(); ctx.beginPath(); ctx.clip(path); ctx.drawImage(snapshot, x + w/2-cropW/2, y+h/2-cropH/2, cropW, cropH, x, y, w, h); ctx.restore() }
+      }
+      ctx.strokeStyle = effect.color; ctx.lineWidth = Math.max(1, effect.borderWidth); ctx.stroke(path)
+    } else if (effect.kind === 'border') {
+      ctx.strokeStyle = effect.color; ctx.lineWidth = Math.max(1, effect.borderWidth)
+      if (effect.animated) ctx.setLineDash([Math.max(4, effect.borderWidth*2), Math.max(3, effect.borderWidth*1.5)])
+      ctx.lineDashOffset = effect.animated ? (effect.loop ? currentTime * 35 : ((currentTime-effect.startTime) / Math.max(.01,effect.duration)) * 80 * (effect.direction === 'out' ? 1 : -1)) : 0
+      ctx.stroke(path)
+    }
+    ctx.restore()
+  }
 }

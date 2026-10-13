@@ -12,6 +12,7 @@ import { cn } from '../../lib/utils'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip'
 import { AudioSettings } from './sidepanel/AudioSettings'
 import { CameraMotionSettings } from './sidepanel/CameraMotionSettings'
+import { VisualEffectsSettings } from './sidepanel/VisualEffectsSettings'
 
 interface TabButtonProps {
   label: string
@@ -74,6 +75,7 @@ function FrameSettingsPanel() {
         <div className="p-6 space-y-8">
           <BackgroundSettings />
           <FrameEffectsSettings />
+          <VisualEffectsSettings />
         </div>
       </div>
     </div>

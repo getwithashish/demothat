@@ -62,6 +62,7 @@ export const useEditorStore = create(
         const {
           frameStyles,
           cameraMotions,
+          visualEffects,
           audioClips,
           mouseClickSoundsEnabled,
           mouseClickSoundPath,
@@ -81,6 +82,7 @@ export const useEditorStore = create(
         return {
           frameStyles,
           cameraMotions,
+          visualEffects,
           audioClips,
           mouseClickSoundsEnabled,
           mouseClickSoundPath,

@@ -43,17 +43,20 @@ export function EditorPage() {
     isExporting,
     progress: exportProgress,
     result: exportResult,
-    openExportModal,
+    openExportModal: openExportModalBase,
     closeExportModal,
     startExport,
     cancelExport,
   } = useExportProcess()
 
   const videoRef = useRef<HTMLVideoElement>(null)
+  const [isExportMinimized, setExportMinimized] = useState(false)
   const [isPresetModalOpen, setPresetModalOpen] = useState(false)
   const [isSettingsModalOpen, setSettingsModalOpen] = useState(false)
   const [updateInfo, setUpdateInfo] = useState<{ version: string; url: string } | null>(null)
   const [platform, setPlatform] = useState<NodeJS.Platform | null>(null)
+  const openExportModal = () => { setExportMinimized(false); openExportModalBase() }
+  useEffect(() => { if (!isExporting) setExportMinimized(false) }, [isExporting])
 
   const handleDeleteSelectedRegion = useCallback(() => {
     const currentSelectedId = useEditorStore.getState().selectedRegionId
@@ -291,9 +294,16 @@ export function EditorPage() {
         </div>
       </div>
 
+      {isExporting && isExportMinimized && (
+        <button type="button" onClick={() => { setExportMinimized(false); openExportModal() }} title={`Export progress: ${Math.round(exportProgress)}% — click to expand`} className="fixed bottom-5 right-5 z-[60] flex h-14 w-14 items-center justify-center rounded-full border border-border bg-card text-sm font-semibold text-foreground shadow-xl hover:scale-105 focus:outline-none focus:ring-2 focus:ring-primary">
+          <svg className="absolute inset-0 h-14 w-14 -rotate-90" viewBox="0 0 56 56"><circle cx="28" cy="28" r="24" fill="none" stroke="currentColor" strokeOpacity=".15" strokeWidth="4"/><circle cx="28" cy="28" r="24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeDasharray={2*Math.PI*24} strokeDashoffset={2*Math.PI*24*(1-exportProgress/100)}/></svg>
+          <span className="relative">{Math.round(exportProgress)}%</span>
+        </button>
+      )}
       <ExportModal
-        isOpen={isExportModalOpen}
-        onClose={closeExportModal}
+        isOpen={isExportModalOpen && !isExportMinimized}
+        onClose={() => { closeExportModal(); setExportMinimized(false) }}
+        onMinimize={() => setExportMinimized(true)}
         onStartExport={startExport}
         onCancelExport={cancelExport}
         isExporting={isExporting}

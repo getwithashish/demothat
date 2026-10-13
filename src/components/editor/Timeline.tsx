@@ -155,6 +155,8 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
   }, [currentTime, isPlaying, timeToPx])
 
   const { zoomRegions, cutRegions, speedRegions } = useAllRegions()
+  const visualEffects = useEditorStore((state) => state.visualEffects)
+  const updateVisualEffect = useEditorStore((state) => state.updateVisualEffect)
   const cameraMotions = useEditorStore((state) => state.cameraMotions)
   const audioClips = useEditorStore((state) => state.audioClips)
   const mouseClickSoundsEnabled = useEditorStore((state) => state.mouseClickSoundsEnabled)
@@ -327,6 +329,22 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
               })}
 
               <div className="absolute inset-x-0 bottom-0 top-[7rem]">
+                {visualEffects.map((effect) => {
+                  const selected = selectedRegionId === effect.id
+                  const colors: Record<string, string> = { mask: 'bg-slate-500/35 border-slate-500', blur: 'bg-sky-500/25 border-sky-500', focus: 'bg-amber-500/25 border-amber-500', border: 'bg-fuchsia-500/25 border-fuchsia-500' }
+                  const beginDrag = (event: React.MouseEvent, edge: 'move' | 'end') => {
+                    event.preventDefault(); event.stopPropagation(); setSelectedRegionId(effect.id)
+                    const startX = event.clientX; const initialStart = effect.startTime; const initialDuration = effect.duration
+                    const move = (moveEvent: MouseEvent) => {
+                      const delta = pxToTime(moveEvent.clientX - startX)
+                      if (edge === 'end') updateVisualEffect(effect.id, { duration: Math.max(.1, Math.min(duration - initialStart, initialDuration + delta)) })
+                      else updateVisualEffect(effect.id, { startTime: Math.max(0, Math.min(duration - initialDuration, initialStart + delta)) })
+                    }
+                    const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up) }
+                    window.addEventListener('mousemove', move); window.addEventListener('mouseup', up)
+                  }
+                  return <div key={effect.id} data-region-id={effect.id} onMouseDown={event => beginDrag(event, 'move')} title={`${effect.kind}: ${formatTime(effect.startTime)}–${formatTime(effect.startTime + effect.duration)}`} className={`absolute bottom-1 flex h-6 cursor-grab items-center overflow-hidden rounded border text-[10px] font-semibold ${colors[effect.kind]} ${selected ? 'ring-2 ring-primary' : ''}`} style={{ left: `${timeToPx(effect.startTime)}px`, width: `${Math.max(24, timeToPx(effect.duration))}px`, zIndex: selected ? 120 : 30 }}><span className="truncate px-2">{effect.kind.toUpperCase()} · {formatTime(effect.duration)}</span><span onMouseDown={event => beginDrag(event, 'end')} className="absolute right-0 top-0 h-full w-2 cursor-ew-resize bg-current/30" /></div>
+                })}
                 {allRegionsToRender.map((region) => {
                   const isSelected = selectedRegionId === region.id
                   const zIndex = isSelected ? 100 : (region.zIndex ?? 1)

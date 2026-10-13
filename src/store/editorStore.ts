@@ -62,6 +62,11 @@ export const useEditorStore = create(
         const {
           frameStyles,
           cameraMotions,
+          audioClips,
+          mouseClickSoundsEnabled,
+          mouseClickSoundPath,
+          mouseClickSoundName,
+          mouseClickSoundVolume,
           aspectRatio,
           zoomRegions,
           cutRegions,
@@ -76,6 +81,11 @@ export const useEditorStore = create(
         return {
           frameStyles,
           cameraMotions,
+          audioClips,
+          mouseClickSoundsEnabled,
+          mouseClickSoundPath,
+          mouseClickSoundName,
+          mouseClickSoundVolume,
           aspectRatio,
           zoomRegions,
           cutRegions,

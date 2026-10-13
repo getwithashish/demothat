@@ -211,6 +211,27 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
       set((state) => {
         state.platform = platform
         state.metadata = processedMetadata
+        // Represent each mouse click as an independent, removable audio clip.
+        state.audioClips = state.audioClips.filter((clip) => clip.kind !== 'click')
+        processedMetadata
+          .filter((item) => item.type === 'click' && item.pressed && Number.isFinite(item.timestamp) && item.timestamp >= 0)
+          .forEach((item, index) => {
+            state.audioClips.push({
+              id: `click-${index}-${Math.round(item.timestamp * 1000)}`,
+              kind: 'click',
+              name: `Click ${index + 1}`,
+              filePath: '',
+              startTime: item.timestamp,
+              duration: 0.25,
+              sourceStart: 0,
+              sourceDuration: 0.25,
+              volume: 1,
+              fadeIn: 0,
+              fadeOut: 0,
+              loop: false,
+              speed: 1,
+            })
+          })
         state.recordingGeometry = parsedData.geometry || null
         state.screenSize = parsedData.screenSize || null
         state.syncOffset = parsedData.syncOffset || 0
@@ -278,6 +299,7 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
       state.zoomRegions = {}
       state.cutRegions = {}
       state.selectedRegionId = null
+      state.audioClips = []
       state.activeZoomRegionId = null
       state.isCurrentlyCut = false
       state.currentTime = 0

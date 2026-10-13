@@ -304,15 +304,44 @@ export interface UIActions {
   setActiveSidePanelTab: (tab: SidePanelTab) => void
 }
 
+export interface AudioClip {
+  id: string
+  name: string
+  filePath: string
+  startTime: number
+  duration: number
+  sourceStart: number
+  sourceDuration: number
+  volume: number
+  fadeIn: number
+  fadeOut: number
+  loop: boolean
+  /** Music clips use a source file; click clips represent one removable mouse-click sound. */
+  kind?: 'music' | 'click'
+  /** Playback rate, where 1 is normal speed. */
+  speed?: number
+}
+
 export interface AudioState {
-  volume: number // 0 to 1
+  volume: number // 0 to 1, original-video master volume
   isMuted: boolean
+  audioClips: AudioClip[]
+  mouseClickSoundsEnabled: boolean
+  mouseClickSoundPath: string | null
+  mouseClickSoundName: string | null
+  mouseClickSoundVolume: number
 }
 
 export interface AudioActions {
   setVolume: (volume: number) => void
   toggleMute: () => void
   setIsMuted: (isMuted: boolean) => void
+  addAudioClip: (clip: Omit<AudioClip, 'id'>) => void
+  updateAudioClip: (id: string, updates: Partial<AudioClip>) => void
+  deleteAudioClip: (id: string) => void
+  setMouseClickSoundsEnabled: (enabled: boolean) => void
+  setMouseClickSound: (path: string | null, name: string | null) => void
+  setMouseClickSoundVolume: (volume: number) => void
 }
 
 export type RenderableState = Pick<

@@ -177,6 +177,8 @@ export const electronAPI = {
     return () => ipcRenderer.removeListener('export:complete', listener)
   },
 
+  openAudioFile: (): Promise<{ canceled: boolean; filePath?: string; fileName?: string }> => ipcRenderer.invoke('dialog:openAudioFile'),
+
   showSaveDialog: (options: Electron.SaveDialogOptions): Promise<Electron.SaveDialogReturnValue> => {
     return ipcRenderer.invoke('dialog:showSaveDialog', options)
   },

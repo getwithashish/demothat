@@ -1,6 +1,6 @@
 // Handlers for desktop-related IPC (displays, sources, cursor).
 
-import { IpcMainEvent, IpcMainInvokeEvent, screen, dialog, app, shell, desktopCapturer } from 'electron'
+import { IpcMainEvent, IpcMainInvokeEvent, BrowserWindow, screen, dialog, app, shell, desktopCapturer } from 'electron'
 import { exec } from 'node:child_process'
 import log from 'electron-log/main'
 import fs from 'node:fs/promises'
@@ -195,4 +195,21 @@ export async function loadCursorTheme(
 
 export function handleMapCursorNameToIDC(_event: IpcMainInvokeEvent, name: string) {
   return mapCursorNameToIDC(name)
+}
+
+
+export async function handleOpenAudioFile(event: IpcMainInvokeEvent): Promise<{ canceled: boolean; filePath?: string; fileName?: string }> {
+  const parent = BrowserWindow.fromWebContents(event.sender) ?? undefined
+  const result = await dialog.showOpenDialog(parent, {
+    title: 'Import audio file',
+    properties: ['openFile'],
+    filters: [{ name: 'Audio', extensions: ['mp3', 'wav', 'm4a', 'aac', 'ogg', 'opus', 'flac', 'aiff', 'wma'] }],
+  })
+  if (result.canceled || result.filePaths.length === 0) return { canceled: true }
+  const sourcePath = result.filePaths[0]
+  const assetDirectory = path.join(app.getPath('userData'), 'audio-assets')
+  await fs.mkdir(assetDirectory, { recursive: true })
+  const importedPath = path.join(assetDirectory, `${Date.now()}-${path.basename(sourcePath)}`)
+  await fs.copyFile(sourcePath, importedPath)
+  return { canceled: false, filePath: importedPath, fileName: path.basename(sourcePath) }
 }

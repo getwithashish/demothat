@@ -87,8 +87,9 @@ export function SidePanel() {
     zoomRegions,
     cutRegions,
     cameraMotions,
+    audioClips,
+    deleteAudioClip,
     webcamVideoUrl,
-    hasAudioTrack,
     setSelectedRegionId,
     deleteCameraMotion,
     activeSidePanelTab,
@@ -99,8 +100,9 @@ export function SidePanel() {
       zoomRegions: state.zoomRegions,
       cutRegions: state.cutRegions,
       cameraMotions: state.cameraMotions,
+      audioClips: state.audioClips,
+      deleteAudioClip: state.deleteAudioClip,
       webcamVideoUrl: state.webcamVideoUrl,
-      hasAudioTrack: state.hasAudioTrack,
       setSelectedRegionId: state.setSelectedRegionId,
       deleteCameraMotion: state.deleteCameraMotion,
       activeSidePanelTab: state.activeSidePanelTab,
@@ -110,6 +112,7 @@ export function SidePanel() {
 
   // Optimize region lookup using useMemo
   const selectedCameraMotion = useMemo(() => cameraMotions.find((motion) => motion.id === selectedRegionId) ?? null, [cameraMotions, selectedRegionId])
+  const selectedAudioClip = useMemo(() => audioClips.find((clip) => clip.id === selectedRegionId) ?? null, [audioClips, selectedRegionId])
 
   const selectedRegion = useMemo(() => {
     if (!selectedRegionId) return null
@@ -118,10 +121,12 @@ export function SidePanel() {
 
   // Auto switch to 'general' tab when a region is selected
   useEffect(() => {
-    if (selectedRegion || selectedCameraMotion) {
+    if (selectedAudioClip) {
+      setActiveSidePanelTab('audio')
+    } else if (selectedRegion || selectedCameraMotion) {
       setActiveSidePanelTab('general')
     }
-  }, [selectedRegion, selectedCameraMotion, setActiveSidePanelTab])
+  }, [selectedRegion, selectedCameraMotion, selectedAudioClip, setActiveSidePanelTab])
 
   // Handle Escape key to clear selection
   useEffect(() => {
@@ -133,6 +138,13 @@ export function SidePanel() {
       if ((event.key !== 'Delete' && event.key !== 'Backspace') || !selectedRegionId) return
       const target = event.target as HTMLElement | null
       if (target?.isContentEditable || target?.closest('input, textarea, select, [contenteditable="true"]')) return
+      if (audioClips.some((clip) => clip.id === selectedRegionId)) {
+        event.preventDefault()
+        event.stopPropagation()
+        deleteAudioClip(selectedRegionId)
+        setSelectedRegionId(null)
+        return
+      }
       if (!cameraMotions.some((motion) => motion.id === selectedRegionId)) return
       event.preventDefault()
       deleteCameraMotion(selectedRegionId)
@@ -140,7 +152,7 @@ export function SidePanel() {
     }
     window.addEventListener('keydown', handleKeyDown, true)
     return () => window.removeEventListener('keydown', handleKeyDown, true)
-  }, [selectedRegionId, cameraMotions, deleteCameraMotion, setSelectedRegionId])
+  }, [selectedRegionId, cameraMotions, audioClips, deleteAudioClip, deleteCameraMotion, setSelectedRegionId])
 
   return (
     <div className="h-full flex">
@@ -186,7 +198,6 @@ export function SidePanel() {
             icon={<Microphone className="w-5 h-5" />}
             isActive={activeSidePanelTab === 'audio'}
             onClick={() => setActiveSidePanelTab('audio')}
-            disabled={!hasAudioTrack}
           />
           <TabButton
             label="Animation"

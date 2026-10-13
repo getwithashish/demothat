@@ -57,6 +57,7 @@ export function CameraSettings() {
     setWebcamPosition,
     updateWebcamStyle,
     compositionLayouts,
+    selectedRegionId,
     addCompositionLayout,
     updateCompositionLayout,
     deleteCompositionLayout,
@@ -72,6 +73,7 @@ export function CameraSettings() {
       setWebcamPosition: state.setWebcamPosition,
       updateWebcamStyle: state.updateWebcamStyle,
       compositionLayouts: state.compositionLayouts,
+      selectedRegionId: state.selectedRegionId,
       addCompositionLayout: state.addCompositionLayout,
       updateCompositionLayout: state.updateCompositionLayout,
       deleteCompositionLayout: state.deleteCompositionLayout,
@@ -79,6 +81,8 @@ export function CameraSettings() {
       duration: state.duration,
     })),
   )
+
+  const selectedLayout = compositionLayouts.find((range) => range.id === selectedRegionId) ?? null
 
   const { hex: shadowHex, alpha: shadowAlpha } = useMemo(
     () => rgbaToHexAlpha(webcamStyles.shadowColor),
@@ -177,36 +181,39 @@ export function CameraSettings() {
               </div>
             </ControlGroup>
 
-            <Collapse
-              title="Screen & Presenter Composition"
+            <div className="space-y-2 rounded-lg border border-sidebar-border p-3">
+              <p className="text-xs text-muted-foreground">Add a layout range at the playhead.</p>
+              <div className="grid grid-cols-[1fr_auto] gap-2">
+                <select id="composition-layout-to-add" aria-label="New composition layout" className="min-w-0 rounded-md border border-input bg-background p-2 text-xs text-foreground">
+                  <option value="picture-in-picture">Picture-in-picture</option>
+                  <option value="side-by-side">Side-by-side</option>
+                  <option value="presenter-focus">Presenter focus</option>
+                  <option value="screen-only">Screen only</option>
+                  <option value="presenter-top">Presenter top</option>
+                  <option value="presenter-bottom">Presenter bottom</option>
+                  <option value="split-vertical">Vertical split</option>
+                  <option value="large-picture-in-picture">Large picture-in-picture</option>
+                </select>
+                <Button size="sm" onClick={() => { const select = document.getElementById('composition-layout-to-add') as HTMLSelectElement | null; addCompositionLayout((select?.value || 'picture-in-picture') as CompositionLayout) }} disabled={duration <= currentTime}>Add</Button>
+              </div>
+            </div>
+            {selectedLayout && <Collapse
+              title="Selected Layout"
+
               description="Schedule presenter and screen layouts on the timeline"
               icon={<LayoutBoard className="w-4 h-4 text-primary" />}
               defaultOpen={false}
             >
               <div className="space-y-3">
-                <p className="text-xs text-muted-foreground">Add a layout range at the playhead, then adjust its range on the timeline or below.</p>
-                <div className="grid grid-cols-[1fr_auto] gap-2">
-                  <select id="composition-layout-to-add" className="min-w-0 rounded-md border border-input bg-background p-2 text-sm text-foreground">
-                    <option value="picture-in-picture">Picture-in-picture</option>
-                    <option value="side-by-side">Side-by-side</option>
-                    <option value="presenter-focus">Presenter focus</option>
-                    <option value="screen-only">Screen only</option>
-                    <option value="presenter-top">Presenter top</option>
-                    <option value="presenter-bottom">Presenter bottom</option>
-                    <option value="split-vertical">Vertical split</option>
-                    <option value="large-picture-in-picture">Large picture-in-picture</option>
-                  </select>
-                  <Button size="sm" onClick={() => { const select = document.getElementById('composition-layout-to-add') as HTMLSelectElement | null; addCompositionLayout((select?.value || 'picture-in-picture') as CompositionLayout) }} disabled={duration <= currentTime}>Add range</Button>
-                </div>
-                {compositionLayouts.length === 0 && <p className="rounded-md border border-dashed border-border p-3 text-xs text-muted-foreground">No layout ranges yet. The current webcam composition remains unchanged.</p>}
+                <p className="text-xs text-muted-foreground">Edit the selected layout range from the timeline.</p>
                 <div className="space-y-2">
-                  {compositionLayouts.slice().sort((a,b) => a.startTime-b.startTime).map((range) => (
+                  {[selectedLayout].map((range) => (
                     <div key={range.id} className="space-y-2 rounded-lg border border-sidebar-border p-3">
                       <div className="flex items-center gap-2">
                         <select aria-label="Layout" value={range.layout} onChange={(e) => updateCompositionLayout(range.id, { layout: e.target.value as CompositionLayout })} className="min-w-0 flex-1 rounded-md border border-input bg-background p-2 text-xs text-foreground">
                           <option value="picture-in-picture">Picture-in-picture</option><option value="side-by-side">Side-by-side</option><option value="presenter-focus">Presenter focus</option><option value="screen-only">Screen only</option><option value="presenter-top">Presenter top</option><option value="presenter-bottom">Presenter bottom</option><option value="split-vertical">Vertical split</option><option value="large-picture-in-picture">Large picture-in-picture</option>
                         </select>
-                        <Button variant="ghost" size="icon" onClick={() => deleteCompositionLayout(range.id)} aria-label="Delete layout range"><Trash className="h-4 w-4" /></Button>
+                        <Button variant="ghost" size="icon" className="text-red-600 hover:bg-red-500/10 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-500/15 dark:hover:text-red-300" onClick={() => deleteCompositionLayout(range.id)} aria-label="Delete layout range"><Trash className="h-4 w-4" /></Button>
                       </div>
                       <div className="grid grid-cols-3 gap-2">
                         <label className="text-[11px] text-muted-foreground">Start (s)<input type="number" min="0" max={Math.max(0,duration-range.duration)} step="0.1" value={Number(range.startTime.toFixed(2))} onChange={(e) => updateCompositionLayout(range.id, { startTime: Math.max(0, Math.min(duration-range.duration, Number(e.target.value)||0)) })} className="mt-1 w-full rounded-md border border-input bg-background p-2 text-xs text-foreground" /></label>
@@ -217,7 +224,7 @@ export function CameraSettings() {
                   ))}
                 </div>
               </div>
-            </Collapse>
+            </Collapse>}
             <Collapse
               title="Style"
               description="Change shape and orientation"

@@ -95,6 +95,7 @@ export function PreviewControls() {
             title="Delete Selected Region"
             onClick={handleDelete}
             disabled={!selectedRegionId}
+            className="text-red-600 border-red-500/25 hover:bg-red-500/10 hover:text-red-700 dark:text-red-400 dark:border-red-400/30 dark:hover:bg-red-500/15 dark:hover:text-red-300"
           >
             <Trash className="w-4 h-4" />
           </ToolbarButton>

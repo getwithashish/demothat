@@ -10,7 +10,7 @@ import { Scissors } from 'tabler-icons-react'
 import { formatTime, calculateRulerInterval } from '../../lib/utils'
 import { useTimelineInteraction } from '../../hooks/useTimelineInteraction'
 import { FlipScissorsIcon } from '../ui/icons'
-import { Camera, Music, Mouse } from 'tabler-icons-react'
+import { Camera, Music } from 'tabler-icons-react'
 import { AudioTimelinePreview } from './timeline/AudioTimelinePreview'
 
 // Memoized Ruler component (không thay đổi)
@@ -164,8 +164,6 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
   const mouseClickSoundsEnabled = useEditorStore((state) => state.mouseClickSoundsEnabled)
   const clickClips = useMemo(() => audioClips.filter((clip) => clip.kind === 'click'), [audioClips])
 
-  const hasSpeedRegions = useMemo(() => Object.keys(speedRegions).length > 0, [speedRegions])
-
   const allRegionsToRender = useMemo(() => {
     const combined = [...Object.values(zoomRegions), ...Object.values(cutRegions), ...Object.values(speedRegions)]
     if (previewCutRegion) {
@@ -180,7 +178,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
     <div
       className={cn(
         'flex flex-col bg-background/50 p-3 transition-all duration-300 ease-in-out',
-        hasSpeedRegions ? 'h-64' : 'h-56',
+        'h-[29rem]',
       )}
     >
       <div className="h-full flex flex-row rounded-xl overflow-hidden shadow-xl bg-card border border-border">
@@ -209,13 +207,26 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
           >
             <Ruler ticks={rulerTicks} timeToPx={timeToPx} formatTime={formatTime} />
 
-            <div className="absolute top-12 left-0 w-full" style={{ height: 'calc(100% - 3rem)' }}>
+            <div className="absolute top-12 left-0 w-full" style={{ height: '21rem' }}>
+              {[
+                { label: 'VIDEO', top: 0, height: 48 },
+                { label: 'AUDIO', top: 48, height: 48 },
+                { label: 'CLICK SOUNDS', top: 96, height: 32 },
+                { label: '3D CAMERA', top: 128, height: 48 },
+                { label: 'ZOOM EFFECTS', top: 176, height: 48 },
+                { label: 'LAYOUT', top: 224, height: 48 },
+                { label: 'MASKING EFFECTS', top: 272, height: 48 },
+              ].map((track) => (
+                <div key={track.label} className="pointer-events-none absolute inset-x-0 border-b border-border/40 bg-muted/10" style={{ top: track.top, height: track.height }}>
+                  <span className="absolute left-2 top-1 z-[1] rounded bg-background/80 px-1.5 py-0.5 text-[8px] font-bold tracking-wider text-muted-foreground/80">{track.label}</span>
+                </div>
+              ))}
               {audioClips.filter((clip) => clip.kind !== 'click').map((clip) => {
                 const left = timeToPx(clip.startTime)
                 const width = Math.max(28, timeToPx(clip.duration))
                 const selected = selectedRegionId === clip.id
                 return (
-                  <div key={clip.id} data-region-id={clip.id} className="absolute top-0 h-9" style={{ left: `${left}px`, width: `${width}px`, zIndex: selected ? 130 : 12 }}>
+                  <div key={clip.id} data-region-id={clip.id} className="absolute top-12 h-9" style={{ left: `${left}px`, width: `${width}px`, zIndex: selected ? 130 : 12 }}>
                     <div
                       role="button" tabIndex={0} aria-label={`Music clip: ${clip.name}`}
                       className={cn('group/audio relative flex h-full w-full cursor-grab select-none items-center overflow-hidden rounded-md border px-2 text-[10px] font-semibold', selected ? 'border-primary bg-emerald-500/25 text-foreground' : 'border-emerald-600/60 bg-emerald-500/15 text-foreground hover:bg-emerald-500/25')}
@@ -256,8 +267,8 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
               })}
 
               {mouseClickSoundsEnabled && (
-                <div className="absolute left-0 top-9 h-5 w-full overflow-hidden rounded-sm border border-amber-500/30 bg-amber-500/5" onMouseDown={(event) => event.stopPropagation()} aria-label="Mouse click sounds audio track">
-                  <div className="pointer-events-none absolute left-2 top-0 z-[1] flex h-full items-center gap-1 text-[9px] font-semibold text-sidebar-foreground/75"><Mouse className="h-3 w-3" />CLICK SOUNDS</div>
+                <div className="absolute left-0 top-24 h-5 w-full overflow-hidden rounded-sm border border-amber-500/30 bg-amber-500/5" onMouseDown={(event) => event.stopPropagation()} aria-label="Mouse click sounds audio track">
+
                   {clickClips.map((clip) => {
                     const selected = selectedRegionId === clip.id
                     return <div
@@ -292,7 +303,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
                 const left = timeToPx(motion.startTime)
                 const width = Math.max(30, timeToPx(motion.endTime - motion.startTime))
                 const selected = selectedRegionId === motion.id
-                return <div key={motion.id} data-region-id={motion.id} className="absolute top-14 h-14" style={{ left: `${left}px`, width: `${width}px`, zIndex: selected ? 120 : 5 }}>
+                return <div key={motion.id} data-region-id={motion.id} className="absolute top-32 h-12" style={{ left: `${left}px`, width: `${width}px`, zIndex: selected ? 120 : 5 }}>
                   <div
                     role="button" tabIndex={0} aria-label={`Cinematic 3D Camera: ${motion.name}`}
                     className={cn('group/camera relative flex h-full w-full cursor-grab select-none items-center justify-center overflow-hidden rounded-xl border-2 backdrop-blur-sm', selected ? 'border-primary bg-primary/20 shadow-lg shadow-primary/10' : 'border-violet-500/60 bg-violet-500/15 hover:border-violet-400 hover:bg-violet-500/25')}
@@ -330,7 +341,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
                 </div>
               })}
 
-              <div className="absolute inset-x-0 bottom-0 top-[7rem]">
+              <div className="absolute inset-x-0 top-0 h-full">
                 {visualEffects.map((effect) => {
                   const selected = selectedRegionId === effect.id
                   const colors: Record<string, string> = { mask: 'bg-slate-500/35 border-slate-500', blur: 'bg-sky-500/25 border-sky-500', focus: 'bg-amber-500/25 border-amber-500', border: 'bg-fuchsia-500/25 border-fuchsia-500' }
@@ -345,7 +356,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
                     const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up) }
                     window.addEventListener('mousemove', move); window.addEventListener('mouseup', up)
                   }
-                  return <div key={effect.id} data-region-id={effect.id} onMouseDown={event => beginDrag(event, 'move')} title={`${effect.kind}: ${formatTime(effect.startTime)}–${formatTime(effect.startTime + effect.duration)}`} className={`absolute bottom-1 flex h-6 cursor-grab items-center overflow-hidden rounded border text-[10px] font-semibold ${colors[effect.kind]} ${selected ? 'ring-2 ring-primary' : ''}`} style={{ left: `${timeToPx(effect.startTime)}px`, width: `${Math.max(24, timeToPx(effect.duration))}px`, zIndex: selected ? 120 : 30 }}><span className="truncate px-2">{effect.kind.toUpperCase()} · {formatTime(effect.duration)}</span><span onMouseDown={event => beginDrag(event, 'end')} className="absolute right-0 top-0 h-full w-2 cursor-ew-resize bg-current/30" /></div>
+                  return <div key={effect.id} data-region-id={effect.id} onMouseDown={event => beginDrag(event, 'move')} title={`${effect.kind}: ${formatTime(effect.startTime)}–${formatTime(effect.startTime + effect.duration)}`} className={`absolute top-[17rem] flex h-6 cursor-grab items-center overflow-hidden rounded border text-[10px] font-semibold ${colors[effect.kind]} ${selected ? 'ring-2 ring-primary' : ''}`} style={{ left: `${timeToPx(effect.startTime)}px`, width: `${Math.max(24, timeToPx(effect.duration))}px`, zIndex: selected ? 120 : 30 }}><span className="truncate px-2">{effect.kind.toUpperCase()} · {formatTime(effect.duration)}</span><span onMouseDown={event => beginDrag(event, 'end')} className="absolute right-0 top-0 h-full w-2 cursor-ew-resize bg-current/30" /></div>
                 })}
                 {compositionLayouts.map((range) => {
                   const selected = selectedRegionId === range.id
@@ -360,7 +371,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
                     const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up) }
                     window.addEventListener('mousemove', move); window.addEventListener('mouseup', up)
                   }
-                  return <div key={range.id} data-region-id={range.id} onMouseDown={(event) => beginLayoutDrag(event, 'move')} title={`${range.layout}: ${formatTime(range.startTime)}–${formatTime(range.startTime+range.duration)}`} className={`absolute bottom-8 flex h-6 cursor-grab items-center overflow-hidden rounded border text-[10px] font-semibold ${selected ? 'ring-2 ring-primary' : ''} bg-primary/10 border-primary/60 text-foreground`} style={{ left: `${timeToPx(range.startTime)}px`, width: `${Math.max(28, timeToPx(range.duration))}px`, zIndex: selected ? 130 : 40 }}><span className="truncate px-2">LAYOUT · {range.layout.toUpperCase()}</span><span onMouseDown={(event) => beginLayoutDrag(event, 'end')} className="absolute right-0 top-0 h-full w-2 cursor-ew-resize bg-primary/30" /></div>
+                  return <div key={range.id} data-region-id={range.id} onMouseDown={(event) => beginLayoutDrag(event, 'move')} title={`${range.layout}: ${formatTime(range.startTime)}–${formatTime(range.startTime+range.duration)}`} className={`absolute top-56 flex h-6 cursor-grab items-center overflow-hidden rounded border text-[10px] font-semibold ${selected ? 'ring-2 ring-primary' : ''} bg-primary/10 border-primary/60 text-foreground`} style={{ left: `${timeToPx(range.startTime)}px`, width: `${Math.max(28, timeToPx(range.duration))}px`, zIndex: selected ? 130 : 40 }}><span className="truncate px-2">LAYOUT · {range.layout.toUpperCase()}</span><span onMouseDown={(event) => beginLayoutDrag(event, 'end')} className="absolute right-0 top-0 h-full w-2 cursor-ew-resize bg-primary/30" /></div>
                 })}
                 {allRegionsToRender.map((region) => {
                   const isSelected = selectedRegionId === region.id
@@ -373,14 +384,14 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
 
                   if (region.type === 'zoom' || region.type === 'cut') {
                     return (
-                      <div key={region.id} className={cn('absolute top-0', hasSpeedRegions ? 'h-1/2' : 'h-full')} style={regionStyle}>
+                      <div key={region.id} className={cn('absolute', region.type === 'zoom' ? 'top-44 h-12' : 'top-0 h-12')} style={regionStyle}>
                         {region.type === 'zoom' && <ZoomRegionBlock region={region} isSelected={isSelected} isBeingDragged={draggingRegionId === region.id} onMouseDown={handleRegionMouseDown} setRef={(el) => regionRefs.current.set(region.id, el)} />}
                         {region.type === 'cut' && <CutRegionBlock region={region} isSelected={isSelected} isDraggable={region.id !== previewCutRegion?.id} isBeingDragged={draggingRegionId === region.id} onMouseDown={handleRegionMouseDown} setRef={(el) => regionRefs.current.set(region.id, el)} />}
                       </div>
                     )
                   }
                   if (region.type === 'speed') {
-                    return <div key={region.id} className="absolute bottom-0 h-1/2" style={regionStyle}><SpeedRegionBlock region={region} isSelected={isSelected} isBeingDragged={draggingRegionId === region.id} onMouseDown={handleRegionMouseDown} setRef={(el) => regionRefs.current.set(region.id, el)} /></div>
+                    return <div key={region.id} className="absolute top-0 h-12" style={regionStyle}><SpeedRegionBlock region={region} isSelected={isSelected} isBeingDragged={draggingRegionId === region.id} onMouseDown={handleRegionMouseDown} setRef={(el) => regionRefs.current.set(region.id, el)} /></div>
                   }
                   return null
                 })}

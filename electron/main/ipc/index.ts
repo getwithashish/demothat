@@ -18,6 +18,12 @@ export function registerIpcHandlers() {
   ipcMain.handle('window:isMaximized', appHandlers.handleIsMaximized)
   ipcMain.on('window:update-title-bar-overlay', appHandlers.updateTitleBarOverlay)
 
+  // Interface zoom (see desktop handlers)
+  ipcMain.handle('window:zoom-in', desktopHandlers.handleZoomIn)
+  ipcMain.handle('window:zoom-out', desktopHandlers.handleZoomOut)
+  ipcMain.handle('window:zoom-reset', desktopHandlers.handleZoomReset)
+  ipcMain.handle('window:zoom-factor', desktopHandlers.handleGetZoomFactor)
+
   // Desktop
   ipcMain.handle('desktop:get-displays', desktopHandlers.getDisplays)
   ipcMain.handle('desktop:get-dshow-devices', desktopHandlers.getDshowDevices)

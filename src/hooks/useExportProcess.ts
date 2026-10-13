@@ -57,6 +57,7 @@ export const useExportProcess = () => {
       zoomRegions: fullState.zoomRegions,
       cutRegions: fullState.cutRegions,
       speedRegions: fullState.speedRegions,
+      videoClips: fullState.videoClips,
       webcamVideoPath: fullState.webcamVideoPath,
       webcamPosition: fullState.webcamPosition,
       webcamStyles: fullState.webcamStyles,

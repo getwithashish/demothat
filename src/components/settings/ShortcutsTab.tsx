@@ -41,6 +41,17 @@ export function ShortcutsTab() {
       ],
     },
     {
+      title: 'Zoom',
+      shortcuts: [
+        { keys: ['Cmd/Ctrl', '+'], description: 'Zoom In (interface)' },
+        { keys: ['Cmd/Ctrl', '−'], description: 'Zoom Out (interface)' },
+        { keys: ['Cmd/Ctrl', '0'], description: 'Reset Interface Zoom' },
+        { keys: ['Cmd/Ctrl', 'Shift', '+'], description: 'Zoom In (timeline)' },
+        { keys: ['Cmd/Ctrl', 'Shift', '−'], description: 'Zoom Out (timeline)' },
+        { keys: ['Cmd/Ctrl', 'Shift', '0'], description: 'Reset Timeline Zoom' },
+      ],
+    },
+    {
       title: 'General',
       shortcuts: [
         { keys: ['F'], description: 'Toggle Fullscreen' },

@@ -1,10 +1,11 @@
 import React from 'react'
-import { Scissors, ZoomIn, Trash, ArrowBackUp, ArrowForwardUp, PlayerTrackNext, Camera } from 'tabler-icons-react'
+import { Scissors, ZoomIn, ZoomOut, Trash, ArrowBackUp, ArrowForwardUp, PlayerTrackNext, Camera } from 'tabler-icons-react'
 import { useEditorStore } from '../../store/editorStore'
 import type { AspectRatio } from '../../types'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
 import { Slider } from '../ui/slider'
 import { cn } from '../../lib/utils'
+import { useZoomControls } from '../../hooks/useZoomControls'
 
 interface ToolbarButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'default' | 'icon'
@@ -56,6 +57,9 @@ export function PreviewControls() {
   } = useEditorStore()
 
   const { undo, redo, pastStates, futureStates } = useEditorStore.temporal.getState()
+
+  // Interface zoom state + the zoom keyboard shortcuts (see useZoomControls).
+  const { zoomFactor, zoomIn, zoomOut, resetZoom } = useZoomControls()
 
   const handleDelete = () => {
     if (selectedRegionId) {
@@ -117,11 +121,44 @@ export function PreviewControls() {
           </ToolbarButton>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2.5" title="Timeline zoom (Cmd/Ctrl + Shift +, −)">
           <ZoomIn className="w-4 h-4 text-muted-foreground" />
           <div className="w-24">
             <Slider min={1} max={4} step={0.5} value={timelineZoom} onChange={setTimelineZoom} />
           </div>
+        </div>
+
+        <div className="h-8 w-px bg-border" />
+
+        <div className="flex items-center gap-0.5" title="Interface zoom (Cmd/Ctrl +, −, 0)">
+          <span className="mr-1 text-xs font-semibold text-muted-foreground">UI</span>
+          <ToolbarButton
+            variant="icon"
+            className="h-8 w-8"
+            title="Zoom out interface (Cmd/Ctrl −)"
+            aria-label="Zoom out interface"
+            onClick={() => void zoomOut()}
+          >
+            <ZoomOut className="w-3.5 h-3.5" />
+          </ToolbarButton>
+          <button
+            type="button"
+            onClick={() => void resetZoom()}
+            title="Reset interface zoom (Cmd/Ctrl 0)"
+            aria-label="Reset interface zoom"
+            className="min-w-[48px] rounded-lg px-1 py-1 text-xs font-semibold tabular-nums text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+          >
+            {Math.round(zoomFactor * 100)}%
+          </button>
+          <ToolbarButton
+            variant="icon"
+            className="h-8 w-8"
+            title="Zoom in interface (Cmd/Ctrl +)"
+            aria-label="Zoom in interface"
+            onClick={() => void zoomIn()}
+          >
+            <ZoomIn className="w-3.5 h-3.5" />
+          </ToolbarButton>
         </div>
       </div>
 

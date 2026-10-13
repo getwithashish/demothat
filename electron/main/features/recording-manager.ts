@@ -18,6 +18,7 @@ import { SystemAudioWriter } from './system-audio-writer'
 import { ScreenVideoWriter } from './screen-video-writer'
 import { buildMuxArgs, buildMacMuxArgs } from './build-mux-args'
 import { buildFfmpegArgs } from './build-recording-args'
+import { applyCleanDemoMode, restoreCleanDemoMode } from './clean-demo-mode'
 
 const FFMPEG_PATH = getFFmpegPath()
 const SYSTEM_AUDIO_STOP_TIMEOUT_MS = 5000
@@ -223,6 +224,7 @@ async function startActualRecording(
   hasSystemAudio: boolean,
   useRendererScreenCapture: boolean,
   recordingGeometry: RecordingGeometry,
+  cleanDemo = false,
 ) {
   const recordingDir = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.screenarc')
   await ensureDirectoryExists(recordingDir)
@@ -286,6 +288,13 @@ async function startActualRecording(
   }
 
   appState.recorderWin?.minimize()
+
+  // Clean Demo Mode: strip desktop clutter for the duration of the recording.
+  // Restored by stopRecording / cancelRecording / cleanupAndDiscard.
+  if (cleanDemo) {
+    log.info('[RecordingManager] Clean Demo Mode requested — hiding desktop clutter.')
+    await applyCleanDemoMode()
+  }
 
   // Reset state for the new session
   appState.recordingStartTime = Date.now()
@@ -438,7 +447,7 @@ function createTray() {
  * @param options - The recording configuration selected by the user.
  */
 export async function startRecording(options: any) {
-  const { source, displayId, mic, webcam, systemAudio } = options
+  const { source, displayId, mic, webcam, systemAudio, cleanDemo } = options
   log.info('[RecordingManager] Received start recording request with options:', options)
 
   // `systemAudio` means a renderer-recorded audio file: system loopback on
@@ -658,6 +667,7 @@ export async function startRecording(options: any) {
     wantsSystemAudio,
     useRendererScreenCapture,
     recordingGeometry,
+    !!cleanDemo,
   )
 }
 
@@ -666,6 +676,9 @@ export async function startRecording(options: any) {
  */
 export async function stopRecording() {
   restoreOriginalCursorScale()
+  // Bring the desktop back immediately — the save/editor flow below can take
+  // a while and the user should not be stuck with a stripped desktop.
+  void restoreCleanDemoMode()
   log.info('[StopRecord] Stopping recording, preparing to save...')
   appState.tray?.destroy()
   appState.tray = null
@@ -1081,6 +1094,7 @@ export async function cleanupAndDiscard() {
   appState.runtimeCursorImageMap = new Map()
 
   restoreOriginalCursorScale()
+  await restoreCleanDemoMode()
   appState.tray?.destroy()
   appState.tray = null
 
@@ -1147,6 +1161,8 @@ export async function cleanupOrphanedRecordings() {
  * Event handler for application quit, ensuring recordings are cleaned up before exit.
  */
 export async function onAppQuit(event: Electron.Event) {
+  // Never leave the user's desktop stripped, even if we are quitting mid-record.
+  await restoreCleanDemoMode()
   if (appState.currentRecordingSession && !appState.isCleanupInProgress) {
     log.warn('[AppQuit] Active session detected. Cleaning up before exit...')
     event.preventDefault()

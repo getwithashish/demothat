@@ -4,8 +4,9 @@ import { useEditorStore } from '../store/editorStore'
 import { EditorState, EditorActions, CursorTheme, CursorFrame, CursorImageBitmap } from '../types'
 import { ExportSettings } from '../components/editor/ExportModal'
 import { RESOLUTIONS } from '../lib/constants'
-import { drawScene } from '../lib/renderer'
+import { drawScene, getClipSourceTime, type VideoClipLayer } from '../lib/renderer'
 import { prepareCursorBitmaps, mapExportTimeToSourceTime } from '../lib/utils'
+import type { VideoClip } from '../types'
 
 type RenderStartPayload = {
   projectState: Omit<EditorState, keyof EditorActions>
@@ -104,6 +105,7 @@ export function RendererPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const webcamVideoRef = useRef<HTMLVideoElement>(null)
+  const clipContainerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     log.info('[RendererPage] Component mounted. Setting up listeners.')
@@ -170,6 +172,41 @@ export function RendererPage() {
         }
         await Promise.all(loadPromises)
 
+        // --- 3b. LOAD IMPORTED VIDEO CLIPS ---
+        const clipContainer = clipContainerRef.current
+        if (clipContainer) clipContainer.innerHTML = ''
+        const clipVideos: { clip: VideoClip; element: HTMLVideoElement }[] = []
+        const waitForMetadata = (element: HTMLVideoElement, label: string): Promise<void> =>
+          new Promise((resolve) => {
+            if (element.readyState >= 1) {
+              resolve()
+              return
+            }
+            const cleanup = () => {
+              clearTimeout(timeout)
+              element.removeEventListener('loadedmetadata', onLoaded)
+              element.removeEventListener('error', onError)
+            }
+            const onLoaded = () => { cleanup(); resolve() }
+            const onError = () => { cleanup(); log.error(`[RendererPage] Failed to load ${label}`); resolve() }
+            const timeout = setTimeout(() => { cleanup(); log.warn(`[RendererPage] Timed out loading ${label}`); resolve() }, 8000)
+            element.addEventListener('loadedmetadata', onLoaded)
+            element.addEventListener('error', onError)
+          })
+
+        for (const clip of projectState.videoClips ?? []) {
+          const element = document.createElement('video')
+          element.muted = true
+          element.preload = 'auto'
+          element.style.display = 'none'
+          element.src = `media://${clip.filePath}`
+          clipContainer?.appendChild(element)
+          await waitForMetadata(element, `clip ${clip.name || clip.filePath}`)
+          clipVideos.push({ clip, element })
+        }
+        // Bottom-most layer first, matching the preview and the timeline rows.
+        clipVideos.sort((a, b) => (a.clip.order ?? 0) - (b.clip.order ?? 0))
+
         // --- 4. CALCULATE EXPORT DURATION AND FRAMES ---
         let exportDuration = projectState.duration
         Object.values(projectState.cutRegions).forEach((region) => (exportDuration -= region.duration))
@@ -214,14 +251,27 @@ export function RendererPage() {
           const mainSeek = seekPromise(video)
           const webcamSeek = (hasWebcam && webcamVideo) ? seekPromise(webcamVideo) : Promise.resolve()
 
+          // Imported clips only contribute frames while the playhead is inside
+          // their range; each one is seeked to its own source time.
+          const activeClipLayers: VideoClipLayer[] = []
+          const clipSeeks: Promise<void>[] = []
+          for (const { clip, element } of clipVideos) {
+            const clipSourceTime = sourceTimestamp - clip.startTime
+            if (clipSourceTime < 0 || clipSourceTime >= clip.duration) continue
+            const clamped = getClipSourceTime(clip, sourceTimestamp, clip.sourceDuration || element.duration || 0)
+            clipSeeks.push(seekPromise(element))
+            element.currentTime = clamped
+            activeClipLayers.push({ clip, element })
+          }
+
           // Set currentTime for both videos to trigger seeking
           video.currentTime = sourceTimestamp
           if (hasWebcam && webcamVideo) {
             webcamVideo.currentTime = sourceTimestamp
           }
 
-          // Wait for both seeks to complete
-          await Promise.all([mainSeek, webcamSeek])
+          // Wait for all seeks to complete
+          await Promise.all([mainSeek, webcamSeek, ...clipSeeks])
 
           // Now that videos are at the correct time, draw the scene
           await drawScene(
@@ -233,6 +283,7 @@ export function RendererPage() {
             outputWidth,
             outputHeight,
             bgImage,
+            activeClipLayers,
           )
 
           // Send the rendered frame to the main process
@@ -267,6 +318,7 @@ export function RendererPage() {
       <canvas ref={canvasRef}></canvas>
       <video ref={videoRef} style={{ display: 'none' }}></video>
       <video ref={webcamVideoRef} style={{ display: 'none' }}></video>
+      <div ref={clipContainerRef} style={{ display: 'none' }} />
     </div>
   )
 }

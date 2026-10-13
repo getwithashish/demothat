@@ -10,8 +10,8 @@ import { formatTime } from '../../lib/utils'
 
 export type ExportSettings = {
   format: 'mp4' | 'gif'
-  resolution: '720p' | '1080p' | '2k'
-  fps: 30
+  resolution: '720p' | '1080p' | '2k' | '4k'
+  fps: 30 | 60
   quality: 'low' | 'medium' | 'high'
 }
 
@@ -76,6 +76,10 @@ const SettingsView = ({
 
   const handleValueChange = (key: keyof ExportSettings, value: string) => {
     setSettings((prev) => ({ ...prev, [key]: value }))
+  }
+
+  const handleFpsChange = (value: string) => {
+    setSettings((prev) => ({ ...prev, fps: value === '60' ? 60 : 30 }))
   }
 
   const handleBrowse = async () => {
@@ -146,6 +150,7 @@ const SettingsView = ({
                 <SelectItem value="720p">HD (720p)</SelectItem>
                 <SelectItem value="1080p">Full HD (1080p)</SelectItem>
                 <SelectItem value="2k">2K (1440p)</SelectItem>
+                <SelectItem value="4k">4K (2160p)</SelectItem>
               </SelectContent>
             </Select>
           </SettingRow>
@@ -162,12 +167,13 @@ const SettingsView = ({
             </Select>
           </SettingRow>
           <SettingRow label="FPS">
-            <Select value={String(settings.fps)} disabled>
+            <Select value={String(settings.fps)} onValueChange={handleFpsChange}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="30">30 FPS</SelectItem>
+                <SelectItem value="60">60 FPS</SelectItem>
               </SelectContent>
             </Select>
           </SettingRow>

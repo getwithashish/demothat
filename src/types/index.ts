@@ -83,6 +83,13 @@ export interface VideoClip {
   startTime: number
   duration: number
   sourceDuration: number
+  /** Offset into the source media where this clip starts playing (left-trim). */
+  sourceStart: number
+  /**
+   * Stacking order for the composite. Higher values draw on top of lower ones.
+   * The screen recording always sits below every imported clip.
+   */
+  order: number
 }
 
 export interface SpeedRegion {
@@ -300,9 +307,11 @@ export interface TimelineActions {
   addZoomRegion: () => void
   addCutRegion: (regionData?: Partial<CutRegion>) => void
   addSpeedRegion: () => void
-  addVideoClip: (clip: Omit<VideoClip, 'id'>) => void
+  addVideoClip: (clip: Omit<VideoClip, 'id' | 'order' | 'sourceStart'>) => void
   updateVideoClip: (id: string, updates: Partial<VideoClip>) => void
   deleteVideoClip: (id: string) => void
+  /** Assigns stacking order from a bottom-to-top list of clip ids. */
+  setVideoClipOrder: (orderedIds: string[]) => void
   updateRegion: (id: string, updates: Partial<TimelineRegion>) => void
   deleteRegion: (id: string) => void
   setSelectedRegionId: (id: string | null) => void
@@ -413,6 +422,7 @@ export type RenderableState = Pick<
   | 'zoomRegions'
   | 'cutRegions'
   | 'speedRegions'
+  | 'videoClips'
   | 'metadata'
   | 'recordingGeometry'
   | 'cursorImages'

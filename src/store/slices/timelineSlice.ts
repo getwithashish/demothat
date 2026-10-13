@@ -108,17 +108,30 @@ export const createTimelineSlice: Slice<TimelineState, TimelineActions> = (set, 
   addVideoClip: (clip) => {
     const id = `video-clip-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
     set((state) => {
-      state.videoClips.push({ ...clip, id })
+      // New clips land on top of the stack (highest order draws last).
+      const nextOrder = state.videoClips.reduce((max, item) => Math.max(max, item.order ?? 0), -1) + 1
+      state.videoClips.push({ ...clip, sourceStart: 0, order: nextOrder, id })
       state.selectedRegionId = id
     })
   },
   updateVideoClip: (id, updates) => set((state) => {
     const clip = state.videoClips.find((item) => item.id === id)
-    if (clip) Object.assign(clip, updates)
+    if (!clip) return
+    Object.assign(clip, updates)
+    clip.startTime = Math.max(0, clip.startTime)
+    clip.duration = Math.max(0.1, clip.duration)
+    clip.sourceStart = Math.max(0, Math.min(Math.max(0, clip.sourceDuration - 0.1), clip.sourceStart))
   }),
   deleteVideoClip: (id) => set((state) => {
     state.videoClips = state.videoClips.filter((clip) => clip.id !== id)
     if (state.selectedRegionId === id) state.selectedRegionId = null
+  }),
+  setVideoClipOrder: (orderedIds) => set((state) => {
+    // Index 0 is the bottom-most layer; the last id is the topmost.
+    orderedIds.forEach((id, index) => {
+      const clip = state.videoClips.find((item) => item.id === id)
+      if (clip) clip.order = index
+    })
   }),
   addSpeedRegion: () => {
     const { currentTime, duration } = get()

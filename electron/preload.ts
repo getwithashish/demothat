@@ -84,9 +84,18 @@ export const electronAPI = {
     webcam?: { deviceId: string; deviceLabel: string; index: number }
     mic?: { deviceId: string; deviceLabel: string; index: number }
     systemAudio?: boolean
+    /** Clean Demo Mode: hide the Dock, menu bar, other apps and desktop clutter while recording. */
+    cleanDemo?: boolean
   }): Promise<RecordingResult> => ipcRenderer.invoke('recording:start', options),
   stopRecording: (): void => ipcRenderer.send('recording:stop'),
   loadVideoFromFile: (): Promise<RecordingResult> => ipcRenderer.invoke('recording:load-from-file'),
+
+  // --- Interface zoom ---
+  zoomIn: (): Promise<number> => ipcRenderer.invoke('window:zoom-in'),
+  zoomOut: (): Promise<number> => ipcRenderer.invoke('window:zoom-out'),
+  zoomReset: (): Promise<number> => ipcRenderer.invoke('window:zoom-reset'),
+  getZoomFactor: (): Promise<number> => ipcRenderer.invoke('window:zoom-factor'),
+
   getCursorScale: (): Promise<number> => ipcRenderer.invoke('desktop:get-cursor-scale'),
   setCursorScale: (scale: number): void => ipcRenderer.send('desktop:set-cursor-scale', scale),
 

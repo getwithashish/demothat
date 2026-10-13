@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useEditorStore } from '../../../store/editorStore'
 import { useShallow } from 'zustand/react/shallow'
-import { Volume, Volume2, Volume3, Music, Trash, Upload, Mouse, PlayerPlay } from 'tabler-icons-react'
+import { Volume, Volume2, Volume3, Music, Trash, Upload, Mouse, PlayerPlay, Scissors, Loader2 } from 'tabler-icons-react'
 import { Collapse } from '../../ui/collapse'
 import { Button } from '../../ui/button'
 import { cn, formatTime } from '../../../lib/utils'
@@ -18,16 +18,19 @@ const RangeControl = ({ label, value, min, max, step = 0.01, suffix = '', onChan
 
 export function AudioSettings() {
   const [isImporting, setIsImporting] = useState(false)
+  const [isAnalyzingSilence, setIsAnalyzingSilence] = useState(false)
+  const [silenceSuggestions, setSilenceSuggestions] = useState<{ start: number; end: number; duration: number }[]>([])
+  const [dismissedSilences, setDismissedSilences] = useState<number[]>([])
   const {
-    volume, isMuted, setVolume, toggleMute, setIsMuted, hasAudioTrack, duration, currentTime,
-    audioClips, selectedRegionId, addAudioClip, updateAudioClip, deleteAudioClip,
+    volume, isMuted, setVolume, toggleMute, setIsMuted, hasAudioTrack, duration, currentTime, videoPath,
+    audioClips, selectedRegionId, addAudioClip, updateAudioClip, deleteAudioClip, addCutRegion,
     mouseClickSoundsEnabled, setMouseClickSoundsEnabled, mouseClickSoundPath, mouseClickSoundName,
     setMouseClickSound, mouseClickSoundVolume, setMouseClickSoundVolume,
   } = useEditorStore(useShallow((state) => ({
     volume: state.volume, isMuted: state.isMuted, setVolume: state.setVolume, toggleMute: state.toggleMute, setIsMuted: state.setIsMuted,
-    hasAudioTrack: state.hasAudioTrack, duration: state.duration, currentTime: state.currentTime,
+    hasAudioTrack: state.hasAudioTrack, duration: state.duration, currentTime: state.currentTime, videoPath: state.videoPath,
     audioClips: state.audioClips, selectedRegionId: state.selectedRegionId, addAudioClip: state.addAudioClip,
-    updateAudioClip: state.updateAudioClip, deleteAudioClip: state.deleteAudioClip,
+    updateAudioClip: state.updateAudioClip, deleteAudioClip: state.deleteAudioClip, addCutRegion: state.addCutRegion,
     mouseClickSoundsEnabled: state.mouseClickSoundsEnabled, setMouseClickSoundsEnabled: state.setMouseClickSoundsEnabled,
     mouseClickSoundPath: state.mouseClickSoundPath, mouseClickSoundName: state.mouseClickSoundName,
     setMouseClickSound: state.setMouseClickSound, mouseClickSoundVolume: state.mouseClickSoundVolume, setMouseClickSoundVolume: state.setMouseClickSoundVolume,
@@ -36,6 +39,22 @@ export function AudioSettings() {
   const selectedClickClip = useMemo(() => audioClips.find((clip) => clip.id === selectedRegionId && clip.kind === 'click') ?? null, [audioClips, selectedRegionId])
   const musicClips = useMemo(() => audioClips.filter((clip) => clip.kind !== 'click'), [audioClips])
   const clickClips = useMemo(() => audioClips.filter((clip) => clip.kind === 'click'), [audioClips])
+  const visibleSilences = useMemo(() => silenceSuggestions.filter((item) => !dismissedSilences.includes(item.start)), [silenceSuggestions, dismissedSilences])
+
+  const analyzeSilence = async () => {
+    if (!videoPath) return
+    setIsAnalyzingSilence(true)
+    try {
+      const results = await window.electronAPI.detectSilence(videoPath)
+      setSilenceSuggestions(results)
+      setDismissedSilences([])
+      if (results.length === 0) window.electronAPI.showMessageBox({ type: 'info', title: 'Silence review', message: 'No pauses longer than 0.45 seconds were detected at the current threshold.' })
+    } catch (error) {
+      window.electronAPI.showMessageBox({ type: 'error', title: 'Silence analysis failed', message: error instanceof Error ? error.message : 'Could not analyze the recording audio.' })
+    } finally {
+      setIsAnalyzingSilence(false)
+    }
+  }
 
   const importAudio = async () => {
     setIsImporting(true)
@@ -128,6 +147,28 @@ export function AudioSettings() {
             <RangeControl label="Original audio volume" value={isMuted ? 0 : volume} min={0} max={1} step={0.05} suffix="×" onChange={setVolume} />
           </div>
         </Collapse>
+
+        <Collapse title="Review pauses" description="Find silences in the recording audio and turn them into cuts" icon={<Scissors className="w-4 h-4 text-primary" />} defaultOpen={false}>
+          <div className="space-y-3 pt-2">
+            <p className="text-xs leading-relaxed text-muted-foreground">Detects pauses at −35 dB or quieter lasting at least 0.45 s. Suggestions are shown below and are never applied automatically.</p>
+            <Button variant="outline" className="w-full" onClick={analyzeSilence} disabled={!videoPath || isAnalyzingSilence}>
+              {isAnalyzingSilence ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Analyzing audio…</> : <><Scissors className="mr-2 h-4 w-4" />Find pauses to review</>}
+            </Button>
+            {!videoPath && <p className="text-xs text-muted-foreground">Load a recording to scan its audio for pauses.</p>}
+            {visibleSilences.map((item) => (
+              <div key={`${item.start}-${item.end}`} className="space-y-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
+                <div className="text-xs font-medium text-foreground">Pause · {formatTime(item.duration)}</div>
+                <div className="text-[11px] text-muted-foreground">{formatTime(item.start)} – {formatTime(item.end)}</div>
+                <div className="flex gap-2">
+                  <Button size="sm" className="flex-1" onClick={() => { addCutRegion({ startTime: item.start, duration: Math.min(item.duration, Math.max(0.1, duration - item.start)) }); setDismissedSilences((old) => [...old, item.start]) }}>Add cut</Button>
+                  <Button size="sm" variant="outline" onClick={() => setDismissedSilences((old) => [...old, item.start])}>Dismiss</Button>
+                </div>
+              </div>
+            ))}
+            {silenceSuggestions.length > 0 && visibleSilences.length === 0 && <p className="text-xs text-muted-foreground">All detected pauses have been handled.</p>}
+          </div>
+        </Collapse>
+
         {musicClips.length === 0 && <div className="text-center text-xs text-muted-foreground"><PlayerPlay className="mx-auto mb-2 h-4 w-4" />No music clips imported yet.</div>}
         {mouseClickSoundsEnabled && clickClips.length > 0 && <p className="text-xs text-muted-foreground">{clickClips.length} independent click clips. Select any click on the timeline to adjust or remove it.</p>}
       </div>

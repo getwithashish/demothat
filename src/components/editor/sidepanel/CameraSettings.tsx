@@ -27,7 +27,7 @@ import { cn } from '../../../lib/utils'
 import type { WebcamPosition, CompositionLayout } from '../../../types'
 import { DEFAULTS } from '../../../lib/constants'
 import { TransformPointBottomLeftIcon } from '../../ui/icons'
-import { LayoutBoard, Trash, Upload, Scissors, Video, Loader2 } from 'tabler-icons-react'
+import { LayoutBoard, Trash, Upload, Video } from 'tabler-icons-react'
 
 const DisabledPanelPlaceholder = ({
   icon,
@@ -49,9 +49,6 @@ const DisabledPanelPlaceholder = ({
 
 export function CameraSettings() {
   const [isImportingVideos, setIsImportingVideos] = useState(false)
-  const [isAnalyzingSilence, setIsAnalyzingSilence] = useState(false)
-  const [silenceSuggestions, setSilenceSuggestions] = useState<{ start: number; end: number; duration: number }[]>([])
-  const [dismissedSilences, setDismissedSilences] = useState<number[]>([])
   const {
     webcamVideoUrl,
     isWebcamVisible,
@@ -67,12 +64,10 @@ export function CameraSettings() {
     deleteCompositionLayout,
     currentTime,
     duration,
-    videoPath,
     videoClips,
     addVideoClip,
     updateVideoClip,
     deleteVideoClip,
-    addCutRegion,
   } = useEditorStore(
     useShallow((state) => ({
       webcamVideoUrl: state.webcamVideoUrl,
@@ -89,12 +84,10 @@ export function CameraSettings() {
       deleteCompositionLayout: state.deleteCompositionLayout,
       currentTime: state.currentTime,
       duration: state.duration,
-      videoPath: state.videoPath,
       videoClips: state.videoClips,
       addVideoClip: state.addVideoClip,
       updateVideoClip: state.updateVideoClip,
       deleteVideoClip: state.deleteVideoClip,
-      addCutRegion: state.addCutRegion,
     })),
   )
 
@@ -120,19 +113,6 @@ export function CameraSettings() {
     } catch (error) {
       window.electronAPI.showMessageBox({ type: 'error', title: 'Video import failed', message: error instanceof Error ? error.message : 'Could not import video clips.' })
     } finally { setIsImportingVideos(false) }
-  }
-
-  const analyzeSilence = async () => {
-    if (!videoPath) return
-    setIsAnalyzingSilence(true)
-    try {
-      const results = await window.electronAPI.detectSilence(videoPath)
-      setSilenceSuggestions(results)
-      setDismissedSilences([])
-      if (results.length === 0) window.electronAPI.showMessageBox({ type: 'info', title: 'Silence review', message: 'No pauses longer than 0.45 seconds were detected at the current threshold.' })
-    } catch (error) {
-      window.electronAPI.showMessageBox({ type: 'error', title: 'Silence analysis failed', message: error instanceof Error ? error.message : 'Could not analyze the recording audio.' })
-    } finally { setIsAnalyzingSilence(false) }
   }
 
   const selectedLayout = compositionLayouts.find((range) => range.id === selectedRegionId) ?? null
@@ -222,11 +202,6 @@ export function CameraSettings() {
               <div className="grid grid-cols-2 gap-2"><label className="text-[11px] text-muted-foreground">Timeline start (s)<input type="number" min="0" max={Math.max(0, duration - 0.1)} step="0.1" value={Number(clip.startTime.toFixed(2))} onChange={(e) => updateVideoClip(clip.id, { startTime: Math.max(0, Math.min(duration - clip.duration, Number(e.target.value) || 0)) })} className="mt-1 w-full rounded-md border border-input bg-background p-2 text-xs text-foreground" /></label><label className="text-[11px] text-muted-foreground">Duration (s)<input type="number" min="0.1" max={Math.max(0.1, duration - clip.startTime)} step="0.1" value={Number(clip.duration.toFixed(2))} onChange={(e) => updateVideoClip(clip.id, { duration: Math.max(0.1, Math.min(duration - clip.startTime, Number(e.target.value) || 0.1)) })} className="mt-1 w-full rounded-md border border-input bg-background p-2 text-xs text-foreground" /></label></div>
               <p className="text-[10px] text-muted-foreground">{formatTime(clip.startTime)} – {formatTime(clip.startTime + clip.duration)} · source {formatTime(clip.sourceDuration)}</p>
             </div>)}</div>}
-          </ControlGroup>
-          <ControlGroup label="Review pauses" icon={<Scissors className="w-4 h-4 text-primary" />}>
-            <p className="text-xs text-muted-foreground">Scan the recording audio for silences (−35 dB, at least 0.45 s). Suggestions are not applied automatically.</p>
-            <Button variant="outline" className="mt-3 w-full" onClick={analyzeSilence} disabled={!videoPath || isAnalyzingSilence}>{isAnalyzingSilence ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Analyzing audio…</> : <><Scissors className="mr-2 h-4 w-4" />Find pauses to review</>}</Button>
-            {silenceSuggestions.filter((item) => !dismissedSilences.includes(item.start)).map((item) => <div key={`${item.start}-${item.end}`} className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 space-y-2"><div className="text-xs font-medium">Pause · {formatTime(item.duration)}</div><div className="text-[11px] text-muted-foreground">{formatTime(item.start)} – {formatTime(item.end)}</div><div className="flex gap-2"><Button size="sm" className="flex-1" onClick={() => { addCutRegion({ startTime: item.start, duration: Math.min(item.duration, Math.max(0.1, duration - item.start)) }); setDismissedSilences((old) => [...old, item.start]) }}>Add cut</Button><Button size="sm" variant="outline" onClick={() => setDismissedSilences((old) => [...old, item.start])}>Dismiss</Button></div></div>)}
           </ControlGroup>
         </div>
         {!webcamVideoUrl ? (

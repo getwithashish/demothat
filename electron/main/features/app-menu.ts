@@ -12,7 +12,20 @@ export function createEditorMenu() {
     ...(isMac ? ([{ role: 'appMenu' }] as Electron.MenuItemConstructorOptions[]) : []),
     { role: 'fileMenu' },
     { role: 'editMenu' },
-    { role: 'viewMenu' },
+    {
+      // Explicit View menu: the default `viewMenu` role also ships zoom items
+      // whose accelerators (CmdOrCtrl+Plus / Minus / 0) would swallow the
+      // renderer's zoom shortcuts. Interface and timeline zoom are handled in
+      // the renderer instead (see useZoomControls).
+      label: 'View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' },
+      ],
+    },
     { role: 'windowMenu' },
     {
       role: 'help',

@@ -38,6 +38,34 @@ export function handleGetCursorScale() {
   return getCursorScale()
 }
 
+// --- Interface zoom -------------------------------------------------------
+// Electron zoom levels are logarithmic: zoomFactor = 1.2 ^ level, 0 === 100%.
+const ZOOM_STEP = 0.5
+const ZOOM_MIN_LEVEL = -3
+const ZOOM_MAX_LEVEL = 3
+
+function applyZoomLevel(event: IpcMainInvokeEvent, level: number) {
+  const contents = event.sender
+  contents.zoomLevel = Math.max(ZOOM_MIN_LEVEL, Math.min(ZOOM_MAX_LEVEL, level))
+  return contents.zoomFactor
+}
+
+export function handleZoomIn(event: IpcMainInvokeEvent) {
+  return applyZoomLevel(event, event.sender.zoomLevel + ZOOM_STEP)
+}
+
+export function handleZoomOut(event: IpcMainInvokeEvent) {
+  return applyZoomLevel(event, event.sender.zoomLevel - ZOOM_STEP)
+}
+
+export function handleZoomReset(event: IpcMainInvokeEvent) {
+  return applyZoomLevel(event, 0)
+}
+
+export function handleGetZoomFactor(event: IpcMainInvokeEvent) {
+  return event.sender.zoomFactor
+}
+
 export function handleSetCursorScale(_event: IpcMainEvent, scale: number) {
   setCursorScale(scale)
 }

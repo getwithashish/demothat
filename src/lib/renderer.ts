@@ -1,4 +1,4 @@
-import { EditorState, RenderableState, WebcamPosition } from '../types'
+import { EditorState, RenderableState, VideoClip, WebcamPosition } from '../types'
 import { calculateZoomTransform, findLastMetadataIndex } from './transform'
 import { EASING_MAP } from './easing'
 import { DEFAULTS } from './constants'
@@ -328,6 +328,97 @@ const drawFrameLayer = (
   ctx.restore() // Restore from video's transform
 }
 
+/** An imported video clip paired with the hidden <video> element that feeds it. */
+export interface VideoClipLayer {
+  clip: VideoClip
+  element: HTMLVideoElement
+}
+
+/**
+ * Maps a timeline time to a clip's source time, honouring its left-trim offset.
+ * Past the end of the source the last frame is held, so a clip can be dragged
+ * longer than the media it plays.
+ */
+export const getClipSourceTime = (
+  clip: VideoClip,
+  timelineTime: number,
+  sourceDuration: number = clip.sourceDuration,
+): number => {
+  const raw = clip.sourceStart + (timelineTime - clip.startTime)
+  const lastFrame = Math.max(0, sourceDuration - 0.05)
+  return Math.max(0, Math.min(lastFrame, raw))
+}
+
+/**
+ * Draws one imported video clip as a full-frame layer, reusing the frame
+ * treatment (padding, rounded corners, border, shadow) of the screen
+ * recording. Layers are drawn flat: zoom regions and the 3D camera are
+ * applied to the screen recording only.
+ */
+const drawClipLayer = (
+  ctx: CanvasRenderingContext2D,
+  layer: VideoClipLayer,
+  currentTime: number,
+  frameX: number,
+  frameY: number,
+  frameContentWidth: number,
+  frameContentHeight: number,
+  frameStyles: EditorState['frameStyles'],
+): void => {
+  const { clip, element } = layer
+  if (currentTime < clip.startTime || currentTime >= clip.startTime + clip.duration) return
+  if (!element.videoWidth || !element.videoHeight) return
+
+  const { shadowBlur, shadowOffsetX, shadowOffsetY, borderRadius, shadowColor, borderWidth, borderColor } = frameStyles
+
+  ctx.save()
+  ctx.translate(frameX, frameY)
+
+  if (shadowBlur > 0) {
+    ctx.save()
+    ctx.shadowColor = shadowColor
+    ctx.shadowBlur = shadowBlur
+    ctx.shadowOffsetX = shadowOffsetX
+    ctx.shadowOffsetY = shadowOffsetY
+    const shadowPath = new Path2D()
+    shadowPath.roundRect(0, 0, frameContentWidth, frameContentHeight, borderRadius)
+    ctx.fillStyle = 'rgba(0,0,0,1)'
+    ctx.fill(shadowPath)
+    ctx.restore()
+  }
+
+  ctx.save()
+  const path = new Path2D()
+  path.roundRect(0, 0, frameContentWidth, frameContentHeight, borderRadius)
+  ctx.clip(path)
+
+  // Cover-crop so a clip with a different aspect ratio fills the frame
+  // instead of being stretched.
+  const sourceAspect = element.videoWidth / element.videoHeight
+  const targetAspect = frameContentWidth / frameContentHeight
+  let cropX = 0
+  let cropY = 0
+  let cropWidth = element.videoWidth
+  let cropHeight = element.videoHeight
+  if (sourceAspect > targetAspect) {
+    cropWidth = element.videoHeight * targetAspect
+    cropX = (element.videoWidth - cropWidth) / 2
+  } else {
+    cropHeight = element.videoWidth / targetAspect
+    cropY = (element.videoHeight - cropHeight) / 2
+  }
+  ctx.drawImage(element, cropX, cropY, cropWidth, cropHeight, 0, 0, frameContentWidth, frameContentHeight)
+
+  if (borderWidth > 0) {
+    ctx.strokeStyle = borderColor
+    ctx.lineWidth = borderWidth * 2
+    ctx.stroke(path)
+  }
+  ctx.restore()
+
+  ctx.restore()
+}
+
 /**
  * Main rendering function with enhanced visuals
  */
@@ -340,6 +431,7 @@ export const drawScene = async (
   outputWidth: number,
   outputHeight: number,
   preloadedBgImage: HTMLImageElement | null,
+  videoClipLayers: VideoClipLayer[] = [],
 ): Promise<void> => {
   if (!state.videoDimensions.width || !state.videoDimensions.height) return
 
@@ -390,6 +482,12 @@ export const drawScene = async (
     drawTiltedLayer(ctx, drawFrame, frameStyles, outputWidth, outputHeight)
   } else {
     drawFrame(ctx)
+  }
+
+  // --- 5b. Draw imported video layers, bottom-most first ---
+  const orderedClipLayers = [...videoClipLayers].sort((a, b) => (a.clip.order ?? 0) - (b.clip.order ?? 0))
+  for (const layer of orderedClipLayers) {
+    drawClipLayer(ctx, layer, currentTime, frameX, frameY, frameContentWidth, frameContentHeight, state.frameStyles)
   }
 
   // --- 6. Draw Webcam ---

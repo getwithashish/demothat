@@ -14,6 +14,8 @@ import {
   Square,
   Volume,
   VolumeOff,
+  Presentation,
+  PresentationOff,
 } from 'tabler-icons-react'
 import { Button } from '../components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
@@ -51,6 +53,7 @@ export function RecorderPage() {
   const [selectedWebcamId, setSelectedWebcamId] = useState<string>('none')
   const [selectedMicId, setSelectedMicId] = useState<string>('none')
   const [systemAudioEnabled, setSystemAudioEnabled] = useState<boolean>(false)
+  const [cleanDemoEnabled, setCleanDemoEnabled] = useState<boolean>(false)
   const [cursorScale, setCursorScale] = useState<number>(1)
 
   const { platform, webcams, mics, isInitializing, reload: reloadDevices } = useDeviceManager()
@@ -390,6 +393,7 @@ export function RecorderPage() {
         webcam: webcam ? { deviceId: webcam.id, deviceLabel: webcam.id, index: webcams.indexOf(webcam) } : undefined,
         mic: mic && !micCapturedInRenderer ? { deviceId: mic.id, deviceLabel: mic.id, index: mics.indexOf(mic) } : undefined,
         systemAudio: systemAudioReady,
+        cleanDemo: cleanDemoEnabled,
       })
 
       if (result.canceled) {
@@ -623,6 +627,30 @@ export function RecorderPage() {
                   <span className="truncate">System audio</span>
                 </button>
               )}
+
+              {/* Clean Demo Mode — session-local, applied on record and reverted on stop. */}
+              <button
+                type="button"
+                onClick={() => setCleanDemoEnabled((next) => !next)}
+                disabled={isRecording || isBusy}
+                aria-pressed={cleanDemoEnabled}
+                aria-label={cleanDemoEnabled ? 'Disable Clean Demo Mode' : 'Enable Clean Demo Mode'}
+                title={
+                  cleanDemoEnabled
+                    ? 'Clean Demo Mode: ON (desktop clutter hidden while recording)'
+                    : 'Clean Demo Mode: OFF (hide Dock, menu bar, other apps and desktop icons while recording)'
+                }
+                className={cn(
+                  'flex items-center gap-1.5 h-9 px-2.5 rounded-lg border text-xs transition-all',
+                  cleanDemoEnabled
+                    ? 'bg-primary/10 border-primary/30 text-primary'
+                    : 'bg-muted/40 border-border/50 text-muted-foreground hover:text-foreground hover:bg-background/50',
+                  (isRecording || isBusy) && 'opacity-50 cursor-not-allowed',
+                )}
+              >
+                {cleanDemoEnabled ? <Presentation size={14} /> : <PresentationOff size={14} />}
+                <span className="truncate">Clean demo</span>
+              </button>
             </div>
 
             <div className="w-px h-8 bg-border/50"></div>

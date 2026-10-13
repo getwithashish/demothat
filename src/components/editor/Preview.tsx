@@ -13,9 +13,11 @@ import { useShallow } from 'zustand/react/shallow'
 import { formatTime } from '../../lib/utils'
 import { Slider } from '../ui/slider'
 import { Button } from '../ui/button'
-import { drawScene } from '../../lib/renderer'
+import { drawScene, getClipSourceTime, type VideoClipLayer } from '../../lib/renderer'
 import { cn } from '../../lib/utils'
 import type { VisualEffectRegion } from '../../types'
+
+const mediaUrl = (filePath: string) => `media://${encodeURI(filePath).replace(/#/g, '%23').replace(/\?/g, '%3F')}`
 
 export const Preview = memo(
   ({
@@ -47,6 +49,7 @@ export const Preview = memo(
       setCurrentTime,
       cursorStyles,
       cursorBitmapsToRender,
+      videoClips,
     } = useEditorStore(
       useShallow((state) => ({
         videoUrl: state.videoUrl,
@@ -70,6 +73,7 @@ export const Preview = memo(
         setCurrentTime: state.setCurrentTime,
         cursorStyles: state.cursorStyles,
         cursorBitmapsToRender: state.cursorBitmapsToRender,
+        videoClips: state.videoClips,
       })),
     )
 
@@ -79,6 +83,7 @@ export const Preview = memo(
     const [bgImage, setBgImage] = useState<HTMLImageElement | null>(null)
     const canvasRef = useRef<HTMLCanvasElement>(null)
     const webcamVideoRef = useRef<HTMLVideoElement>(null)
+    const clipVideoRefs = useRef<Map<string, HTMLVideoElement>>(new Map())
     const animationFrameId = useRef<number>()
     const [controlBarWidth, setControlBarWidth] = useState(0)
     const [effectOverlayBounds, setEffectOverlayBounds] = useState({ left: 0, top: 0, width: 0, height: 0 })
@@ -240,6 +245,30 @@ export const Preview = memo(
       }
     }, [frameStyles.background])
 
+    // Keep each imported clip's hidden <video> in sync with the playhead.
+    // Playing clips run freely and are only re-seeked on noticeable drift;
+    // while paused or scrubbing they are seeked exactly so frames are stable.
+    const syncClipVideos = useCallback((playing: boolean, time: number) => {
+      for (const clip of videoClips) {
+        const element = clipVideoRefs.current.get(clip.id)
+        if (!element) continue
+        const active = time >= clip.startTime && time < clip.startTime + clip.duration
+        if (!active) {
+          if (!element.paused) element.pause()
+          continue
+        }
+        const sourceDuration = clip.sourceDuration || element.duration || 0
+        const sourceTime = getClipSourceTime(clip, time, sourceDuration)
+        if (playing) {
+          if (Math.abs(element.currentTime - sourceTime) > 0.3) element.currentTime = sourceTime
+          if (element.paused) void element.play().catch(() => undefined)
+        } else {
+          if (!element.paused) element.pause()
+          if (Math.abs(element.currentTime - sourceTime) > 0.02) element.currentTime = sourceTime
+        }
+      }
+    }, [videoClips])
+
     const renderCanvas = useCallback(async () => {
       const canvas = canvasRef.current
       const video = videoRef.current
@@ -250,11 +279,17 @@ export const Preview = memo(
         if (state.isPlaying) animationFrameId.current = requestAnimationFrame(renderCanvas)
         return
       }
-      await drawScene(ctx, state, video, webcamVideo, video.currentTime, canvas.width, canvas.height, bgImage)
+      syncClipVideos(state.isPlaying, video.currentTime)
+      const clipLayers: VideoClipLayer[] = []
+      for (const clip of state.videoClips) {
+        const element = clipVideoRefs.current.get(clip.id)
+        if (element && element.readyState >= 2) clipLayers.push({ clip, element })
+      }
+      await drawScene(ctx, state, video, webcamVideo, video.currentTime, canvas.width, canvas.height, bgImage, clipLayers)
       if (state.isPlaying) {
         animationFrameId.current = requestAnimationFrame(renderCanvas)
       }
-    }, [videoRef, bgImage])
+    }, [videoRef, bgImage, syncClipVideos])
 
     useEffect(() => {
       if (isPlaying) {
@@ -280,6 +315,7 @@ export const Preview = memo(
       videoDimensions,
       cursorStyles,
       cursorBitmapsToRender,
+      videoClips,
     ])
 
     useEffect(() => {
@@ -490,6 +526,21 @@ export const Preview = memo(
             style={{ display: 'none' }}
           />
         )}
+        {/* Hidden decoders for imported video clips — composited onto the canvas by drawScene. */}
+        {videoClips.map((clip) => (
+          <video
+            key={clip.id}
+            ref={(element) => {
+              if (element) clipVideoRefs.current.set(clip.id, element)
+              else clipVideoRefs.current.delete(clip.id)
+            }}
+            src={mediaUrl(clip.filePath)}
+            muted
+            playsInline
+            preload="auto"
+            style={{ display: 'none' }}
+          />
+        ))}
 
         {/* Control bar */}
         {videoUrl && (

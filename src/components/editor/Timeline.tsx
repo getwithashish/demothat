@@ -10,8 +10,27 @@ import { Scissors } from 'tabler-icons-react'
 import { formatTime, calculateRulerInterval } from '../../lib/utils'
 import { useTimelineInteraction } from '../../hooks/useTimelineInteraction'
 import { FlipScissorsIcon } from '../ui/icons'
-import { Camera, Music } from 'tabler-icons-react'
+import { Camera, Music, GripVertical } from 'tabler-icons-react'
 import { AudioTimelinePreview } from './timeline/AudioTimelinePreview'
+
+// Row heights (px) for the timeline lanes.
+const CLIP_ROW_HEIGHT = 40
+const AUDIO_ROW_HEIGHT = 40
+const CLICK_ROW_HEIGHT = 28
+const EFFECT_ROW_HEIGHT = 48
+
+// Lanes that always exist, in order. Imported video rows are prepended above
+// the SCREEN lane, which stays the bottom-most video layer.
+const FIXED_ROWS: { key: string; label: string; height: number }[] = [
+  { key: 'screen', label: 'SCREEN', height: CLIP_ROW_HEIGHT },
+  { key: 'recorded-audio', label: 'RECORDED AUDIO', height: AUDIO_ROW_HEIGHT },
+  { key: 'music', label: 'MUSIC', height: AUDIO_ROW_HEIGHT },
+  { key: 'clicks', label: 'CLICK SOUNDS', height: CLICK_ROW_HEIGHT },
+  { key: 'camera', label: '3D CAMERA', height: EFFECT_ROW_HEIGHT },
+  { key: 'zoom', label: 'ZOOM EFFECTS', height: EFFECT_ROW_HEIGHT },
+  { key: 'layout', label: 'LAYOUT', height: EFFECT_ROW_HEIGHT },
+  { key: 'masking', label: 'MASKING EFFECTS', height: EFFECT_ROW_HEIGHT },
+]
 
 // Memoized Ruler component (không thay đổi)
 const Ruler = memo(
@@ -58,7 +77,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
       isPlaying: state.isPlaying,
     })),
   )
-  const { setCurrentTime, setSelectedRegionId, updateCameraMotion, updateAudioClip } = useEditorStore()
+  const { setCurrentTime, setSelectedRegionId, updateCameraMotion, updateAudioClip, setVideoClipOrder } = useEditorStore()
 
   const containerRef = useRef<HTMLDivElement>(null)
   const timelineRef = useRef<HTMLDivElement>(null)
@@ -67,6 +86,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
   const animationFrameRef = useRef<number>()
 
   const [containerWidth, setContainerWidth] = useState(0)
+  const [timelineHeight, setTimelineHeight] = useState(464)
 
   useEffect(() => {
     const containerEl = containerRef.current
@@ -164,7 +184,117 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
   const videoClips = useEditorStore((state) => state.videoClips)
   const updateVideoClip = useEditorStore((state) => state.updateVideoClip)
   const mouseClickSoundsEnabled = useEditorStore((state) => state.mouseClickSoundsEnabled)
+  const videoPath = useEditorStore((state) => state.videoPath)
+  const hasAudioTrack = useEditorStore((state) => state.hasAudioTrack)
   const clickClips = useMemo(() => audioClips.filter((clip) => clip.kind === 'click'), [audioClips])
+
+  // Imported clips are stacked top-first: the top row is drawn last (on top),
+  // and the SCREEN lane always stays underneath every clip.
+  const displayVideoClips = useMemo(
+    () => [...videoClips].sort((a, b) => (b.order ?? 0) - (a.order ?? 0)),
+    [videoClips],
+  )
+
+  const trackLayout = useMemo(() => {
+    const rows = [
+      ...displayVideoClips.map((clip) => ({ key: clip.id, label: 'VIDEO', height: CLIP_ROW_HEIGHT })),
+      ...FIXED_ROWS,
+    ]
+    let top = 0
+    const positioned = rows.map((row) => {
+      const positionedRow = { ...row, top }
+      top += row.height
+      return positionedRow
+    })
+    return {
+      rows: positioned,
+      topByKey: Object.fromEntries(positioned.map((row) => [row.key, row.top])) as Record<string, number>,
+      height: top,
+    }
+  }, [displayVideoClips])
+
+  // Dragging a clip's grip handle moves it up/down the stack. The row under the
+  // cursor becomes its new index, and the store keeps the bottom-first order.
+  const beginVideoReorder = useCallback((event: React.MouseEvent, id: string) => {
+    event.stopPropagation()
+    event.preventDefault()
+    setSelectedRegionId(id)
+    const startY = event.clientY
+    const initialOrder = displayVideoClips
+    const initialIndex = initialOrder.findIndex((clip) => clip.id === id)
+    if (initialIndex < 0) return
+    const move = (moveEvent: MouseEvent) => {
+      const deltaRows = Math.round((moveEvent.clientY - startY) / CLIP_ROW_HEIGHT)
+      const targetIndex = Math.max(0, Math.min(initialOrder.length - 1, initialIndex + deltaRows))
+      if (targetIndex === initialIndex) return
+      const next = [...initialOrder]
+      const [moved] = next.splice(initialIndex, 1)
+      next.splice(targetIndex, 0, moved)
+      setVideoClipOrder([...next].reverse().map((clip) => clip.id))
+    }
+    const up = () => {
+      window.removeEventListener('mousemove', move)
+      window.removeEventListener('mouseup', up)
+    }
+    window.addEventListener('mousemove', move)
+    window.addEventListener('mouseup', up)
+  }, [displayVideoClips, setSelectedRegionId, setVideoClipOrder])
+
+  // Dragging a clip's edges trims it in place instead of typing numbers.
+  const beginVideoTrim = useCallback((event: React.MouseEvent, clipId: string, edge: 'left' | 'right') => {
+    event.stopPropagation()
+    event.preventDefault()
+    setSelectedRegionId(clipId)
+    const clip = useEditorStore.getState().videoClips.find((item) => item.id === clipId)
+    if (!clip) return
+    const startX = event.clientX
+    const initial = {
+      startTime: clip.startTime,
+      duration: clip.duration,
+      sourceStart: clip.sourceStart,
+    }
+    const move = (moveEvent: MouseEvent) => {
+      const delta = pxToTime(moveEvent.clientX - startX)
+      if (edge === 'left') {
+        // The right edge stays put; the head moves. Bounded by the start of the
+        // timeline and the start of the source media.
+        const minDelta = Math.max(-initial.startTime, -initial.sourceStart)
+        const maxDelta = initial.duration - 0.1
+        const applied = Math.max(minDelta, Math.min(maxDelta, delta))
+        updateVideoClip(clipId, {
+          startTime: initial.startTime + applied,
+          sourceStart: initial.sourceStart + applied,
+          duration: initial.duration - applied,
+        })
+        return
+      }
+      // The tail moves; past the end of the source the last frame is held, so
+      // the only limit is the end of the timeline.
+      const maxDuration = Math.max(0.1, duration - initial.startTime)
+      updateVideoClip(clipId, { duration: Math.max(0.1, Math.min(maxDuration, initial.duration + delta)) })
+    }
+    const up = () => {
+      window.removeEventListener('mousemove', move)
+      window.removeEventListener('mouseup', up)
+    }
+    window.addEventListener('mousemove', move)
+    window.addEventListener('mouseup', up)
+  }, [pxToTime, duration, setSelectedRegionId, updateVideoClip])
+
+  const beginHeightResize = useCallback((event: React.MouseEvent) => {
+    event.preventDefault()
+    const startY = event.clientY
+    const initialHeight = timelineHeight
+    const move = (moveEvent: MouseEvent) => {
+      setTimelineHeight(Math.max(220, Math.min(760, initialHeight - (moveEvent.clientY - startY))))
+    }
+    const up = () => {
+      window.removeEventListener('mousemove', move)
+      window.removeEventListener('mouseup', up)
+    }
+    window.addEventListener('mousemove', move)
+    window.addEventListener('mouseup', up)
+  }, [timelineHeight])
 
   const allRegionsToRender = useMemo(() => {
     const combined = [...Object.values(zoomRegions), ...Object.values(cutRegions), ...Object.values(speedRegions)]
@@ -178,12 +308,21 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
     <>
     <AudioTimelinePreview />
     <div
-      className={cn(
-        'flex flex-col bg-background/50 p-3 transition-all duration-300 ease-in-out',
-        'h-[29rem]',
-      )}
+      className="flex flex-col bg-background/50 px-3 pb-3"
+      style={{ height: `${timelineHeight}px` }}
     >
-      <div className="h-full flex flex-row rounded-xl overflow-hidden shadow-xl bg-card border border-border">
+      {/* Drag to resize the timeline height */}
+      <div
+        role="separator"
+        aria-label="Resize timeline height"
+        aria-orientation="horizontal"
+        title="Drag to resize the timeline"
+        onMouseDown={beginHeightResize}
+        className="group/timeline-resize flex h-4 shrink-0 cursor-ns-resize items-center justify-center"
+      >
+        <span className="h-1 w-16 rounded-full bg-border transition-colors group-hover/timeline-resize:bg-primary/60" />
+      </div>
+      <div className="min-h-0 flex-1 flex flex-row rounded-xl overflow-hidden shadow-xl bg-card border border-border">
         <div
           className="w-8 shrink-0 h-full bg-gradient-to-b from-card to-muted/30 flex items-center justify-center transition-all duration-200 cursor-ew-resize select-none border-r border-border hover:bg-accent/40 active:bg-accent/60 group"
           onMouseDown={handleLeftStripMouseDown}
@@ -209,30 +348,32 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
           >
             <Ruler ticks={rulerTicks} timeToPx={timeToPx} formatTime={formatTime} />
 
-            <div className="absolute top-12 left-0 w-full" style={{ height: '21rem' }}>
-              {[
-                { label: 'VIDEO', top: 0, height: 48 },
-                { label: 'AUDIO', top: 48, height: 48 },
-                { label: 'CLICK SOUNDS', top: 96, height: 32 },
-                { label: '3D CAMERA', top: 128, height: 48 },
-                { label: 'ZOOM EFFECTS', top: 176, height: 48 },
-                { label: 'LAYOUT', top: 224, height: 48 },
-                { label: 'MASKING EFFECTS', top: 272, height: 48 },
-              ].map((track) => (
+            <div className="absolute top-12 left-0 w-full" style={{ height: `${trackLayout.height}px` }}>
+              {trackLayout.rows.map((track) => (
                 <div key={track.label} className="pointer-events-none absolute inset-x-0 border-b border-border/40 bg-muted/10" style={{ top: track.top, height: track.height }}>
                   <span className="absolute left-2 top-1 z-[1] rounded bg-background/80 px-1.5 py-0.5 text-[8px] font-bold tracking-wider text-muted-foreground/80">{track.label}</span>
                 </div>
               ))}
+
+              {/* The base screen recording occupies the whole timeline on its own lane. */}
+              {videoPath && duration > 0 && (
+                <div className="pointer-events-none absolute h-9 rounded-md border border-slate-500/60 bg-slate-500/15" style={{ top: `${trackLayout.topByKey.screen}px`, left: 0, width: `${timeToPx(duration)}px`, zIndex: 8 }} aria-hidden="true" />
+              )}
+
+              {/* Audio captured with the recording (mic / system audio) on its own lane. */}
+              {hasAudioTrack && duration > 0 && (
+                <div className="pointer-events-none absolute h-9 rounded-md border border-teal-600/60 bg-teal-500/15" style={{ top: `${trackLayout.topByKey['recorded-audio']}px`, left: 0, width: `${timeToPx(duration)}px`, zIndex: 8 }} aria-hidden="true" />
+              )}
               {videoClips.map((clip) => {
                 const selected = selectedRegionId === clip.id
-                return <div key={clip.id} data-region-id={clip.id} className="absolute top-1 h-9" style={{ left: `${timeToPx(clip.startTime)}px`, width: `${Math.max(28, timeToPx(clip.duration))}px`, zIndex: selected ? 140 : 14 }}>
-                  <div role="button" tabIndex={0} title={`${clip.name} · ${formatTime(clip.startTime)}`} aria-label={`Video clip ${clip.name}`} className={cn('flex h-full w-full cursor-grab select-none items-center overflow-hidden rounded-md border px-2 text-[10px] font-semibold', selected ? 'border-primary bg-sky-500/35 text-foreground' : 'border-sky-600/60 bg-sky-500/20 text-foreground hover:bg-sky-500/30')} onMouseDown={(event) => {
+                return <div key={clip.id} data-region-id={clip.id} className="absolute h-9" style={{ top: `${trackLayout.topByKey[clip.id] ?? 0}px`, left: `${timeToPx(clip.startTime)}px`, width: `${Math.max(28, timeToPx(clip.duration))}px`, zIndex: selected ? 140 : 14 }}>
+                  <div role="button" tabIndex={0} title={`${clip.name} · ${formatTime(clip.startTime)}`} aria-label={`Video clip ${clip.name}`} className={cn('relative flex h-full w-full cursor-grab select-none items-center overflow-hidden rounded-md border px-2 text-[10px] font-semibold', selected ? 'border-primary bg-sky-500/35 text-foreground' : 'border-sky-600/60 bg-sky-500/20 text-foreground hover:bg-sky-500/30')} onMouseDown={(event) => {
                     event.stopPropagation(); event.preventDefault(); setSelectedRegionId(clip.id)
                     const startX = event.clientX; const initialStart = clip.startTime
                     const move = (moveEvent: MouseEvent) => updateVideoClip(clip.id, { startTime: Math.max(0, Math.min(Math.max(0, duration - clip.duration), initialStart + pxToTime(moveEvent.clientX - startX))) })
                     const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up) }
                     window.addEventListener('mousemove', move); window.addEventListener('mouseup', up)
-                  }}><Camera className="mr-1 h-3 w-3 shrink-0 text-sky-600 dark:text-sky-300" /><span className="truncate">{clip.name}</span></div>
+                  }}><span data-video-edge="left" role="button" tabIndex={0} aria-label={`Trim the start of ${clip.name}`} title="Drag to trim the start" onMouseDown={(event) => beginVideoTrim(event, clip.id, 'left')} className="absolute left-0 top-0 z-10 h-full w-2 cursor-ew-resize bg-sky-700/50 hover:bg-sky-600/70" /><span data-video-grip role="button" tabIndex={0} aria-label={`Reorder ${clip.name}`} title="Drag up or down to change which video is on top" onMouseDown={(event) => beginVideoReorder(event, clip.id)} className="mr-1.5 flex h-full w-3.5 shrink-0 cursor-ns-resize items-center justify-center text-sky-950/70 hover:text-sky-950 dark:text-sky-100/70 dark:hover:text-sky-50"><GripVertical className="h-3 w-3" /></span><Camera className="mr-1 h-3 w-3 shrink-0 text-sky-600 dark:text-sky-300" /><span className="truncate">{clip.name}</span><span data-video-edge="right" role="button" tabIndex={0} aria-label={`Trim the end of ${clip.name}`} title="Drag to shorten or extend" onMouseDown={(event) => beginVideoTrim(event, clip.id, 'right')} className="absolute right-0 top-0 z-10 h-full w-2 cursor-ew-resize bg-sky-700/50 hover:bg-sky-600/70" /></div>
                 </div>
               })}
 
@@ -241,7 +382,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
                 const width = Math.max(28, timeToPx(clip.duration))
                 const selected = selectedRegionId === clip.id
                 return (
-                  <div key={clip.id} data-region-id={clip.id} className="absolute top-12 h-9" style={{ left: `${left}px`, width: `${width}px`, zIndex: selected ? 130 : 12 }}>
+                  <div key={clip.id} data-region-id={clip.id} className="absolute h-9" style={{ top: `${trackLayout.topByKey.music}px`, left: `${left}px`, width: `${width}px`, zIndex: selected ? 130 : 12 }}>
                     <div
                       role="button" tabIndex={0} aria-label={`Music clip: ${clip.name}`}
                       className={cn('group/audio relative flex h-full w-full cursor-grab select-none items-center overflow-hidden rounded-md border px-2 text-[10px] font-semibold', selected ? 'border-primary bg-emerald-500/25 text-foreground' : 'border-emerald-600/60 bg-emerald-500/15 text-foreground hover:bg-emerald-500/25')}
@@ -282,7 +423,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
               })}
 
               {mouseClickSoundsEnabled && (
-                <div className="absolute left-0 top-24 h-5 w-full overflow-hidden rounded-sm border border-amber-500/30 bg-amber-500/5" onMouseDown={(event) => event.stopPropagation()} aria-label="Mouse click sounds audio track">
+                <div className="absolute left-0 w-full overflow-hidden rounded-sm border border-amber-500/30 bg-amber-500/5" style={{ top: `${trackLayout.topByKey.clicks}px`, height: 28 }} onMouseDown={(event) => event.stopPropagation()} aria-label="Mouse click sounds audio track">
 
                   {clickClips.map((clip) => {
                     const selected = selectedRegionId === clip.id
@@ -318,7 +459,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
                 const left = timeToPx(motion.startTime)
                 const width = Math.max(30, timeToPx(motion.endTime - motion.startTime))
                 const selected = selectedRegionId === motion.id
-                return <div key={motion.id} data-region-id={motion.id} className="absolute top-32 h-12" style={{ left: `${left}px`, width: `${width}px`, zIndex: selected ? 120 : 5 }}>
+                return <div key={motion.id} data-region-id={motion.id} className="absolute h-12" style={{ top: `${trackLayout.topByKey.camera}px`, left: `${left}px`, width: `${width}px`, zIndex: selected ? 120 : 5 }}>
                   <div
                     role="button" tabIndex={0} aria-label={`Cinematic 3D Camera: ${motion.name}`}
                     className={cn('group/camera relative flex h-full w-full cursor-grab select-none items-center justify-center overflow-hidden rounded-xl border-2 backdrop-blur-sm', selected ? 'border-primary bg-primary/20 shadow-lg shadow-primary/10' : 'border-violet-500/60 bg-violet-500/15 hover:border-violet-400 hover:bg-violet-500/25')}
@@ -371,7 +512,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
                     const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up) }
                     window.addEventListener('mousemove', move); window.addEventListener('mouseup', up)
                   }
-                  return <div key={effect.id} data-region-id={effect.id} onMouseDown={event => beginDrag(event, 'move')} title={`${effect.kind}: ${formatTime(effect.startTime)}–${formatTime(effect.startTime + effect.duration)}`} className={`absolute top-[17rem] flex h-6 cursor-grab items-center overflow-hidden rounded border text-[10px] font-semibold ${colors[effect.kind]} ${selected ? 'ring-2 ring-primary' : ''}`} style={{ left: `${timeToPx(effect.startTime)}px`, width: `${Math.max(24, timeToPx(effect.duration))}px`, zIndex: selected ? 120 : 30 }}><span className="truncate px-2">{effect.kind.toUpperCase()} · {formatTime(effect.duration)}</span><span onMouseDown={event => beginDrag(event, 'end')} className="absolute right-0 top-0 h-full w-2 cursor-ew-resize bg-current/30" /></div>
+                  return <div key={effect.id} data-region-id={effect.id} onMouseDown={event => beginDrag(event, 'move')} title={`${effect.kind}: ${formatTime(effect.startTime)}–${formatTime(effect.startTime + effect.duration)}`} className={`absolute flex h-6 cursor-grab items-center overflow-hidden rounded border text-[10px] font-semibold ${colors[effect.kind]} ${selected ? 'ring-2 ring-primary' : ''}`} style={{ top: `${trackLayout.topByKey.masking}px`, left: `${timeToPx(effect.startTime)}px`, width: `${Math.max(24, timeToPx(effect.duration))}px`, zIndex: selected ? 120 : 30 }}><span className="truncate px-2">{effect.kind.toUpperCase()} · {formatTime(effect.duration)}</span><span onMouseDown={event => beginDrag(event, 'end')} className="absolute right-0 top-0 h-full w-2 cursor-ew-resize bg-current/30" /></div>
                 })}
                 {compositionLayouts.map((range) => {
                   const selected = selectedRegionId === range.id
@@ -386,7 +527,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
                     const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up) }
                     window.addEventListener('mousemove', move); window.addEventListener('mouseup', up)
                   }
-                  return <div key={range.id} data-region-id={range.id} onMouseDown={(event) => beginLayoutDrag(event, 'move')} title={`${range.layout}: ${formatTime(range.startTime)}–${formatTime(range.startTime+range.duration)}`} className={`absolute top-56 flex h-6 cursor-grab items-center overflow-hidden rounded border text-[10px] font-semibold ${selected ? 'ring-2 ring-primary' : ''} bg-primary/10 border-primary/60 text-foreground`} style={{ left: `${timeToPx(range.startTime)}px`, width: `${Math.max(28, timeToPx(range.duration))}px`, zIndex: selected ? 130 : 40 }}><span className="truncate px-2">LAYOUT · {range.layout.toUpperCase()}</span><span onMouseDown={(event) => beginLayoutDrag(event, 'end')} className="absolute right-0 top-0 h-full w-2 cursor-ew-resize bg-primary/30" /></div>
+                  return <div key={range.id} data-region-id={range.id} onMouseDown={(event) => beginLayoutDrag(event, 'move')} title={`${range.layout}: ${formatTime(range.startTime)}–${formatTime(range.startTime+range.duration)}`} className={`absolute flex h-6 cursor-grab items-center overflow-hidden rounded border text-[10px] font-semibold ${selected ? 'ring-2 ring-primary' : ''} bg-primary/10 border-primary/60 text-foreground`} style={{ top: `${trackLayout.topByKey.layout}px`, left: `${timeToPx(range.startTime)}px`, width: `${Math.max(28, timeToPx(range.duration))}px`, zIndex: selected ? 130 : 40 }}><span className="truncate px-2">LAYOUT · {range.layout.toUpperCase()}</span><span onMouseDown={(event) => beginLayoutDrag(event, 'end')} className="absolute right-0 top-0 h-full w-2 cursor-ew-resize bg-primary/30" /></div>
                 })}
                 {allRegionsToRender.map((region) => {
                   const isSelected = selectedRegionId === region.id
@@ -399,7 +540,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
 
                   if (region.type === 'zoom' || region.type === 'cut') {
                     return (
-                      <div key={region.id} className={cn('absolute', region.type === 'zoom' ? 'top-44 h-12' : 'top-0 h-12')} style={regionStyle}>
+                      <div key={region.id} className={cn('absolute', region.type === 'zoom' ? 'h-12' : 'top-0 h-12')} style={{ ...regionStyle, top: region.type === 'zoom' ? trackLayout.topByKey.zoom : 0 }}>
                         {region.type === 'zoom' && <ZoomRegionBlock region={region} isSelected={isSelected} isBeingDragged={draggingRegionId === region.id} onMouseDown={handleRegionMouseDown} setRef={(el) => regionRefs.current.set(region.id, el)} />}
                         {region.type === 'cut' && <CutRegionBlock region={region} isSelected={isSelected} isDraggable={region.id !== previewCutRegion?.id} isBeingDragged={draggingRegionId === region.id} onMouseDown={handleRegionMouseDown} setRef={(el) => regionRefs.current.set(region.id, el)} />}
                       </div>

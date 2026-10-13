@@ -441,10 +441,11 @@ export async function startRecording(options: any) {
   const { source, displayId, mic, webcam, systemAudio } = options
   log.info('[RecordingManager] Received start recording request with options:', options)
 
-  // System audio is currently only supported on macOS (uses ScreenCaptureKit /
-  // CoreAudio Tap via electron-audio-loopback). Silently drop the flag on
-  // other platforms so the rest of the flow stays the same.
-  const wantsSystemAudio = !!systemAudio && process.platform === 'darwin'
+  // `systemAudio` means a renderer-recorded audio file: system loopback on
+  // macOS (ScreenCaptureKit / CoreAudio Tap via electron-audio-loopback), or
+  // the microphone on Linux (the bundled FFmpeg can't capture it reliably).
+  // Dropped on other platforms.
+  const wantsSystemAudio = !!systemAudio && (process.platform === 'darwin' || process.platform === 'linux')
 
   // macOS Permissions Check
   if (process.platform === 'darwin') {

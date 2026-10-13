@@ -325,6 +325,30 @@ export function RecorderPage() {
       // the screen capture above already grabbed system audio, so we skip the
       // separate system-audio capture path.
       let systemAudioReady = systemAudioCarriedInScreenStream
+      // Linux: capture the microphone in the renderer (see system-audio.ts).
+      const micCapturedInRenderer = platform === 'linux' && !!mic
+      if (micCapturedInRenderer && mic) {
+        try {
+          systemAudioHandleRef.current = await startSystemAudioCapture({
+            micDeviceId: mic.id,
+            onError: (err) => console.error('[Recorder] Microphone capture failed mid-recording:', err),
+          })
+          systemAudioReady = true
+        } catch (err) {
+          console.error('[Recorder] Could not start microphone capture:', err)
+          systemAudioHandleRef.current = null
+          setActionState('none')
+          setIsRecording(false)
+          window.electronAPI.showMessageBox({
+            type: 'warning',
+            title: 'Microphone Unavailable',
+            message: 'ScreenArc could not access the selected microphone.',
+            detail: String(err instanceof Error ? err.message : err),
+            buttons: ['OK'],
+          })
+          return
+        }
+      }
       if (wantSystemAudio && !usesRendererScreenCapture) {
         try {
           systemAudioHandleRef.current = await startSystemAudioCapture({
@@ -364,7 +388,7 @@ export function RecorderPage() {
         source,
         displayId: source === 'fullscreen' ? Number(selectedDisplayId) : undefined,
         webcam: webcam ? { deviceId: webcam.id, deviceLabel: webcam.id, index: webcams.indexOf(webcam) } : undefined,
-        mic: mic ? { deviceId: mic.id, deviceLabel: mic.id, index: mics.indexOf(mic) } : undefined,
+        mic: mic && !micCapturedInRenderer ? { deviceId: mic.id, deviceLabel: mic.id, index: mics.indexOf(mic) } : undefined,
         systemAudio: systemAudioReady,
       })
 

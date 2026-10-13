@@ -254,6 +254,7 @@ export const electronAPI = {
   getPlatform: (): Promise<NodeJS.Platform> => ipcRenderer.invoke('app:getPlatform'),
   getVideoFrame: (options: { videoPath: string; time: number }): Promise<string> =>
     ipcRenderer.invoke('video:get-frame', options),
+  videoHasAudio: (videoPath: string): Promise<boolean> => ipcRenderer.invoke('video:has-audio', videoPath),
 }
 
 // Expose API safely

@@ -358,6 +358,17 @@ export const Preview = memo(
 
         setHasAudioTrack(!!(hasAudioTracks || hasMozAudio || hasWebkitAudio))
 
+        // Chromium implements none of the checks above, so recorded mic audio
+        // was always reported as missing (and then dropped on export). Ask
+        // FFmpeg whether the file really has an audio stream.
+        const { videoPath } = useEditorStore.getState()
+        if (videoPath && !(hasAudioTracks || hasMozAudio || hasWebkitAudio)) {
+          window.electronAPI
+            .videoHasAudio(videoPath)
+            .then((hasAudio) => setHasAudioTrack(hasAudio))
+            .catch((err) => console.warn('[Preview] Audio stream probe failed:', err))
+        }
+
         const timeFromStore = useEditorStore.getState().currentTime
 
         const onSeekComplete = () => {

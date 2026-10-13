@@ -30,6 +30,7 @@ export function registerIpcHandlers() {
   ipcMain.handle('dialog:showMessageBox', desktopHandlers.showMessageBox)
   ipcMain.handle('permission:check-screen-recording', desktopHandlers.checkScreenRecordingPermission)
   ipcMain.handle('video:get-frame', desktopHandlers.getVideoFrame)
+  ipcMain.handle('video:has-audio', desktopHandlers.videoHasAudio)
 
   ipcMain.handle('desktop:get-cursor-themes', desktopHandlers.getCursorThemes)
   ipcMain.handle('desktop:load-cursor-theme', desktopHandlers.loadCursorTheme)

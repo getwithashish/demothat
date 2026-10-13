@@ -20,6 +20,13 @@ export interface StartOptions {
   audioBitsPerSecond?: number
   /** Called if capture setup fails after the recording has already started. */
   onError?: (err: Error) => void
+  /**
+   * When set, capture this microphone (MediaDeviceInfo.deviceId) via
+   * getUserMedia instead of the system-audio loopback. Used on Linux, where
+   * the bundled FFmpeg has no PulseAudio input and ALSA "default" records
+   * silence. The chunks flow through the same writer + mux pipeline.
+   */
+  micDeviceId?: string
 }
 
 /**
@@ -43,6 +50,17 @@ export async function startSystemAudioCapture(opts: StartOptions = {}): Promise<
   try {
     await priorLoopbackLock
 
+    if (opts.micDeviceId !== undefined) {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          deviceId: opts.micDeviceId && opts.micDeviceId !== 'default' ? { exact: opts.micDeviceId } : undefined,
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        },
+        video: false,
+      })
+    } else {
     // Toggle the loopback flag so the next getDisplayMedia() returns a
     // system-audio track. We disable the flag immediately after the call so
     // unrelated screen-share requests later don't accidentally pick it up.
@@ -51,6 +69,7 @@ export async function startSystemAudioCapture(opts: StartOptions = {}): Promise<
       stream = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true })
     } finally {
       await api.disableLoopbackAudio()
+    }
     }
   } finally {
     releaseLoopbackLock()

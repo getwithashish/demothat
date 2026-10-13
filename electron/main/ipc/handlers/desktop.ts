@@ -102,6 +102,30 @@ export async function getVideoFrame(
   })
 }
 
+/**
+ * Reports whether a video file contains an audio stream. Chromium (Electron)
+ * does not implement HTMLMediaElement.audioTracks / mozHasAudio /
+ * webkitHasAudio, so the renderer cannot detect recorded microphone audio on
+ * its own. FFmpeg is the source of truth.
+ */
+export async function videoHasAudio(_event: IpcMainInvokeEvent | null, videoPath: string): Promise<boolean> {
+  if (!videoPath) return false
+  const FFMPEG_PATH = getFFmpegPath()
+  return new Promise<boolean>((resolve) => {
+    const proc = spawn(FFMPEG_PATH, ['-hide_banner', '-i', videoPath])
+    let stderr = ''
+    proc.stderr.on('data', (d) => {
+      stderr += d.toString()
+    })
+    proc.on('error', (err) => {
+      log.warn('[Desktop] Failed to probe audio stream:', err)
+      resolve(false)
+    })
+    // `ffmpeg -i file` with no output exits non-zero but lists all streams.
+    proc.on('close', () => resolve(/Stream #\d+:\d+.*: Audio:/.test(stderr)))
+  })
+}
+
 export async function getDshowDevices(): Promise<{
   video: { name: string; alternativeName: string }[]
   audio: { name: string; alternativeName: string }[]

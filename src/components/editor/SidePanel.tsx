@@ -89,11 +89,13 @@ export function SidePanel() {
     zoomRegions,
     cutRegions,
     cameraMotions,
+    compositionLayouts,
     audioClips,
     deleteAudioClip,
     webcamVideoUrl,
     setSelectedRegionId,
     deleteCameraMotion,
+    deleteCompositionLayout,
     activeSidePanelTab,
     setActiveSidePanelTab,
   } = useEditorStore(
@@ -102,11 +104,13 @@ export function SidePanel() {
       zoomRegions: state.zoomRegions,
       cutRegions: state.cutRegions,
       cameraMotions: state.cameraMotions,
+      compositionLayouts: state.compositionLayouts,
       audioClips: state.audioClips,
       deleteAudioClip: state.deleteAudioClip,
       webcamVideoUrl: state.webcamVideoUrl,
       setSelectedRegionId: state.setSelectedRegionId,
       deleteCameraMotion: state.deleteCameraMotion,
+      deleteCompositionLayout: state.deleteCompositionLayout,
       activeSidePanelTab: state.activeSidePanelTab,
       setActiveSidePanelTab: state.setActiveSidePanelTab,
     })),
@@ -114,6 +118,7 @@ export function SidePanel() {
 
   // Optimize region lookup using useMemo
   const selectedCameraMotion = useMemo(() => cameraMotions.find((motion) => motion.id === selectedRegionId) ?? null, [cameraMotions, selectedRegionId])
+  const selectedCompositionLayout = useMemo(() => compositionLayouts.find((range) => range.id === selectedRegionId) ?? null, [compositionLayouts, selectedRegionId])
   const selectedAudioClip = useMemo(() => audioClips.find((clip) => clip.id === selectedRegionId) ?? null, [audioClips, selectedRegionId])
   const selectedVisualEffect = useEditorStore((state) => state.visualEffects.some((effect) => effect.id === selectedRegionId))
 
@@ -126,10 +131,12 @@ export function SidePanel() {
   useEffect(() => {
     if (selectedAudioClip) {
       setActiveSidePanelTab('audio')
+    } else if (selectedCompositionLayout) {
+      setActiveSidePanelTab('camera')
     } else if (selectedRegion || selectedCameraMotion || selectedVisualEffect) {
       setActiveSidePanelTab('general')
     }
-  }, [selectedRegion, selectedCameraMotion, selectedAudioClip, selectedVisualEffect, setActiveSidePanelTab])
+  }, [selectedRegion, selectedCameraMotion, selectedCompositionLayout, selectedAudioClip, selectedVisualEffect, setActiveSidePanelTab])
 
   // Handle Escape key to clear selection
   useEffect(() => {
@@ -148,6 +155,12 @@ export function SidePanel() {
         setSelectedRegionId(null)
         return
       }
+      if (compositionLayouts.some((range) => range.id === selectedRegionId)) {
+        event.preventDefault()
+        deleteCompositionLayout(selectedRegionId)
+        setSelectedRegionId(null)
+        return
+      }
       if (!cameraMotions.some((motion) => motion.id === selectedRegionId)) return
       event.preventDefault()
       deleteCameraMotion(selectedRegionId)
@@ -155,7 +168,7 @@ export function SidePanel() {
     }
     window.addEventListener('keydown', handleKeyDown, true)
     return () => window.removeEventListener('keydown', handleKeyDown, true)
-  }, [selectedRegionId, cameraMotions, audioClips, deleteAudioClip, deleteCameraMotion, setSelectedRegionId])
+  }, [selectedRegionId, cameraMotions, compositionLayouts, audioClips, deleteAudioClip, deleteCameraMotion, deleteCompositionLayout, setSelectedRegionId])
 
   return (
     <div className="h-full flex">

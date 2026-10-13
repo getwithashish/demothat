@@ -245,7 +245,17 @@ export interface VisualEffectRegion {
   enterDuration: number
   exitDuration: number
 }
+export type CompositionLayout = 'picture-in-picture' | 'side-by-side' | 'presenter-focus' | 'screen-only' | 'presenter-top' | 'presenter-bottom' | 'split-vertical' | 'large-picture-in-picture'
+export interface CompositionLayoutRange {
+  id: string
+  layout: CompositionLayout
+  startTime: number
+  duration: number
+  transitionDuration: number
+}
+
 export interface FrameState {
+  compositionLayouts: CompositionLayoutRange[]
   frameStyles: FrameStyles
   aspectRatio: AspectRatio
   cameraMotions: CameraMotionTrack[]
@@ -261,6 +271,9 @@ export interface FrameActions {
   addVisualEffect: (kind: VisualEffectKind) => void
   updateVisualEffect: (id: string, updates: Partial<VisualEffectRegion>) => void
   deleteVisualEffect: (id: string) => void
+  addCompositionLayout: (layout: CompositionLayout) => void
+  updateCompositionLayout: (id: string, updates: Partial<CompositionLayoutRange>) => void
+  deleteCompositionLayout: (id: string) => void
 }
 
 export interface TimelineState {
@@ -378,6 +391,7 @@ export type RenderableState = Pick<
   | 'frameStyles'
   | 'cameraMotions'
   | 'visualEffects'
+  | 'compositionLayouts'
   | 'videoDimensions'
   | 'aspectRatio'
   | 'webcamPosition'

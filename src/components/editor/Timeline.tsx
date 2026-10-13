@@ -157,6 +157,8 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
   const { zoomRegions, cutRegions, speedRegions } = useAllRegions()
   const visualEffects = useEditorStore((state) => state.visualEffects)
   const updateVisualEffect = useEditorStore((state) => state.updateVisualEffect)
+  const compositionLayouts = useEditorStore((state) => state.compositionLayouts)
+  const updateCompositionLayout = useEditorStore((state) => state.updateCompositionLayout)
   const cameraMotions = useEditorStore((state) => state.cameraMotions)
   const audioClips = useEditorStore((state) => state.audioClips)
   const mouseClickSoundsEnabled = useEditorStore((state) => state.mouseClickSoundsEnabled)
@@ -344,6 +346,21 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
                     window.addEventListener('mousemove', move); window.addEventListener('mouseup', up)
                   }
                   return <div key={effect.id} data-region-id={effect.id} onMouseDown={event => beginDrag(event, 'move')} title={`${effect.kind}: ${formatTime(effect.startTime)}–${formatTime(effect.startTime + effect.duration)}`} className={`absolute bottom-1 flex h-6 cursor-grab items-center overflow-hidden rounded border text-[10px] font-semibold ${colors[effect.kind]} ${selected ? 'ring-2 ring-primary' : ''}`} style={{ left: `${timeToPx(effect.startTime)}px`, width: `${Math.max(24, timeToPx(effect.duration))}px`, zIndex: selected ? 120 : 30 }}><span className="truncate px-2">{effect.kind.toUpperCase()} · {formatTime(effect.duration)}</span><span onMouseDown={event => beginDrag(event, 'end')} className="absolute right-0 top-0 h-full w-2 cursor-ew-resize bg-current/30" /></div>
+                })}
+                {compositionLayouts.map((range) => {
+                  const selected = selectedRegionId === range.id
+                  const beginLayoutDrag = (event: React.MouseEvent, edge: 'move' | 'end') => {
+                    event.preventDefault(); event.stopPropagation(); setSelectedRegionId(range.id)
+                    const startX = event.clientX, initialStart = range.startTime, initialDuration = range.duration
+                    const move = (moveEvent: MouseEvent) => {
+                      const delta = pxToTime(moveEvent.clientX - startX)
+                      if (edge === 'end') updateCompositionLayout(range.id, { duration: Math.max(.1, Math.min(duration-initialStart, initialDuration+delta)) })
+                      else updateCompositionLayout(range.id, { startTime: Math.max(0, Math.min(duration-initialDuration, initialStart+delta)) })
+                    }
+                    const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up) }
+                    window.addEventListener('mousemove', move); window.addEventListener('mouseup', up)
+                  }
+                  return <div key={range.id} data-region-id={range.id} onMouseDown={(event) => beginLayoutDrag(event, 'move')} title={`${range.layout}: ${formatTime(range.startTime)}–${formatTime(range.startTime+range.duration)}`} className={`absolute bottom-8 flex h-6 cursor-grab items-center overflow-hidden rounded border text-[10px] font-semibold ${selected ? 'ring-2 ring-primary' : ''} bg-primary/10 border-primary/60 text-foreground`} style={{ left: `${timeToPx(range.startTime)}px`, width: `${Math.max(28, timeToPx(range.duration))}px`, zIndex: selected ? 130 : 40 }}><span className="truncate px-2">LAYOUT · {range.layout.toUpperCase()}</span><span onMouseDown={(event) => beginLayoutDrag(event, 'end')} className="absolute right-0 top-0 h-full w-2 cursor-ew-resize bg-primary/30" /></div>
                 })}
                 {allRegionsToRender.map((region) => {
                   const isSelected = selectedRegionId === region.id

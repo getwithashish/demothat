@@ -1,11 +1,12 @@
 import { WALLPAPERS } from '../../lib/constants'
 import { getCameraPoseAtTime } from '../../lib/camera-motion'
 import type { FrameState, FrameActions, Slice } from '../../types'
-import type { AspectRatio, FrameStyles, CameraMotionTrack, CameraMoveKind, CameraPose } from '../../types'
+import type { AspectRatio, FrameStyles, CameraMotionTrack, CameraMoveKind, CameraPose, CompositionLayout, CompositionLayoutRange } from '../../types'
 
 const DEFAULT_CAMERA_POSE: CameraPose = { x: 0, y: 0, scale: 1, rotationX: 0, rotationY: 0, rotationZ: 0, perspective: 50 }
 
 export const initialFrameState: FrameState = {
+  compositionLayouts: [],
   cameraMotions: [],
   visualEffects: [],
   frameStyles: {
@@ -73,6 +74,17 @@ export const createFrameSlice: Slice<FrameState, FrameActions> = (set, get) => (
   },
   updateVisualEffect: (id, updates) => set((state) => { const effect = state.visualEffects.find((item) => item.id === id); if (effect) Object.assign(effect, updates) }),
   deleteVisualEffect: (id) => set((state) => { state.visualEffects = state.visualEffects.filter((item) => item.id !== id) }),
+  addCompositionLayout: (layout: CompositionLayout) => {
+    const { currentTime, duration } = get()
+    if (duration <= currentTime) return
+    const range: CompositionLayoutRange = { id: `layout-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, layout, startTime: currentTime, duration: Math.max(0.5, Math.min(4, duration - currentTime)), transitionDuration: 0.35 }
+    set((state) => { state.compositionLayouts.push(range) })
+  },
+  updateCompositionLayout: (id, updates) => set((state) => {
+    const range = state.compositionLayouts.find((item) => item.id === id)
+    if (range) Object.assign(range, updates)
+  }),
+  deleteCompositionLayout: (id) => set((state) => { state.compositionLayouts = state.compositionLayouts.filter((item) => item.id !== id) }),
   addCameraMotion: (kind: CameraMoveKind, startTime: number, endTime: number) => {
     const state = get()
     // Start from the camera's actual pose at this timeline position. If no 3D

@@ -24,9 +24,10 @@ import { rgbaToHexAlpha, hexToRgb } from '../../../lib/utils'
 import { useShallow } from 'zustand/react/shallow'
 import { Collapse } from '../../ui/collapse'
 import { cn } from '../../../lib/utils'
-import type { WebcamPosition } from '../../../types'
+import type { WebcamPosition, CompositionLayout } from '../../../types'
 import { DEFAULTS } from '../../../lib/constants'
 import { TransformPointBottomLeftIcon } from '../../ui/icons'
+import { LayoutBoard, Trash } from 'tabler-icons-react'
 
 const DisabledPanelPlaceholder = ({
   icon,
@@ -55,6 +56,12 @@ export function CameraSettings() {
     setWebcamVisibility,
     setWebcamPosition,
     updateWebcamStyle,
+    compositionLayouts,
+    addCompositionLayout,
+    updateCompositionLayout,
+    deleteCompositionLayout,
+    currentTime,
+    duration,
   } = useEditorStore(
     useShallow((state) => ({
       webcamVideoUrl: state.webcamVideoUrl,
@@ -64,6 +71,12 @@ export function CameraSettings() {
       setWebcamVisibility: state.setWebcamVisibility,
       setWebcamPosition: state.setWebcamPosition,
       updateWebcamStyle: state.updateWebcamStyle,
+      compositionLayouts: state.compositionLayouts,
+      addCompositionLayout: state.addCompositionLayout,
+      updateCompositionLayout: state.updateCompositionLayout,
+      deleteCompositionLayout: state.deleteCompositionLayout,
+      currentTime: state.currentTime,
+      duration: state.duration,
     })),
   )
 
@@ -164,6 +177,47 @@ export function CameraSettings() {
               </div>
             </ControlGroup>
 
+            <Collapse
+              title="Screen & Presenter Composition"
+              description="Schedule presenter and screen layouts on the timeline"
+              icon={<LayoutBoard className="w-4 h-4 text-primary" />}
+              defaultOpen={false}
+            >
+              <div className="space-y-3">
+                <p className="text-xs text-muted-foreground">Add a layout range at the playhead, then adjust its range on the timeline or below.</p>
+                <div className="grid grid-cols-[1fr_auto] gap-2">
+                  <select id="composition-layout-to-add" className="min-w-0 rounded-md border border-input bg-background p-2 text-sm text-foreground">
+                    <option value="picture-in-picture">Picture-in-picture</option>
+                    <option value="side-by-side">Side-by-side</option>
+                    <option value="presenter-focus">Presenter focus</option>
+                    <option value="screen-only">Screen only</option>
+                    <option value="presenter-top">Presenter top</option>
+                    <option value="presenter-bottom">Presenter bottom</option>
+                    <option value="split-vertical">Vertical split</option>
+                    <option value="large-picture-in-picture">Large picture-in-picture</option>
+                  </select>
+                  <Button size="sm" onClick={() => { const select = document.getElementById('composition-layout-to-add') as HTMLSelectElement | null; addCompositionLayout((select?.value || 'picture-in-picture') as CompositionLayout) }} disabled={duration <= currentTime}>Add range</Button>
+                </div>
+                {compositionLayouts.length === 0 && <p className="rounded-md border border-dashed border-border p-3 text-xs text-muted-foreground">No layout ranges yet. The current webcam composition remains unchanged.</p>}
+                <div className="space-y-2">
+                  {compositionLayouts.slice().sort((a,b) => a.startTime-b.startTime).map((range) => (
+                    <div key={range.id} className="space-y-2 rounded-lg border border-sidebar-border p-3">
+                      <div className="flex items-center gap-2">
+                        <select aria-label="Layout" value={range.layout} onChange={(e) => updateCompositionLayout(range.id, { layout: e.target.value as CompositionLayout })} className="min-w-0 flex-1 rounded-md border border-input bg-background p-2 text-xs text-foreground">
+                          <option value="picture-in-picture">Picture-in-picture</option><option value="side-by-side">Side-by-side</option><option value="presenter-focus">Presenter focus</option><option value="screen-only">Screen only</option><option value="presenter-top">Presenter top</option><option value="presenter-bottom">Presenter bottom</option><option value="split-vertical">Vertical split</option><option value="large-picture-in-picture">Large picture-in-picture</option>
+                        </select>
+                        <Button variant="ghost" size="icon" onClick={() => deleteCompositionLayout(range.id)} aria-label="Delete layout range"><Trash className="h-4 w-4" /></Button>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        <label className="text-[11px] text-muted-foreground">Start (s)<input type="number" min="0" max={Math.max(0,duration-range.duration)} step="0.1" value={Number(range.startTime.toFixed(2))} onChange={(e) => updateCompositionLayout(range.id, { startTime: Math.max(0, Math.min(duration-range.duration, Number(e.target.value)||0)) })} className="mt-1 w-full rounded-md border border-input bg-background p-2 text-xs text-foreground" /></label>
+                        <label className="text-[11px] text-muted-foreground">Duration (s)<input type="number" min="0.1" max={Math.max(0.1,duration-range.startTime)} step="0.1" value={Number(range.duration.toFixed(2))} onChange={(e) => updateCompositionLayout(range.id, { duration: Math.max(0.1, Math.min(duration-range.startTime, Number(e.target.value)||0.1)) })} className="mt-1 w-full rounded-md border border-input bg-background p-2 text-xs text-foreground" /></label>
+                        <label className="text-[11px] text-muted-foreground">Fade (s)<input type="number" min="0" max="2" step="0.05" value={range.transitionDuration} onChange={(e) => updateCompositionLayout(range.id, { transitionDuration: Math.max(0, Math.min(2, Number(e.target.value)||0)) })} className="mt-1 w-full rounded-md border border-input bg-background p-2 text-xs text-foreground" /></label>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </Collapse>
             <Collapse
               title="Style"
               description="Change shape and orientation"

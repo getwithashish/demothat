@@ -394,6 +394,7 @@ export const drawScene = async (
 
   // --- 6. Draw Webcam ---
   const { webcamPosition, webcamStyles, isWebcamVisible } = state
+  const activeLayoutRange = (state.compositionLayouts || []).filter((range) => currentTime >= range.startTime && currentTime < range.startTime + range.duration).sort((a, b) => b.startTime - a.startTime)[0]
   if (isWebcamVisible && webcamVideoElement && webcamVideoElement.videoWidth > 0 && state.recordingGeometry) {
     let finalWebcamScale = 1
     if (webcamStyles.scaleOnZoom) {
@@ -536,49 +537,156 @@ export const drawScene = async (
       webcamRadius = maxRadius * (webcamStyles.borderRadius / 50)
     }
 
-    if (webcamStyles.shadowBlur > 0) {
+    const webcamVideo = webcamVideoElement
+    const screenSnapshot = document.createElement('canvas')
+    screenSnapshot.width = outputWidth
+    screenSnapshot.height = outputHeight
+    screenSnapshot.getContext('2d')?.drawImage(ctx.canvas, 0, 0)
+
+    const baseRect: Rect = { x: webcamX, y: webcamY, width: webcamWidth, height: webcamHeight }
+    const fullRect: Rect = { x: 0, y: 0, width: outputWidth, height: outputHeight }
+    const rectLerp = (from: Rect, to: Rect, progress: number): Rect => ({
+      x: lerp(from.x, to.x, progress),
+      y: lerp(from.y, to.y, progress),
+      width: lerp(from.width, to.width, progress),
+      height: lerp(from.height, to.height, progress),
+    })
+    const drawPresenter = (rect: Rect, radius: number, alpha = 1) => {
+      if (rect.width <= 0 || rect.height <= 0 || alpha <= 0) return
       ctx.save()
-      ctx.shadowColor = webcamStyles.shadowColor
-      ctx.shadowBlur = webcamStyles.shadowBlur
-      ctx.shadowOffsetX = webcamStyles.shadowOffsetX
-      ctx.shadowOffsetY = webcamStyles.shadowOffsetY
-      const webcamShadowPath = new Path2D()
-      webcamShadowPath.roundRect(webcamX, webcamY, webcamWidth, webcamHeight, webcamRadius)
-      ctx.fillStyle = 'rgba(0,0,0,1)'
-      ctx.fill(webcamShadowPath)
+      ctx.globalAlpha = alpha
+      if (webcamStyles.shadowBlur > 0 || webcamStyles.shadowOffsetX !== 0 || webcamStyles.shadowOffsetY !== 0) {
+        ctx.save()
+        ctx.shadowColor = webcamStyles.shadowColor
+        ctx.shadowBlur = webcamStyles.shadowBlur
+        ctx.shadowOffsetX = webcamStyles.shadowOffsetX
+        ctx.shadowOffsetY = webcamStyles.shadowOffsetY
+        const shadowPath = new Path2D()
+        shadowPath.roundRect(rect.x, rect.y, rect.width, rect.height, Math.max(0, radius))
+        ctx.fillStyle = 'rgba(0,0,0,1)'
+        ctx.fill(shadowPath)
+        ctx.restore()
+      }
+      if (webcamStyles.isFlipped) { ctx.translate(outputWidth, 0); ctx.scale(-1, 1) }
+      const drawX = webcamStyles.isFlipped ? outputWidth - rect.x - rect.width : rect.x
+      ctx.beginPath()
+      if (radius > 0) ctx.roundRect(drawX, rect.y, rect.width, rect.height, Math.min(radius, rect.width / 2, rect.height / 2))
+      else ctx.rect(drawX, rect.y, rect.width, rect.height)
+      ctx.clip()
+      const sourceAspect = webcamVideo.videoWidth / webcamVideo.videoHeight
+      const targetAspect = rect.width / rect.height
+      let cropX = 0, cropY = 0, cropWidth = webcamVideo.videoWidth, cropHeight = webcamVideo.videoHeight
+      if (sourceAspect > targetAspect) { cropWidth = webcamVideo.videoHeight * targetAspect; cropX = (webcamVideo.videoWidth - cropWidth) / 2 }
+      else { cropHeight = webcamVideo.videoWidth / targetAspect; cropY = (webcamVideo.videoHeight - cropHeight) / 2 }
+      ctx.drawImage(webcamVideo, cropX, cropY, cropWidth, cropHeight, drawX, rect.y, rect.width, rect.height)
       ctx.restore()
     }
-
-    const webcamVideo = webcamVideoElement
-    const webcamAR = webcamVideo.videoWidth / webcamVideo.videoHeight
-    const targetAR = webcamWidth / webcamHeight
-
-    let sx = 0,
-      sy = 0,
-      sWidth = webcamVideo.videoWidth,
-      sHeight = webcamVideo.videoHeight
-
-    if (webcamAR > targetAR) {
-      sWidth = webcamVideo.videoHeight * targetAR
-      sx = (webcamVideo.videoWidth - sWidth) / 2
-    } else {
-      sHeight = webcamVideo.videoWidth / targetAR
-      sy = (webcamVideo.videoHeight - sHeight) / 2
+    const drawScreenInRect = (rect: Rect, alpha: number) => {
+      if (rect.width <= 0 || rect.height <= 0 || alpha <= 0) return
+      // Cover the pane while preserving aspect ratio, like the supplied reference video.
+      const scale = Math.max(rect.width / outputWidth, rect.height / outputHeight)
+      const drawWidth = outputWidth * scale
+      const drawHeight = outputHeight * scale
+      const drawX = rect.x + (rect.width - drawWidth) / 2
+      const drawY = rect.y + (rect.height - drawHeight) / 2
+      ctx.save()
+      ctx.globalAlpha = alpha
+      ctx.beginPath()
+      ctx.rect(rect.x, rect.y, rect.width, rect.height)
+      ctx.clip()
+      ctx.drawImage(screenSnapshot, drawX, drawY, drawWidth, drawHeight)
+      ctx.restore()
+    }
+    const drawBaseBackground = async () => {
+      await drawBackground(ctx, outputWidth, outputHeight, state.frameStyles.background, preloadedBgImage)
     }
 
-    ctx.save()
+    const largeWidth = Math.min(outputWidth * 0.48, initialWebcamWidth * Math.max(1, finalWebcamScale) * 1.55)
+    const largeHeight = largeWidth * (webcamStyles.shape === 'rectangle' ? 9 / 16 : 1)
+    let largeX = baseRect.x
+    let largeY = baseRect.y
+    if (originalPos.includes('right')) largeX += baseRect.width - largeWidth
+    else if (originalPos === 'top-center' || originalPos === 'bottom-center') largeX += (baseRect.width - largeWidth) / 2
+    if (originalPos.includes('bottom')) largeY += baseRect.height - largeHeight
+    else if (originalPos === 'left-center' || originalPos === 'right-center') largeY += (baseRect.height - largeHeight) / 2
+    const largeRect: Rect = { x: largeX, y: largeY, width: largeWidth, height: largeHeight }
+    const largeRadius = webcamStyles.shape === 'circle'
+      ? Math.min(largeWidth, largeHeight) / 2
+      : Math.min(largeWidth, largeHeight) * (webcamStyles.borderRadius / 50)
 
-    if (webcamStyles.isFlipped) {
-      ctx.translate(outputWidth, 0)
-      ctx.scale(-1, 1)
+    type CompositionState = { screenRect: Rect; screenAlpha: number; presenterRect: Rect; presenterAlpha: number; presenterRadius: number }
+    const getCompositionState = (layout: string): CompositionState => {
+      const composition: CompositionState = { screenRect: fullRect, screenAlpha: 1, presenterRect: baseRect, presenterAlpha: 1, presenterRadius: webcamRadius }
+      switch (layout) {
+        case 'large-picture-in-picture':
+          composition.presenterRect = largeRect
+          composition.presenterRadius = largeRadius
+          break
+        case 'side-by-side':
+          composition.screenRect = { x: 0, y: 0, width: outputWidth / 2, height: outputHeight }
+          composition.presenterRect = { x: outputWidth / 2, y: 0, width: outputWidth / 2, height: outputHeight }
+          composition.presenterRadius = 0
+          break
+        case 'split-vertical':
+          composition.screenRect = { x: outputWidth / 2, y: 0, width: outputWidth / 2, height: outputHeight }
+          composition.presenterRect = { x: 0, y: 0, width: outputWidth / 2, height: outputHeight }
+          composition.presenterRadius = 0
+          break
+        case 'presenter-top':
+          composition.screenRect = { x: 0, y: outputHeight / 2, width: outputWidth, height: outputHeight / 2 }
+          composition.presenterRect = { x: 0, y: 0, width: outputWidth, height: outputHeight / 2 }
+          composition.presenterRadius = 0
+          break
+        case 'presenter-bottom':
+          composition.screenRect = { x: 0, y: 0, width: outputWidth, height: outputHeight / 2 }
+          composition.presenterRect = { x: 0, y: outputHeight / 2, width: outputWidth, height: outputHeight / 2 }
+          composition.presenterRadius = 0
+          break
+        case 'presenter-focus':
+          composition.screenAlpha = 0
+          composition.presenterRect = fullRect
+          composition.presenterRadius = 0
+          break
+        case 'screen-only':
+          composition.presenterAlpha = 0
+          break
+      }
+      return composition
     }
 
-    const drawX = webcamStyles.isFlipped ? outputWidth - webcamX - webcamWidth : webcamX
-    const webcamPath = new Path2D()
-    webcamPath.roundRect(drawX, webcamY, webcamWidth, webcamHeight, webcamRadius)
-    ctx.clip(webcamPath)
-    ctx.drawImage(webcamVideo, sx, sy, sWidth, sHeight, drawX, webcamY, webcamWidth, webcamHeight)
-    ctx.restore()
+    const ranges = [...(state.compositionLayouts || [])].sort((a, b) => a.startTime - b.startTime)
+    const activeRange = activeLayoutRange
+    let fromLayout = 'picture-in-picture'
+    let toLayout = activeRange?.layout || 'picture-in-picture'
+    let layoutProgress = activeRange ? 1 : 0
+    if (activeRange) {
+      const activeIndex = ranges.findIndex((range) => range.id === activeRange.id)
+      const previousRange = activeIndex > 0 ? ranges[activeIndex - 1] : undefined
+      const nextRange = activeIndex >= 0 ? ranges[activeIndex + 1] : undefined
+      const startsAfterPrevious = !!previousRange && Math.abs(previousRange.startTime + previousRange.duration - activeRange.startTime) < 0.03
+      const endsBeforeNext = !!nextRange && Math.abs(activeRange.startTime + activeRange.duration - nextRange.startTime) < 0.03
+      const fadeDuration = Math.min(Math.max(0, activeRange.transitionDuration || 0), activeRange.duration / 2)
+      if (fadeDuration > 0 && currentTime < activeRange.startTime + fadeDuration) {
+        fromLayout = startsAfterPrevious ? previousRange!.layout : 'picture-in-picture'
+        layoutProgress = Math.max(0, Math.min(1, (currentTime - activeRange.startTime) / fadeDuration))
+      } else if (fadeDuration > 0 && !endsBeforeNext && currentTime >= activeRange.startTime + activeRange.duration - fadeDuration) {
+        fromLayout = 'picture-in-picture'
+        toLayout = activeRange.layout
+        layoutProgress = Math.max(0, Math.min(1, (activeRange.startTime + activeRange.duration - currentTime) / fadeDuration))
+      }
+    }
+    const eased = layoutProgress * layoutProgress * (3 - 2 * layoutProgress)
+    const fromComposition = getCompositionState(fromLayout)
+    const toComposition = getCompositionState(toLayout)
+    const screenRect = rectLerp(fromComposition.screenRect, toComposition.screenRect, eased)
+    const presenterRect = rectLerp(fromComposition.presenterRect, toComposition.presenterRect, eased)
+    const screenAlpha = lerp(fromComposition.screenAlpha, toComposition.screenAlpha, eased)
+    const presenterAlpha = lerp(fromComposition.presenterAlpha, toComposition.presenterAlpha, eased)
+    const presenterRadius = lerp(fromComposition.presenterRadius, toComposition.presenterRadius, eased)
+
+    await drawBaseBackground()
+    drawScreenInRect(screenRect, screenAlpha)
+    drawPresenter(presenterRect, presenterRadius, presenterAlpha)
   }
 
   // Timeline-scoped visual effects are rendered into the same canvas as the video,

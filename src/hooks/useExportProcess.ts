@@ -45,6 +45,7 @@ export const useExportProcess = () => {
       // Preserve cinematic 3D camera tracks in the state sent to the export renderer.
       cameraMotions: fullState.cameraMotions,
       visualEffects: fullState.visualEffects,
+      compositionLayouts: fullState.compositionLayouts,
       audioClips: fullState.audioClips,
       mouseClickSoundsEnabled: fullState.mouseClickSoundsEnabled,
       mouseClickSoundPath: fullState.mouseClickSoundPath,

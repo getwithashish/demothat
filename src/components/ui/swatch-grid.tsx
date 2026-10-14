@@ -54,7 +54,7 @@ export function SwatchGrid({
             onClick={() => onSelect(item.id)}
             className={cn(
               'aspect-square overflow-hidden rounded-ctl',
-              'border border-[rgba(128,128,128,0.3)]',
+              'border border-line',
               'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
               selected ? 'outline-solid outline-2 outline-offset-2 outline-accent' : 'hover:border-fg/40',
             )}

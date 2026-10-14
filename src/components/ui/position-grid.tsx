@@ -64,9 +64,9 @@ export function PositionGrid({
             disabled={disabled}
             onClick={() => onChange(cell.value)}
             className={cn(
-              'flex items-center justify-center rounded-[5px]',
+              'flex items-center justify-center rounded-[5px] transition-colors',
               'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
-              disabled ? 'cursor-not-allowed' : 'cursor-pointer',
+              'hover:bg-ctl-hover disabled:cursor-not-allowed disabled:hover:bg-transparent',
               cell.className,
             )}
           >

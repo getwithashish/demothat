@@ -502,7 +502,7 @@ export const Preview = memo(
               }
               return <div key={effect.id} role="button" tabIndex={selected ? 0 : -1} aria-label={`Move ${effect.kind} effect`} onMouseDown={event => beginEffectTransform(event, effect, 'move')} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') setSelectedRegionId(effect.id) }} style={shapeStyle} title={`${effect.kind} — drag to move${selected ? ', use corner handle to resize' : ''}`}>
                 <span className="absolute -left-px -top-5 rounded px-1.5 py-0.5 text-label font-semibold capitalize text-white shadow" style={{ backgroundColor: effect.color, maxWidth: 120, overflow: 'hidden', whiteSpace: 'nowrap' }}>{effect.kind}</span>
-                {selected && <span role="presentation" onMouseDown={event => beginEffectTransform(event, effect, 'resize')} className="absolute -bottom-1.5 -right-1.5 h-3.5 w-3.5 rounded-sm border-2 border-white shadow-md" style={{ backgroundColor: effect.color, cursor: 'nwse-resize', pointerEvents: 'auto' }} />}
+                {selected && <span role="presentation" onMouseDown={event => beginEffectTransform(event, effect, 'resize')} className="absolute -bottom-1.5 -right-1.5 h-3.5 w-3.5 rounded-ctl border-2 border-white shadow-md" style={{ backgroundColor: effect.color, cursor: 'nwse-resize', pointerEvents: 'auto' }} />}
               </div>
             })}
           </div>

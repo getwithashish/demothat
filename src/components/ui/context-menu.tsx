@@ -127,7 +127,9 @@ export const ContextMenuItem = React.forwardRef<
 ContextMenuItem.displayName = 'ContextMenuItem'
 
 export const ContextMenuDivider = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
-  ({ className, ...props }, ref) => <div ref={ref} className={cn('context-menu-divider', className)} {...props} />,
+  ({ className, ...props }, ref) => (
+    <div ref={ref} className={cn('-mx-1.5 my-1.5 h-px bg-line', className)} {...props} />
+  ),
 )
 ContextMenuDivider.displayName = 'ContextMenuDivider'
 

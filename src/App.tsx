@@ -1,14 +1,10 @@
-import { useState, useEffect, lazy, Suspense } from 'react'
+import { useState, useEffect } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { EditorPage } from './pages/EditorPage'
 import { RecorderPage } from './pages/RecorderPage'
 import { RendererPage } from './pages/RendererPage'
 import { useEditorStore } from './store/editorStore'
 import { useStaleScrollLockGuard } from './hooks/useStaleScrollLockGuard'
-
-// Dev-only UI gallery (?ui-gallery). `import.meta.env.DEV` is statically false in a
-// production build, so the dynamic import is dropped from the shipped bundle.
-const UiGallery = import.meta.env.DEV ? lazy(() => import('./pages/UiGallery')) : null
 
 function App() {
   const [route, setRoute] = useState(window.location.hash)
@@ -42,14 +38,6 @@ function App() {
       window.removeEventListener('hashchange', handleHashChange)
     }
   }, [])
-
-  if (UiGallery && new URLSearchParams(window.location.search).has('ui-gallery')) {
-    return (
-      <Suspense fallback={null}>
-        <UiGallery />
-      </Suspense>
-    )
-  }
 
   if (route.startsWith('#renderer')) {
     return <RendererPage />

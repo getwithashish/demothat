@@ -503,7 +503,7 @@ export function RecorderPage() {
                 >
                   <SelectValue asChild>
                     <div className="flex items-center gap-1.5 text-xs">
-                      <DeviceDesktop size={14} className="text-primary shrink-0" />
+                      <DeviceDesktop size={14} className="text-accent shrink-0" />
                       <span className="truncate">
                         {displays.find((d) => String(d.id) === selectedDisplayId)?.name || '...'}
                       </span>
@@ -532,11 +532,11 @@ export function RecorderPage() {
                   <SelectValue asChild>
                     <div className="flex items-center gap-1.5 text-xs">
                       {selectedWebcamId !== 'none' ? (
-                        <DeviceComputerCamera size={14} className="text-primary shrink-0" />
+                        <DeviceComputerCamera size={14} className="text-accent shrink-0" />
                       ) : (
-                        <DeviceComputerCameraOff size={14} className="text-muted-foreground/60" />
+                        <DeviceComputerCameraOff size={14} className="text-muted/60" />
                       )}
-                      <span className={cn('truncate', selectedWebcamId === 'none' && 'text-muted-foreground')}>
+                      <span className={cn('truncate', selectedWebcamId === 'none' && 'text-muted')}>
                         {webcams.find((w) => w.id === selectedWebcamId)?.name || 'No webcam'}
                       </span>
                     </div>
@@ -565,11 +565,11 @@ export function RecorderPage() {
                   <SelectValue asChild>
                     <div className="flex items-center gap-1.5 text-xs">
                       {selectedMicId !== 'none' ? (
-                        <Microphone size={14} className="text-primary shrink-0" />
+                        <Microphone size={14} className="text-accent shrink-0" />
                       ) : (
-                        <MicrophoneOff size={14} className="text-muted-foreground/60" />
+                        <MicrophoneOff size={14} className="text-muted/60" />
                       )}
-                      <span className={cn('truncate', selectedMicId === 'none' && 'text-muted-foreground')}>
+                      <span className={cn('truncate', selectedMicId === 'none' && 'text-muted')}>
                         {mics.find((m) => m.id === selectedMicId)?.name || 'No microphone'}
                       </span>
                     </div>

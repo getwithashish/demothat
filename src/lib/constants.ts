@@ -1,3 +1,5 @@
+import type { CompositionLayout } from '../types'
+
 // Wallpapers
 export const WALLPAPERS = [
   { imageUrl: 'wallpapers/images/wallpaper-0001.jpg', thumbnailUrl: 'wallpapers/thumbnails/wallpaper-0001.jpg' },
@@ -27,6 +29,18 @@ export const RESOLUTIONS = {
   '2k': { width: 2560, height: 1440 },
   '4k': { width: 3840, height: 2160 },
 }
+
+// Composition layouts offered in the editor, in menu order.
+export const COMPOSITION_LAYOUTS: { value: CompositionLayout; label: string }[] = [
+  { value: 'picture-in-picture', label: 'Picture-in-picture' },
+  { value: 'side-by-side', label: 'Side-by-side' },
+  { value: 'presenter-focus', label: 'Presenter focus' },
+  { value: 'screen-only', label: 'Screen only' },
+  { value: 'presenter-top', label: 'Presenter top' },
+  { value: 'presenter-bottom', label: 'Presenter bottom' },
+  { value: 'split-vertical', label: 'Vertical split' },
+  { value: 'large-picture-in-picture', label: 'Large picture-in-picture' },
+]
 
 // Application-wide constants
 export const APP = {

@@ -12,6 +12,7 @@ import { cn } from '../../lib/utils'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip'
 import { AudioSettings } from './sidepanel/AudioSettings'
 import { CameraMotionSettings } from './sidepanel/CameraMotionSettings'
+import { CompositionLayoutSettings } from './sidepanel/CompositionLayoutSettings'
 import { VisualEffectsSettings } from './sidepanel/VisualEffectsSettings'
 
 interface TabButtonProps {
@@ -127,13 +128,11 @@ export function SidePanel() {
     return zoomRegions[selectedRegionId] || cutRegions[selectedRegionId]
   }, [selectedRegionId, zoomRegions, cutRegions])
 
-  // Auto switch to 'general' tab when a region is selected
+  // Auto switch to the panel that owns the current selection.
   useEffect(() => {
     if (selectedAudioClip) {
       setActiveSidePanelTab('audio')
-    } else if (selectedCompositionLayout) {
-      setActiveSidePanelTab('camera')
-    } else if (selectedRegion || selectedCameraMotion || selectedVisualEffect) {
+    } else if (selectedRegion || selectedCameraMotion || selectedCompositionLayout || selectedVisualEffect) {
       setActiveSidePanelTab('general')
     }
   }, [selectedRegion, selectedCameraMotion, selectedCompositionLayout, selectedAudioClip, selectedVisualEffect, setActiveSidePanelTab])
@@ -177,7 +176,7 @@ export function SidePanel() {
         {/* Render all panels but only show the active one.
             This prevents unmounting and preserves the internal state of components like Collapse. */}
         <div className="h-full" hidden={activeSidePanelTab !== 'general'}>
-          {selectedCameraMotion ? <CameraMotionSettings /> : selectedRegion ? <RegionSettingsPanel region={selectedRegion} /> : <FrameSettingsPanel />}
+          {selectedCompositionLayout ? <CompositionLayoutSettings /> : selectedCameraMotion ? <CameraMotionSettings /> : selectedRegion ? <RegionSettingsPanel region={selectedRegion} /> : <FrameSettingsPanel />}
         </div>
         <div className="h-full" hidden={activeSidePanelTab !== 'camera'}>
           <CameraSettings />

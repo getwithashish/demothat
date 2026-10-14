@@ -1,5 +1,5 @@
 import React from 'react'
-import { Scissors, ZoomIn, ZoomOut, Trash, ArrowBackUp, ArrowForwardUp, PlayerTrackNext, Camera } from 'tabler-icons-react'
+import { Scissors, ZoomIn, ZoomOut, Trash, ArrowBackUp, ArrowForwardUp, PlayerTrackNext, Camera, LayoutBoard } from 'tabler-icons-react'
 import { useEditorStore } from '../../store/editorStore'
 import type { AspectRatio } from '../../types'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
@@ -43,6 +43,7 @@ export function PreviewControls() {
     addCutRegion,
     addSpeedRegion,
     addCameraMotion,
+    addCompositionLayout,
     currentTime,
     duration,
     setSelectedRegionId,
@@ -52,6 +53,8 @@ export function PreviewControls() {
     setTimelineZoom,
     selectedRegionId,
     deleteRegion,
+    compositionLayouts,
+    deleteCompositionLayout,
     aspectRatio,
     setAspectRatio,
   } = useEditorStore()
@@ -64,6 +67,7 @@ export function PreviewControls() {
   const handleDelete = () => {
     if (selectedRegionId) {
       if (cameraMotions.some((motion) => motion.id === selectedRegionId)) deleteCameraMotion(selectedRegionId)
+      else if (compositionLayouts.some((range) => range.id === selectedRegionId)) deleteCompositionLayout(selectedRegionId)
       else deleteRegion(selectedRegionId)
       setSelectedRegionId(null)
     }
@@ -85,6 +89,18 @@ export function PreviewControls() {
           }}>
             <Camera className="w-4 h-4" />
             <span>3D Camera</span>
+          </ToolbarButton>
+          <ToolbarButton
+            title="Add Layout at the playhead"
+            disabled={duration <= currentTime}
+            onClick={() => {
+              addCompositionLayout('picture-in-picture')
+              const added = useEditorStore.getState().compositionLayouts.at(-1)
+              if (added) setSelectedRegionId(added.id)
+            }}
+          >
+            <LayoutBoard className="w-4 h-4" />
+            <span>Layout</span>
           </ToolbarButton>
           <ToolbarButton title="Add Cut Region" onClick={() => addCutRegion()} disabled={!!selectedRegionId}>
             <Scissors className="w-4 h-4" />

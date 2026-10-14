@@ -40,7 +40,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   return (
     <div className="modal-backdrop flex items-center justify-center" onClick={onClose}>
       <div
-        className="card-clean m-4 flex h-[60vh] max-h-[500px] w-full max-w-3xl flex-row overflow-hidden"
+        className="card-clean pointer-events-auto m-4 flex h-[60vh] max-h-[500px] w-full max-w-3xl flex-row overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Tabs */}

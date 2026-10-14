@@ -70,7 +70,7 @@ export function ContextMenu({ isOpen, onClose, position, children, className }: 
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[9999]"
+      className="pointer-events-auto fixed inset-0 z-[9999]"
       onClick={onClose}
       onContextMenu={(e) => {
         e.preventDefault()

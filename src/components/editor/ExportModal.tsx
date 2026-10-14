@@ -1,5 +1,6 @@
 // Modal for configuring export settings and showing export progress (DESIGN_SPEC §10).
 import { useEffect, useState, useMemo } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { Button } from '../ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
 import { Loader2, CircleCheck, CircleX, Folder, Ban } from 'tabler-icons-react'
@@ -49,11 +50,13 @@ const SettingsView = ({
     quality: 'medium',
   })
   const [outputPath, setOutputPath] = useState('')
-  const { duration, cutRegions, speedRegions } = useEditorStore((state) => ({
-    duration: state.duration,
-    cutRegions: state.cutRegions,
-    speedRegions: state.speedRegions,
-  }))
+  const { duration, cutRegions, speedRegions } = useEditorStore(
+    useShallow((state) => ({
+      duration: state.duration,
+      cutRegions: state.cutRegions,
+      speedRegions: state.speedRegions,
+    })),
+  )
 
   const estimatedDuration = useMemo(() => {
     if (duration === 0) return 0
@@ -305,7 +308,7 @@ export function ExportModal({
 
   return (
     <div className="modal-backdrop flex items-center justify-center">
-      <div className="card-clean m-4 flex w-full max-w-2xl flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
+      <div className="card-clean pointer-events-auto m-4 flex w-full max-w-2xl flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
         {isExporting && onMinimize && (
           <div className="flex justify-end px-4 pt-3">
             <Button variant="ghost" size="sm" onClick={onMinimize}>

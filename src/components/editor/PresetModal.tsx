@@ -108,7 +108,7 @@ export function PresetModal({ isOpen, onClose }: PresetModalProps) {
   return (
     <div className="modal-backdrop flex items-center justify-center" onClick={onClose}>
       <div
-        className="card-clean m-4 flex h-[85vh] max-h-[800px] w-full max-w-5xl flex-col overflow-hidden"
+        className="card-clean pointer-events-auto m-4 flex h-[85vh] max-h-[800px] w-full max-w-5xl flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         <PanelHeader title="Manage presets" subtitle="Select, create, or delete your frame style presets." />

@@ -98,7 +98,9 @@ const SelectScrollDownButton = React.forwardRef<
 ))
 SelectScrollDownButton.displayName = SelectPrimitive.ScrollDownButton.displayName
 
-/** Select popover (DESIGN_SPEC §6): panel bg, 1px line, 6px radius, same row padding. */
+/** Select popover (DESIGN_SPEC §6): panel bg, 1px line, 6px radius, same row padding.
+ *  z-index must stay above `.modal-backdrop` (z-250), otherwise a dialog swallows
+ *  clicks meant for its own dropdown. */
 const SelectContent = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Content>
@@ -107,7 +109,7 @@ const SelectContent = React.forwardRef<
     <SelectPrimitive.Content
       ref={ref}
       className={cn(
-        'relative z-50 max-h-96 min-w-[8rem] overflow-hidden',
+        'relative z-[300] max-h-96 min-w-[8rem] overflow-hidden',
         'rounded-ctl border border-line bg-panel text-fg shadow-[var(--sa-popover-shadow)]',
         position === 'popper' &&
           'data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1',

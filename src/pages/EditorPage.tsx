@@ -11,7 +11,8 @@ import { WindowControls } from '../components/editor/WindowControls'
 import { PresetModal } from '../components/editor/PresetModal'
 import { SettingsModal } from '../components/settings/SettingsModal'
 import { Stack3, Loader2, Check, Settings } from 'tabler-icons-react'
-import { cn } from '../lib/utils'
+import { ICON_SIZE, ICON_STROKE } from '../components/ui/icons'
+import { cn, formatTime } from '../lib/utils'
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
 import { useExportProcess } from '../hooks/useExportProcess'
 import { Button } from '../components/ui/button'
@@ -30,13 +31,19 @@ export function EditorPage() {
     seekBackward,
     seekForward,
   } = useEditorStore.getState()
-  const { presetSaveStatus, duration, isPreviewFullScreen } = useEditorStore(
+  const { presetSaveStatus, duration, isPreviewFullScreen, videoDimensions } = useEditorStore(
     useShallow((state) => ({
       presetSaveStatus: state.presetSaveStatus,
       duration: state.duration,
       isPreviewFullScreen: state.isPreviewFullScreen,
+      videoDimensions: state.videoDimensions,
     })),
   )
+  // Top-bar meta (DESIGN_SPEC §5 shows "project | timecode · resolution"). Display only.
+  const metaLabel =
+    duration > 0 && videoDimensions.width > 0
+      ? `${formatTime(duration, true)} · ${videoDimensions.width}\u00d7${videoDimensions.height}`
+      : null
   const { undo, redo } = useEditorStore.temporal.getState()
   const {
     isModalOpen: isExportModalOpen,
@@ -157,19 +164,19 @@ export function EditorPage() {
       case 'saving':
         return (
           <>
-            <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving...
+            <Loader2 className="mr-2 animate-spin" size={ICON_SIZE} strokeWidth={ICON_STROKE} /> Saving...
           </>
         )
       case 'saved':
         return (
           <>
-            <Check className="w-4 h-4 mr-2" /> Saved!
+            <Check className="mr-2" size={ICON_SIZE} strokeWidth={ICON_STROKE} /> Saved!
           </>
         )
       default:
         return (
           <>
-            <Stack3 className="w-4 h-4 mr-2" /> Presets
+            <Stack3 className="mr-2" size={ICON_SIZE} strokeWidth={ICON_STROKE} /> Presets
           </>
         )
     }
@@ -187,8 +194,8 @@ export function EditorPage() {
         disabled={presetSaveStatus === 'saving'}
         className={cn(
           'transition-all duration-300 w-[110px] h-8 font-medium shadow-sm',
-          presetSaveStatus === 'saved' && 'bg-green-500/15 border border-green-500/30',
-          'text-green-600 dark:text-green-400 shadow-green-500/10',
+          presetSaveStatus === 'saved' && 'bg-accent/15 border border-accent/30',
+          'text-accent shadow-accent/10',
         )}
       >
         {getPresetButtonContent()}
@@ -199,9 +206,9 @@ export function EditorPage() {
         size="icon"
         onClick={() => setSettingsModalOpen(true)}
         aria-label="Open Settings"
-        className={cn('h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded-lg')}
+        className={cn('h-8 w-8 rounded-ctl text-muted hover:bg-ctl hover:text-fg')}
       >
-        <Settings className="w-4 h-4" />
+        <Settings size={ICON_SIZE} strokeWidth={ICON_STROKE} />
       </Button>,
       updateInfo && <UpdateNotification key="update" info={updateInfo} />,
     ].filter(Boolean)
@@ -215,7 +222,7 @@ export function EditorPage() {
   }
 
   return (
-    <main className="h-screen w-screen bg-background flex flex-col overflow-hidden select-none">
+    <main className="flex h-screen w-screen flex-col overflow-hidden bg-app select-none">
       {/*
         Instead of conditionally rendering the entire layout, we now render it once
         and use CSS classes to hide/show elements and expand the preview for fullscreen.
@@ -223,32 +230,31 @@ export function EditorPage() {
       */}
       <header
         className={cn(
-          'relative h-12 flex-shrink-0 border-b border-border/50 bg-card/80 backdrop-blur-xl flex items-center justify-between px-3 shadow-xs',
+          'relative flex h-11 flex-shrink-0 items-center justify-between gap-3 border-b border-line bg-panel px-3',
           isPreviewFullScreen && 'hidden', // Hide header in fullscreen
         )}
         style={{ WebkitAppRegion: 'drag' }}
       >
-        {/* Left side controls */}
-        <div className="flex items-center gap-4 h-full">
+        {/* Left: window controls (Linux) / actions (Windows), then the app wordmark */}
+        <div className="flex min-w-0 items-center gap-3">
           {platform === 'linux' && (
-            <div className="h-full flex items-center">
+            <div className="flex h-full items-center">
               <WindowControls />
             </div>
           )}
           {platform === 'win32' && (
             <div
-              className="flex items-center gap-2 flex-row-reverse" // Use flex-row-reverse to get desired order
+              className="flex flex-row-reverse items-center gap-2" // Use flex-row-reverse to get desired order
               style={{ WebkitAppRegion: 'no-drag' }}
             >
               {renderHeaderActions()}
             </div>
           )}
+          <div className="pointer-events-none flex min-w-0 items-baseline gap-2 pl-1">
+            <h1 className="truncate text-ui font-semibold tracking-tight text-fg">ScreenArc</h1>
+            {metaLabel && <span className="truncate font-mono text-sm text-muted">{metaLabel}</span>}
+          </div>
         </div>
-
-        {/* Centered Title */}
-        <h1 className="text-sm font-bold text-foreground pointer-events-none tracking-tight absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-          ScreenArc
-        </h1>
 
         {/* Right side controls (for non-Windows) */}
         {platform !== 'win32' && (
@@ -264,16 +270,16 @@ export function EditorPage() {
       <div className={cn('flex flex-1 overflow-hidden', isPreviewFullScreen && 'h-full w-full')}>
         <div
           className={cn(
-            'w-[28rem] flex-shrink-0 bg-sidebar border-r border-sidebar-border overflow-hidden',
+            'w-[312px] flex-shrink-0 overflow-hidden border-r border-line bg-panel',
             isPreviewFullScreen && 'hidden', // Hide SidePanel in fullscreen
           )}
         >
           <SidePanel />
         </div>
-        <div className="flex-1 flex flex-col overflow-hidden bg-background">
+        <div className="flex flex-1 flex-col overflow-hidden bg-stage">
           <div
             className={cn(
-              'flex-1 flex items-center justify-center p-6 overflow-hidden min-h-0',
+              'flex min-h-0 flex-1 items-center justify-center overflow-hidden p-6',
               // Make the preview container expand to fill the screen in fullscreen mode
               isPreviewFullScreen && 'fixed inset-0 z-50 bg-black p-0',
             )}
@@ -285,7 +291,7 @@ export function EditorPage() {
           </div>
           <div
             className={cn(
-              'flex-shrink-0 bg-card/60 border-t border-border/50 backdrop-blur-sm overflow-hidden',
+              'flex-shrink-0 overflow-hidden border-t border-line bg-panel',
               isPreviewFullScreen && 'hidden', // Hide Timeline in fullscreen
             )}
           >
@@ -295,9 +301,10 @@ export function EditorPage() {
       </div>
 
       {isExporting && isExportMinimized && (
-        <button type="button" onClick={() => { setExportMinimized(false); openExportModal() }} title={`Export progress: ${Math.round(exportProgress)}% — click to expand`} className="fixed bottom-5 right-5 z-[60] flex h-14 w-14 items-center justify-center rounded-full border border-border bg-card text-sm font-semibold text-foreground shadow-xl hover:scale-105 focus:outline-none focus:ring-2 focus:ring-primary">
-          <svg className="absolute inset-0 h-14 w-14 -rotate-90" viewBox="0 0 56 56"><circle cx="28" cy="28" r="24" fill="none" stroke="currentColor" strokeOpacity=".15" strokeWidth="4"/><circle cx="28" cy="28" r="24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeDasharray={2*Math.PI*24} strokeDashoffset={2*Math.PI*24*(1-exportProgress/100)}/></svg>
-          <span className="relative">{Math.round(exportProgress)}%</span>
+        <button type="button" onClick={() => { setExportMinimized(false); openExportModal() }} title={`Export progress: ${Math.round(exportProgress)}% — click to expand`} className="fixed bottom-5 right-5 z-[60] flex h-12 w-12 items-center justify-center rounded-full border border-line bg-panel text-fg shadow-[var(--sa-popover-shadow)] outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
+          {/* Accent progress stroke on a ctl track (DESIGN_SPEC §5). */}
+          <svg className="absolute inset-0 h-12 w-12 -rotate-90" viewBox="0 0 56 56" aria-hidden="true"><circle cx="28" cy="28" r="24" fill="none" stroke="var(--sa-ctl)" strokeWidth="4"/><circle cx="28" cy="28" r="24" fill="none" stroke="var(--sa-accent)" strokeWidth="4" strokeLinecap="round" strokeDasharray={2*Math.PI*24} strokeDashoffset={2*Math.PI*24*(1-exportProgress/100)}/></svg>
+          <span className="relative font-mono text-sm">{Math.round(exportProgress)}%</span>
         </button>
       )}
       <ExportModal

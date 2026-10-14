@@ -1,12 +1,14 @@
-// Modal for configuring export settings and showing export progress
-import React, { useEffect, useState, useMemo } from 'react'
+// Modal for configuring export settings and showing export progress (DESIGN_SPEC §10).
+import { useEffect, useState, useMemo } from 'react'
 import { Button } from '../ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
-import { Upload, Loader2, CircleCheck, CircleX, Folder, Ban } from 'tabler-icons-react'
+import { Loader2, CircleCheck, CircleX, Folder, Ban } from 'tabler-icons-react'
+import { ICON_SIZE, ICON_STROKE } from '../ui/icons'
 import { Input } from '../ui/input'
-import { cn } from '../../lib/utils'
+import { Section } from '../ui/section'
 import { useEditorStore } from '../../store/editorStore'
 import { formatTime } from '../../lib/utils'
+import { PanelHeader } from './PanelHeader'
 
 export type ExportSettings = {
   format: 'mp4' | 'gif'
@@ -113,26 +115,14 @@ const SettingsView = ({
   }, [settings.format])
 
   return (
-    <>
-      {/* Header */}
-      <div className="p-6 border-b border-border flex-shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-            <Upload className="w-5 h-5 text-primary" />
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-foreground">Export Settings</h2>
-            <p className="text-sm text-muted-foreground">Configure your export options</p>
-          </div>
-        </div>
-      </div>
+    <div className="flex min-h-0 flex-col">
+      <PanelHeader title="Export settings" subtitle="Configure your export options" />
 
-      {/* Body */}
-      <div className="flex-1 p-6 overflow-y-auto">
-        <div className="space-y-5">
-          <SettingRow label="Format">
+      <div className="min-h-0 flex-1 overflow-y-auto stable-scrollbar">
+        <Section first>
+          <div className="space-y-3.5">
             <Select value={settings.format} onValueChange={(value) => handleValueChange('format', value)}>
-              <SelectTrigger>
+              <SelectTrigger label="Format" aria-label="Format">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -140,10 +130,9 @@ const SettingsView = ({
                 <SelectItem value="gif">GIF (Animation)</SelectItem>
               </SelectContent>
             </Select>
-          </SettingRow>
-          <SettingRow label="Resolution">
+
             <Select value={settings.resolution} onValueChange={(value) => handleValueChange('resolution', value)}>
-              <SelectTrigger>
+              <SelectTrigger label="Resolution" aria-label="Resolution">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -153,10 +142,9 @@ const SettingsView = ({
                 <SelectItem value="4k">4K (2160p)</SelectItem>
               </SelectContent>
             </Select>
-          </SettingRow>
-          <SettingRow label="Quality">
+
             <Select value={settings.quality} onValueChange={(value) => handleValueChange('quality', value)}>
-              <SelectTrigger>
+              <SelectTrigger label="Quality" aria-label="Quality">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -165,10 +153,9 @@ const SettingsView = ({
                 <SelectItem value="high">High</SelectItem>
               </SelectContent>
             </Select>
-          </SettingRow>
-          <SettingRow label="FPS">
+
             <Select value={String(settings.fps)} onValueChange={handleFpsChange}>
-              <SelectTrigger>
+              <SelectTrigger label="Frame rate" aria-label="Frame rate">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -176,57 +163,61 @@ const SettingsView = ({
                 <SelectItem value="60">60 FPS</SelectItem>
               </SelectContent>
             </Select>
-          </SettingRow>
-          <SettingRow label="Output File">
-            <div className="w-full flex items-center gap-2">
-              <div className="flex-1 min-w-0">
-                <Input
-                  value={outputPath}
-                  onChange={(e) => setOutputPath(e.target.value)}
-                  placeholder="Loading default path..."
-                  className="w-full h-9 bg-background text-foreground"
-                />
+
+            <div className="space-y-1.5">
+              <label htmlFor="export-output-path" className="block text-sm text-muted">
+                Output file
+              </label>
+              <div className="flex items-center gap-2">
+                <div className="min-w-0 flex-1">
+                  <Input
+                    id="export-output-path"
+                    value={outputPath}
+                    onChange={(e) => setOutputPath(e.target.value)}
+                    placeholder="Loading default path…"
+                    className="w-full"
+                  />
+                </div>
+                <Button variant="secondary" onClick={handleBrowse} className="whitespace-nowrap">
+                  Browse
+                </Button>
               </div>
-              <Button variant="secondary" size="sm" onClick={handleBrowse} className="h-9 whitespace-nowrap">
-                Browse
-              </Button>
             </div>
-          </SettingRow>
-          <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg border border-border mt-4">
-            <span className="text-sm font-medium text-foreground">Estimated Duration</span>
-            <span className="text-sm font-bold text-primary tabular-nums">{formatTime(estimatedDuration, true)}</span>
           </div>
-        </div>
+        </Section>
+
+        <Section>
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-ui text-fg">Estimated duration</span>
+            <span className="font-mono text-sm tabular-nums text-muted">{formatTime(estimatedDuration, true)}</span>
+          </div>
+        </Section>
       </div>
 
-      {/* Footer */}
-      <div className="p-4 border-t border-border flex justify-end gap-3 flex-shrink-0">
+      <div className="flex shrink-0 justify-end gap-2 border-t border-line p-4">
         <Button variant="secondary" onClick={onClose}>
           Cancel
         </Button>
         <Button onClick={() => onStartExport(settings, outputPath)} disabled={!outputPath}>
-          Start Export
+          Start export
         </Button>
       </div>
-    </>
+    </div>
   )
 }
 
 const ProgressView = ({ progress, onCancel }: { progress: number; onCancel: () => void }) => (
-  <div className="flex flex-col items-center text-center p-8">
-    <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-5">
-      <Loader2 className="w-8 h-8 text-primary animate-spin" />
+  <div className="flex flex-col items-center p-8 text-center">
+    <Loader2 size={ICON_SIZE} strokeWidth={ICON_STROKE} className="mb-4 animate-spin text-muted" />
+    <h2 className="text-title font-semibold text-fg">Exporting…</h2>
+    <p className="mt-0.5 text-sm text-muted">Please wait while we process your video.</p>
+    <div className="mt-6 h-1.5 w-full overflow-hidden rounded-full bg-ctl">
+      <div className="h-full bg-accent" style={{ width: `${progress}%` }} />
     </div>
-    <h2 className="text-lg font-semibold text-foreground mb-2">Exporting...</h2>
-    <p className="text-sm text-muted-foreground mb-8">Please wait while we process your video.</p>
-    <div className="relative w-full h-2.5 bg-muted rounded-full overflow-hidden">
-      <div
-        className="absolute top-0 left-0 h-full bg-primary rounded-full transition-all duration-300"
-        style={{ width: `${progress}%` }}
-      />
-    </div>
-    <p className="text-sm font-semibold text-primary mt-4 tabular-nums">{progress < 0.1 ? '< 1' : Math.round(progress)}%</p>
-    <Button variant="secondary" onClick={onCancel} className="mt-8 w-full">
+    <p className="mt-3 font-mono text-sm tabular-nums text-muted">
+      {progress < 0.1 ? '< 1' : Math.round(progress)}%
+    </p>
+    <Button variant="secondary" onClick={onCancel} className="mt-6 w-full">
       Cancel
     </Button>
   </div>
@@ -242,9 +233,9 @@ const ResultView = ({ result, onClose }: { result: NonNullable<ExportModalProps[
   }
 
   const getTitle = () => {
-    if (isCancelled) return 'Export Cancelled'
-    if (result.success) return 'Export Successful'
-    return 'Export Failed'
+    if (isCancelled) return 'Export cancelled'
+    if (result.success) return 'Export successful'
+    return 'Export failed'
   }
 
   const getMessage = () => {
@@ -255,36 +246,28 @@ const ResultView = ({ result, onClose }: { result: NonNullable<ExportModalProps[
 
   const getIcon = () => {
     if (isCancelled) {
-      return <Ban className="w-8 h-8 text-yellow-500" />
+      return <Ban size={ICON_SIZE} strokeWidth={ICON_STROKE} className="text-muted" />
     }
     if (result.success) {
-      return <CircleCheck className="w-8 h-8 text-green-500" />
+      return <CircleCheck size={ICON_SIZE} strokeWidth={ICON_STROKE} className="text-accent" />
     }
-    return <CircleX className="w-8 h-8 text-red-500" />
-  }
-
-  const getIconBgClass = () => {
-    if (isCancelled) return 'bg-yellow-500/10'
-    if (result.success) return 'bg-green-500/10'
-    return 'bg-red-500/10'
+    return <CircleX size={ICON_SIZE} strokeWidth={ICON_STROKE} className="text-danger" />
   }
 
   return (
-    <div className="flex flex-col items-center text-center p-8">
-      <div className={cn('w-16 h-16 rounded-full flex items-center justify-center mb-5', getIconBgClass())}>
-        {getIcon()}
-      </div>
-      <h2 className="text-lg font-semibold text-foreground mb-2">{getTitle()}</h2>
-      <p className="text-sm text-muted-foreground mb-8 max-w-xs break-words leading-relaxed">{getMessage()}</p>
-      <div className="flex w-full gap-3">
+    <div className="flex flex-col items-center p-8 text-center">
+      {getIcon()}
+      <h2 className="mt-4 text-title font-semibold text-fg">{getTitle()}</h2>
+      <p className="mt-0.5 max-w-xs break-words text-sm text-muted">{getMessage()}</p>
+      <div className="mt-6 flex w-full gap-2">
         {result.success ? (
           <>
             <Button onClick={onClose} variant="secondary" className="flex-1">
               Close
             </Button>
             <Button onClick={handleOpenFolder} className="flex-1">
-              <Folder className="w-4 h-4 mr-2" />
-              Open Folder
+              <Folder size={ICON_SIZE} strokeWidth={ICON_STROKE} className="mr-2" />
+              Open folder
             </Button>
           </>
         ) : (
@@ -321,21 +304,17 @@ export function ExportModal({
   }
 
   return (
-    <div className="modal-backdrop z-50 flex items-center justify-center">
-      <div className="card-clean w-full max-w-2xl m-4 flex flex-col" onClick={(e) => e.stopPropagation()}>
-        {isExporting && onMinimize && <div className="flex justify-end px-4 pt-3"><Button variant="ghost" size="sm" onClick={onMinimize} className="text-muted-foreground hover:text-foreground hover:bg-muted">Run in Background</Button></div>}
+    <div className="modal-backdrop flex items-center justify-center">
+      <div className="card-clean m-4 flex w-full max-w-2xl flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        {isExporting && onMinimize && (
+          <div className="flex justify-end px-4 pt-3">
+            <Button variant="ghost" size="sm" onClick={onMinimize}>
+              Run in background
+            </Button>
+          </div>
+        )}
         {renderContent()}
       </div>
     </div>
   )
 }
-
-// Helper component for settings row with 1/3 - 2/3 layout
-const SettingRow = ({ label, children }: { label: string; children: React.ReactNode }) => (
-  <div className="flex items-center gap-4">
-    <div className="w-1/3">
-      <label className="text-sm font-medium text-foreground/90 leading-none">{label}</label>
-    </div>
-    <div className="w-2/3">{children}</div>
-  </div>
-)

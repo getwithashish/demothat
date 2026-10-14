@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Button } from '../ui/button'
 import { BrandGithub } from 'tabler-icons-react'
+import { ICON_SIZE, ICON_STROKE } from '../ui/icons'
 
 export function AboutTab() {
   const [appVersion, setAppVersion] = useState('...')
@@ -17,24 +18,24 @@ export function AboutTab() {
   }
 
   return (
-    <div className="p-8 text-center flex flex-col items-center justify-center h-full">
-      <img src="media://screenarc-appicon.png" alt="ScreenArc Logo" className="w-24 h-24 mb-4 rounded-3xl shadow-lg" />
-      <h2 className="text-2xl font-bold text-foreground">ScreenArc</h2>
-      <p className="text-sm text-muted-foreground mb-6">Version {appVersion}</p>
+    <div className="relative flex h-full flex-col items-center justify-center p-8 text-center">
+      <img src="media://screenarc-appicon.png" alt="ScreenArc logo" className="mb-4 h-24 w-24 rounded-2xl" />
+      <h2 className="text-title font-semibold text-fg">ScreenArc</h2>
+      <p className="mt-0.5 font-mono text-sm text-muted">Version {appVersion}</p>
 
-      <div className="text-sm text-foreground space-y-2">
+      <div className="mt-6 space-y-1.5 text-ui text-muted">
         <p>Created with ❤️ by Tam Nguyen.</p>
         <p>A modern screen recorder and editor designed to be simple and powerful.</p>
       </div>
 
-      <div className="mt-8 flex items-center gap-4">
+      <div className="mt-6 flex items-center gap-3">
         <Button variant="secondary" onClick={() => openLink('https://github.com/tamnguyenvan/screenarc')}>
-          <BrandGithub className="w-4 h-4 mr-2" />
+          <BrandGithub size={ICON_SIZE} strokeWidth={ICON_STROKE} className="mr-2" />
           GitHub Repository
         </Button>
       </div>
 
-      <p className="absolute bottom-4 text-xs text-muted-foreground">Built with Electron, React, and TypeScript.</p>
+      <p className="absolute bottom-4 text-sm text-muted">Built with Electron, React, and TypeScript.</p>
     </div>
   )
 }

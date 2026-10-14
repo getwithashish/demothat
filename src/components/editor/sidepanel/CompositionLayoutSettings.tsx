@@ -1,11 +1,18 @@
-// Inspector for the layout range selected on the timeline. Mirrors the other
-// per-region inspectors (camera motion, zoom/cut/speed) so a selected layout
-// edits in the side panel instead of a section buried in Camera Settings.
+// Inspector for the layout range selected on the timeline (DESIGN_SPEC §10).
+// Flat Sections on the shared primitives.
 import { useEditorStore } from '../../../store/editorStore'
 import type { CompositionLayout } from '../../../types'
 import { COMPOSITION_LAYOUTS } from '../../../lib/constants'
 import { formatTime } from '../../../lib/utils'
-import { LayoutBoard, Trash } from 'tabler-icons-react'
+import { Trash } from 'tabler-icons-react'
+import { ICON_SIZE, ICON_STROKE } from '../../ui/icons'
+import { HelperText } from '../../ui/helper-text'
+import { Section } from '../../ui/section'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../ui/select'
+import { PanelHeader } from '../PanelHeader'
+
+const FIELD_CLASS =
+  'mt-1 w-full rounded-ctl border border-line bg-ctl px-2 py-1.5 font-mono text-sm text-fg outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent'
 
 export function CompositionLayoutSettings() {
   const {
@@ -24,109 +31,106 @@ export function CompositionLayoutSettings() {
   const maxDuration = Math.max(0.1, duration - selected.startTime)
 
   return (
-    <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
-      <header className="border-b border-sidebar-border p-5">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <LayoutBoard className="h-5 w-5" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <h2 className="text-base font-semibold text-sidebar-foreground">Layout</h2>
-            <p className="text-xs text-muted-foreground">
-              Controls how the screen recording and the presenter are arranged.
-            </p>
-          </div>
+    <div className="flex h-full flex-col">
+      <PanelHeader
+        title="Layout range"
+        subtitle="Controls how the screen recording and the presenter are arranged."
+        actions={
           <button
             type="button"
             title="Delete layout"
+            aria-label="Delete layout"
             onClick={() => {
               deleteCompositionLayout(selected.id)
               setSelectedRegionId(null)
             }}
-            className="rounded-md p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+            className="rounded-ctl p-1.5 text-muted hover:text-danger"
           >
-            <Trash size={16} />
+            <Trash size={ICON_SIZE} strokeWidth={ICON_STROKE} />
           </button>
-        </div>
-      </header>
+        }
+      />
 
-      <div className="flex-1 space-y-5 overflow-y-auto stable-scrollbar p-5">
-        <div className="space-y-2">
-          <label className="text-xs font-medium text-sidebar-foreground">Arrangement</label>
-          <select
-            aria-label="Layout"
+      <div className="min-h-0 flex-1 overflow-y-auto stable-scrollbar">
+        <Section first label="Arrangement">
+          <Select
             value={selected.layout}
-            onChange={(event) => updateCompositionLayout(selected.id, { layout: event.target.value as CompositionLayout })}
-            className="h-9 w-full rounded-md border border-sidebar-border bg-background px-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+            onValueChange={(layout) => updateCompositionLayout(selected.id, { layout: layout as CompositionLayout })}
           >
-            {COMPOSITION_LAYOUTS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </div>
+            <SelectTrigger aria-label="Layout">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {COMPOSITION_LAYOUTS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Section>
 
-        <section className="space-y-3 rounded-lg border border-sidebar-border p-3">
-          <h3 className="text-sm font-semibold text-sidebar-foreground">Timing</h3>
-          <p className="text-xs text-muted-foreground">
+        <Section label="Timing">
+          <HelperText className="mt-0">
             You can also drag the clip on the timeline to move or resize this range.
-          </p>
-          <div className="grid grid-cols-3 gap-2">
-            <label className="text-[11px] text-muted-foreground">
+          </HelperText>
+          <div className="mt-3.5 grid grid-cols-3 gap-2">
+            <label className="text-sm text-muted">
               Start (s)
               <input
                 type="number"
                 min="0"
                 max={maxStart}
                 step="0.1"
+                aria-label="Layout start time"
                 value={Number(selected.startTime.toFixed(2))}
                 onChange={(event) =>
                   updateCompositionLayout(selected.id, {
                     startTime: Math.max(0, Math.min(maxStart, Number(event.target.value) || 0)),
                   })
                 }
-                className="mt-1 w-full rounded-md border border-input bg-background p-2 text-xs text-foreground"
+                className={FIELD_CLASS}
               />
             </label>
-            <label className="text-[11px] text-muted-foreground">
+            <label className="text-sm text-muted">
               Duration (s)
               <input
                 type="number"
                 min="0.1"
                 max={maxDuration}
                 step="0.1"
+                aria-label="Layout duration"
                 value={Number(selected.duration.toFixed(2))}
                 onChange={(event) =>
                   updateCompositionLayout(selected.id, {
                     duration: Math.max(0.1, Math.min(maxDuration, Number(event.target.value) || 0.1)),
                   })
                 }
-                className="mt-1 w-full rounded-md border border-input bg-background p-2 text-xs text-foreground"
+                className={FIELD_CLASS}
               />
             </label>
-            <label className="text-[11px] text-muted-foreground">
+            <label className="text-sm text-muted">
               Fade (s)
               <input
                 type="number"
                 min="0"
                 max="2"
                 step="0.05"
+                aria-label="Layout fade duration"
                 value={Number(selected.transitionDuration.toFixed(2))}
                 onChange={(event) =>
                   updateCompositionLayout(selected.id, {
                     transitionDuration: Math.max(0, Math.min(2, Number(event.target.value) || 0)),
                   })
                 }
-                className="mt-1 w-full rounded-md border border-input bg-background p-2 text-xs text-foreground"
+                className={FIELD_CLASS}
               />
             </label>
           </div>
-        </section>
-
-        <p className="text-xs text-muted-foreground">
-          {formatTime(selected.startTime)} – {formatTime(selected.startTime + selected.duration)}
-        </p>
+          <div className="mt-3.5 font-mono text-sm tabular-nums text-muted">
+            {formatTime(selected.startTime)} – {formatTime(selected.startTime + selected.duration)}
+          </div>
+        </Section>
       </div>
     </div>
   )

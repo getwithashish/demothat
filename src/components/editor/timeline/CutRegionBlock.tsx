@@ -2,6 +2,7 @@ import { memo } from 'react'
 import { TimelineRegion, CutRegion } from '../../../types'
 import { cn } from '../../../lib/utils'
 import { Scissors } from 'tabler-icons-react'
+import { ICON_SIZE, ICON_STROKE } from '../../ui/icons'
 
 interface CutRegionBlockProps {
   region: CutRegion
@@ -16,6 +17,16 @@ interface CutRegionBlockProps {
   setRef: (el: HTMLDivElement | null) => void
 }
 
+/**
+ * Cut / trim region (DESIGN_SPEC §8, flat restyle). Geometry, drag targets and the
+ * drag/delete threshold behaviour are unchanged; only surfaces and handles changed.
+ *
+ * NOTE: the previous version painted 45° stripes with `rgb(var(--destructive) / 0.15)`.
+ * `--destructive` resolves to a hex token, so that declaration was invalid and never
+ * painted — the stripes were dead CSS (and a gradient, which AGENTS.md forbids beyond
+ * the spec). The remaining flat tint is what actually rendered, so removing it is a
+ * no-op visually.
+ */
 export const CutRegionBlock = memo(
   ({ region, isSelected, isDraggable = true, isBeingDragged, onMouseDown, setRef }: CutRegionBlockProps) => {
     const isTrimRegion = !!region.trimType
@@ -33,66 +44,42 @@ export const CutRegionBlock = memo(
       <div
         ref={setRef}
         data-region-id={region.id}
-        className="w-full h-full relative"
+        className="relative h-full w-full"
         style={{ willChange: 'transform, width' }}
       >
-        {/* Striped overlay above the region */}
-        <div className="absolute top-0 left-0 w-full h-[230px] translate-y-[-200px] overflow-hidden rounded-t-lg pointer-events-none">
-          <div className="absolute inset-0 bg-destructive/15" />
-          <div
-            className="absolute inset-0 opacity-30"
-            style={{
-              backgroundImage: `repeating-linear-gradient(
-              -45deg,
-              transparent,
-              transparent 8px,
-              rgb(var(--destructive) / 0.15) 8px,
-              rgb(var(--destructive) / 0.15) 16px
-            )`,
-            }}
-          />
+        {/* Flat tint marking the range that will be removed. */}
+        <div className="pointer-events-none absolute left-0 top-0 h-[230px] w-full translate-y-[-200px] overflow-hidden rounded-t-clip">
+          <div className="absolute inset-0 bg-danger/15" />
         </div>
 
         <div
           className={cn(
-            'absolute w-full h-14 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-xl border-2 backdrop-blur-sm',
-            !isBeingDragged && 'transition-all duration-200 ease-out',
-            canMove ? 'cursor-grab active:cursor-grabbing' : 'cursor-default',
-            isSelected
-              ? 'bg-card/90 border-destructive transform -translate-y-[calc(50%+10px)] shadow-xl shadow-destructive/30'
-              : 'bg-card/70 border-destructive/60 hover:border-destructive/80 hover:bg-card/80 hover:shadow-lg hover:shadow-destructive/10',
+            'absolute inset-0 flex items-center justify-center overflow-hidden rounded-clip border border-danger/60 bg-ctl',
+            canMove ? (isBeingDragged ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-default',
+            isSelected ? 'outline-solid outline-2 outline-accent' : canMove && 'hover:border-danger',
           )}
           onMouseDown={(e) => handleMouseDown(e, 'move')}
         >
           {canResizeLeft && (
             <div
-              className="absolute left-0 top-0 w-5 h-full cursor-ew-resize rounded-l-xl flex items-center justify-center z-10 group"
+              className="absolute left-0 top-0 z-10 flex h-full w-5 cursor-ew-resize items-center justify-center"
               onMouseDown={(e) => handleMouseDown(e, 'resize-left')}
             >
-              <div className="w-1 h-8 bg-destructive/50 rounded-full group-hover:bg-destructive group-hover:h-10 transition-all duration-150" />
+              <span className="h-[calc(100%-10px)] w-[3px] rounded-[2px] bg-danger/70" />
             </div>
           )}
 
-          <div className="pointer-events-none flex items-center gap-2.5 px-3 overflow-hidden">
-            <Scissors
-              className={cn('w-5 h-5 transition-colors', isSelected ? 'text-destructive' : 'text-destructive/70')}
-            />
-            <span
-              className={cn(
-                'text-xs font-semibold tracking-wide transition-colors overflow-hidden text-ellipsis',
-                isSelected ? 'text-destructive' : 'text-destructive/70',
-              )}
-            >
-              CUT
-            </span>
+          <div className="pointer-events-none flex items-center gap-1.5 overflow-hidden px-3">
+            <Scissors size={ICON_SIZE} strokeWidth={ICON_STROKE} className="shrink-0 text-danger" />
+            <span className="truncate text-sm font-medium text-fg">Cut</span>
           </div>
 
           {canResizeRight && (
             <div
-              className="absolute right-0 top-0 w-5 h-full cursor-ew-resize rounded-r-xl flex items-center justify-center z-10 group"
+              className="absolute right-0 top-0 z-10 flex h-full w-5 cursor-ew-resize items-center justify-center"
               onMouseDown={(e) => handleMouseDown(e, 'resize-right')}
             >
-              <div className="w-1 h-8 bg-destructive/50 rounded-full group-hover:bg-destructive group-hover:h-10 transition-all duration-150" />
+              <span className="h-[calc(100%-10px)] w-[3px] rounded-[2px] bg-danger/70" />
             </div>
           )}
         </div>

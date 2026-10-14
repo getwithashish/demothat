@@ -1,66 +1,29 @@
 import * as React from 'react'
 import * as SwitchPrimitives from '@radix-ui/react-switch'
-import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '../../lib/utils'
 
-const switchVariants = cva(
-  'peer inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50',
-  {
-    variants: {
-      variant: {
-        default: 'bg-input hover:bg-accent',
-        primary: 'bg-primary/20 hover:bg-primary/30',
-        destructive: 'bg-destructive/20 hover:bg-destructive/30',
-      },
-      isChecked: {
-        true: '',
-      },
-    },
-    compoundVariants: [
-      {
-        variant: 'default',
-        isChecked: true,
-        className: 'bg-primary hover:bg-primary/90',
-      },
-      {
-        variant: 'primary',
-        isChecked: true,
-        className: 'bg-primary hover:bg-primary/90',
-      },
-      {
-        variant: 'destructive',
-        isChecked: true,
-        className: 'bg-destructive hover:bg-destructive/90',
-      },
-    ],
-    defaultVariants: {
-      variant: 'default',
-    },
-  },
-)
+export interface SwitchProps extends React.ComponentPropsWithoutRef<typeof SwitchPrimitives.Root> {
+  /**
+   * Kept for source compatibility with existing call sites. The revamp uses a single
+   * switch appearance (DESIGN_SPEC §6), so every variant renders identically.
+   */
+  variant?: 'default' | 'primary' | 'destructive'
+  /** Kept for source compatibility; the visual state follows `checked`. */
+  isChecked?: boolean
+}
 
-const thumbVariants = cva(
-  'pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform',
-  {
-    variants: {
-      isChecked: {
-        true: 'translate-x-5',
-        false: 'translate-x-0',
-      },
-    },
-  },
-)
-
-export interface SwitchProps
-  extends React.ComponentPropsWithoutRef<typeof SwitchPrimitives.Root>,
-    VariantProps<typeof switchVariants> {}
-
+/**
+ * Radix Switch (DESIGN_SPEC §6): 34x20, off = ctl track with a muted knob,
+ * on = accent track with an on-accent knob.
+ */
 const Switch = React.forwardRef<React.ElementRef<typeof SwitchPrimitives.Root>, SwitchProps>(
-  ({ className, variant, checked, ...props }, ref) => (
+  ({ className, checked, ...props }, ref) => (
     <SwitchPrimitives.Root
       className={cn(
-        switchVariants({ variant, isChecked: checked }),
-        'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+        'peer inline-flex h-5 w-[34px] shrink-0 cursor-pointer items-center rounded-full p-[3px] transition-colors',
+        'bg-ctl data-[state=checked]:bg-accent',
+        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
+        'disabled:cursor-not-allowed disabled:opacity-45',
         className,
       )}
       checked={checked}
@@ -69,8 +32,8 @@ const Switch = React.forwardRef<React.ElementRef<typeof SwitchPrimitives.Root>, 
     >
       <SwitchPrimitives.Thumb
         className={cn(
-          thumbVariants({ isChecked: checked }),
-          'block h-5 w-5 rounded-full bg-white shadow-md ring-0 transition-transform',
+          'pointer-events-none block h-3.5 w-3.5 rounded-full transition-transform',
+          'translate-x-0 bg-muted data-[state=checked]:translate-x-3.5 data-[state=checked]:bg-on-accent',
         )}
       />
     </SwitchPrimitives.Root>

@@ -1,9 +1,89 @@
 @import 'tailwindcss';
+@import './styles/tokens.css';
+
+/* The in-app theme toggle drives the `dark:` variant. Without this declaration,
+   Tailwind v4 `dark:` utilities follow `prefers-color-scheme` (the OS) instead of
+   our data-theme attribute. */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+/* ---------------------------------------------------------------------------
+   Legacy semantic aliases -> Paper tokens.
+
+   Existing markup keeps its class names (bg-card, text-foreground, border-border,
+   bg-primary, ...) and renders the new palette with no JSX churn. New/restyled
+   markup uses the token names directly: bg-app, bg-panel, bg-stage, bg-ctl,
+   text-fg, text-muted, text-accent, bg-accent, text-on-accent, bg-danger,
+   border-line, bg-clip-screen, bg-clip-audio, text-ui/title/sm/label,
+   font-sans/font-mono.
+
+   Values resolve through the --sa-* tokens, so both themes follow automatically.
+   --color-accent and --color-muted are deliberately NOT aliased here: those names
+   belong to the tokens (accent = the one blue; muted = muted text).
+   --------------------------------------------------------------------------- */
+:root {
+  --background: var(--sa-bg);
+  --foreground: var(--sa-text);
+  --card: var(--sa-panel);
+  --card-foreground: var(--sa-text);
+  --popover: var(--sa-panel);
+  --popover-foreground: var(--sa-text);
+  --primary: var(--sa-accent);
+  --primary-foreground: var(--sa-on-accent);
+  --secondary: var(--sa-ctl);
+  --secondary-foreground: var(--sa-text);
+  --accent-foreground: var(--sa-text);
+  --destructive: var(--sa-danger);
+  --destructive-foreground: var(--sa-on-accent);
+  --border: var(--sa-line);
+  --input: var(--sa-line);
+  --ring: var(--sa-accent);
+  --sidebar: var(--sa-panel);
+  --sidebar-foreground: var(--sa-text);
+  --sidebar-border: var(--sa-line);
+  --color-picker-border: var(--sa-line);
+  --color-picker-border-hover: var(--sa-muted);
+  --color-picker-focus-ring: var(--sa-accent);
+  --color-picker-shadow: var(--sa-thumb-shadow);
+  --color-picker-input-bg: var(--sa-ctl);
+  --color-picker-input-border: var(--sa-line);
+  --timeline-tick: var(--sa-muted);
+  --speed-accent: var(--sa-accent);
+  --radius: 0.75rem;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-speed-accent: var(--speed-accent);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
 
 @layer components {
   .modal-backdrop {
-    @apply fixed inset-0 bg-black/30 backdrop-blur-lg;
-    animation: fadeIn 0.2s ease-out;
+    /* Above every timeline surface: region clips go up to z-200 (playhead). */
+    @apply fixed inset-0 z-[250] bg-scrim;
   }
 
   .stable-scrollbar {
@@ -11,8 +91,7 @@
   }
 
   .card-clean {
-    @apply bg-card/80 border border-border rounded-lg shadow-lg backdrop-blur-xl;
-    animation: scaleIn 0.25s ease-out;
+    @apply rounded-pv border border-line bg-panel shadow-[var(--sa-popover-shadow)];
   }
 
   .btn-clean {
@@ -20,13 +99,16 @@
   }
 
   .btn-export-premium {
-    background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.85) 100%);
-    color: hsl(var(--primary-foreground));
+    background: linear-gradient(
+      135deg,
+      var(--sa-accent) 0%,
+      color-mix(in srgb, var(--sa-accent) 85%, transparent) 100%
+    );
+    color: var(--sa-on-accent);
     box-shadow:
-      0 1px 2px rgba(0, 0, 0, 0.05),
-      0 4px 12px rgba(0, 0, 0, 0.08),
-      inset -40px -40px 60px rgba(255, 255, 255, 0.12);
-    border: 1px solid rgba(255, 255, 255, 0.2);
+      0 1px 2px rgb(0 0 0 / 0.05),
+      0 4px 12px rgb(0 0 0 / 0.08);
+    border: 1px solid color-mix(in srgb, var(--sa-on-accent) 20%, transparent);
   }
 
   .btn-export-premium::before {
@@ -36,24 +118,26 @@
     right: -50%;
     width: 100%;
     height: 100%;
-    background: radial-gradient(circle, rgba(255, 255, 255, 0.3) 0%, transparent 70%);
+    background: radial-gradient(circle, color-mix(in srgb, var(--sa-on-accent) 30%, transparent) 0%, transparent 70%);
     opacity: 0.8;
     pointer-events: none;
   }
 
   .btn-export-premium:hover:not(:disabled) {
-    background: linear-gradient(135deg, hsl(var(--primary) / 0.92) 0%, hsl(var(--primary) / 0.78) 100%);
+    background: linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--sa-accent) 92%, transparent) 0%,
+      color-mix(in srgb, var(--sa-accent) 78%, transparent) 100%
+    );
     box-shadow:
-      0 2px 4px rgba(0, 0, 0, 0.08),
-      0 6px 16px rgba(0, 0, 0, 0.12),
-      inset -40px -40px 60px rgba(255, 255, 255, 0.15);
+      0 2px 4px rgb(0 0 0 / 0.08),
+      0 6px 16px rgb(0 0 0 / 0.12);
   }
 
   .btn-export-premium:active:not(:disabled) {
     box-shadow:
-      0 1px 2px rgba(0, 0, 0, 0.08),
-      0 2px 8px rgba(0, 0, 0, 0.1),
-      inset -40px -40px 60px rgba(255, 255, 255, 0.1);
+      0 1px 2px rgb(0 0 0 / 0.08),
+      0 2px 8px rgb(0 0 0 / 0.1);
   }
 
   .timeline-tick {
@@ -135,11 +219,11 @@
   }
 
   .collapse-trigger:hover {
-    background-color: var(--accent);
+    background-color: var(--color-ctl);
   }
 
   .collapse-trigger:active {
-    background-color: var(--muted);
+    background-color: var(--color-ctl);
   }
 
   .collapse-trigger:focus-visible {
@@ -197,131 +281,24 @@
     }
   }
 
-  /* --- Context Menu (macOS style) --- */
+  /* --- Context Menu --- */
   .context-menu-backdrop {
-    @apply fixed inset-0 z-[100]; /* Lớp nền trong suốt để bắt click */
+    @apply fixed inset-0 z-[100];
   }
 
   .context-menu-panel {
-    @apply absolute min-w-[180px] rounded-lg border border-white/20 bg-neutral-800/60 p-1.5 text-sm font-medium text-neutral-100 shadow-2xl backdrop-blur-2xl;
-    animation: scaleIn 0.1s ease-out;
+    @apply absolute min-w-[180px] rounded-ctl border border-line bg-panel p-1 text-ui font-normal text-fg shadow-[var(--sa-popover-shadow)];
   }
 
   .context-menu-item {
-    @apply relative flex w-full cursor-default select-none items-center rounded-[5px] px-2.5 py-1.5 outline-none transition-colors duration-150;
-    @apply focus:bg-blue-500 focus:text-white data-[disabled]:pointer-events-none data-[disabled]:opacity-50;
-    @apply hover:bg-blue-500 hover:text-white; /* Dành cho tương tác chuột */
+    @apply relative flex w-full cursor-default select-none items-center rounded-[5px] px-2.5 py-1.5 outline-none transition-colors;
+    @apply focus:bg-ctl-hover focus:text-fg data-[disabled]:pointer-events-none data-[disabled]:opacity-50;
+    @apply hover:bg-ctl-hover hover:text-fg;
   }
 
   .context-menu-divider {
-    @apply -mx-1.5 my-1.5 h-px bg-white/15;
+    @apply -mx-1.5 my-1.5 h-px bg-line;
   }
-}
-
-/* --- THEME: Ocean Blue (DEFAULT) --- */
-[data-theme='ocean-blue'] {
-  --background: hsl(0 0% 98%);
-  --foreground: hsl(0 0% 13%);
-  --card: hsl(0 0% 100%);
-  --card-foreground: hsl(0 0% 13%);
-  --popover: hsl(0 0% 100%);
-  --popover-foreground: hsl(0 0% 13%);
-  --primary: hsl(211 100% 50%);
-  --primary-foreground: hsl(0 0% 100%);
-  --secondary: hsl(0 0% 96%);
-  --secondary-foreground: hsl(0 0% 13%);
-  --muted: hsl(0 0% 97%);
-  --muted-foreground: hsl(0 0% 46%);
-  --accent: hsl(0 0% 94%);
-  --accent-foreground: hsl(0 0% 13%);
-  --destructive: hsl(0 82% 55%);
-  --destructive-foreground: hsl(0 0% 100%);
-  --border: hsl(0 0% 89%);
-  --input: hsl(0 0% 94%);
-  --ring: hsl(211 100% 50%);
-  --sidebar: hsl(0 0% 97.5%);
-  --sidebar-foreground: hsl(0 0% 13%);
-  --sidebar-border: hsl(0 0% 87%);
-  --color-picker-border: hsl(0 0% 85%);
-  --color-picker-border-hover: hsl(0 0% 72%);
-  --color-picker-focus-ring: hsla(211, 100%, 50%, 0.25);
-  --color-picker-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-  --color-picker-input-bg: hsl(0 0% 99%);
-  --color-picker-input-border: hsl(0 0% 89%);
-  --radius: 0.75rem;
-  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', sans-serif;
-  --font-mono: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
-  --timeline-tick: hsl(0 0% 28%);
-  --speed-accent: hsl(158, 78%, 52%);
-}
-
-/* Ocean Blue Dark - macOS Style */
-[data-theme='ocean-blue'].dark {
-  --background: hsl(220 25% 6%);
-  --foreground: hsl(210 20% 98%);
-  --card: hsl(220 24% 9%);
-  --card-foreground: hsl(210 20% 98%);
-  --popover: hsl(220 24% 10%);
-  --popover-foreground: hsl(210 20% 98%);
-  --primary: hsl(213 94% 68%);
-  --primary-foreground: hsl(0 0% 100%);
-  --secondary: hsl(220 22% 14%);
-  --secondary-foreground: hsl(210 20% 98%);
-  --muted: hsl(220 22% 12%);
-  --muted-foreground: hsl(215 16% 65%);
-  --accent: hsl(220 24% 16%);
-  --accent-foreground: hsl(210 20% 98%);
-  --destructive: hsl(0 72% 58%);
-  --destructive-foreground: hsl(0 0% 100%);
-  --border: hsl(220 22% 18%);
-  --input: hsl(220 22% 14%);
-  --ring: hsl(213 94% 68%);
-  --sidebar: hsl(220 26% 7%);
-  --sidebar-foreground: hsl(210 20% 98%);
-  --sidebar-border: hsl(220 22% 18%);
-  --color-picker-border: hsl(220 20% 24%);
-  --color-picker-border-hover: hsl(220 20% 38%);
-  --color-picker-focus-ring: hsla(213, 94%, 68%, 0.4);
-  --color-picker-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
-  --color-picker-input-bg: hsl(220 22% 12%);
-  --color-picker-input-border: hsl(220 20% 24%);
-  --timeline-tick: hsl(210 18% 76%);
-  --speed-accent: hsl(158, 78%, 56%);
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-destructive-foreground: var(--destructive-foreground);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
-  --color-sidebar: var(--sidebar);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-speed-accent: var(--speed-accent);
-
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-mono);
-  --font-serif: var(--font-serif);
-
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
 }
 
 ::-webkit-scrollbar {

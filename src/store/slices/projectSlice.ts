@@ -214,8 +214,8 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
         // Represent each mouse click as an independent, removable audio clip.
         state.audioClips = state.audioClips.filter((clip) => clip.kind !== 'click')
         processedMetadata
-          .filter((item) => item.type === 'click' && item.pressed && Number.isFinite(item.timestamp) && item.timestamp >= 0)
-          .forEach((item, index) => {
+          .filter((item: MetaDataItem) => item.type === 'click' && item.pressed && Number.isFinite(item.timestamp) && item.timestamp >= 0)
+          .forEach((item: MetaDataItem, index: number) => {
             state.audioClips.push({
               id: `click-${index}-${Math.round(item.timestamp * 1000)}`,
               kind: 'click',

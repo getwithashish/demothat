@@ -1,24 +1,39 @@
 import { cva } from 'class-variance-authority'
 
+/**
+ * Button (DESIGN_SPEC §6).
+ *
+ * primary  = accent fill, on-accent text, 600, no border
+ * secondary = ctl fill + 1px line, centred (also used for full-width inspector buttons)
+ * danger   = icon in the danger colour on ctl (timeline delete)
+ * ghost    = no fill until hover
+ */
 export const buttonVariants = cva(
-  'inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
+  [
+    'inline-flex items-center justify-center whitespace-nowrap font-normal transition-colors',
+    'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
+    'disabled:pointer-events-none disabled:opacity-45',
+  ].join(' '),
   {
     variants: {
       variant: {
-        default: 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm',
-        destructive: 'bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-sm',
-        outline: 'border border-input bg-transparent hover:bg-accent hover:text-accent-foreground',
-        secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80',
-        ghost: 'hover:bg-accent hover:text-accent-foreground',
-        link: 'text-primary underline-offset-4 hover:underline',
-        toolbar:
-          'bg-card/60 hover:bg-accent/70 shadow-sm hover:shadow active:shadow-inner active:bg-black/5 dark:active:bg-white/5 active:scale-[0.97] border border-white/5 dark:border-white/10 text-muted-foreground hover:text-foreground',
+        primary: 'bg-accent font-semibold text-on-accent hover:bg-accent/90',
+        default: 'bg-accent font-semibold text-on-accent hover:bg-accent/90',
+        secondary: 'border border-line bg-ctl text-fg hover:bg-ctl-hover active:bg-ctl-hover',
+        outline: 'border border-line bg-ctl text-fg hover:bg-ctl-hover active:bg-ctl-hover',
+        danger: 'border border-line bg-ctl text-danger hover:bg-ctl-hover active:bg-ctl-hover',
+        destructive: 'bg-danger font-semibold text-on-accent hover:bg-danger/90',
+        ghost: 'bg-transparent text-muted hover:bg-ctl hover:text-fg',
+        'ghost-icon': 'bg-transparent text-muted hover:bg-ctl hover:text-fg',
+        link: 'text-accent underline-offset-4 hover:underline',
+        toolbar: 'border border-line bg-ctl text-fg hover:bg-ctl-hover active:bg-ctl-hover',
       },
       size: {
-        default: 'h-9 px-4 py-2',
-        sm: 'h-8 rounded-md px-3',
-        lg: 'h-10 rounded-md px-8',
-        icon: 'h-9 w-9',
+        default: 'h-8 gap-2 rounded-ctl px-3.5',
+        sm: 'h-7 gap-1.5 rounded-ctl px-2.5',
+        lg: 'h-9 gap-2 rounded-ctl px-4',
+        icon: 'h-8 w-8 rounded-ctl',
+        'icon-lg': 'h-9 w-9 rounded-ctl',
       },
     },
     defaultVariants: {

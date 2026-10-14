@@ -251,12 +251,15 @@ export function handleMapCursorNameToIDC(_event: IpcMainInvokeEvent, name: strin
 
 
 export async function handleOpenAudioFile(event: IpcMainInvokeEvent): Promise<{ canceled: boolean; filePath?: string; fileName?: string }> {
-  const parent = BrowserWindow.fromWebContents(event.sender) ?? undefined
-  const result = await dialog.showOpenDialog(parent, {
+  // showOpenDialog takes either (window, options) or (options): pick the overload that
+  // matches whether the invoking window still exists.
+  const parent = BrowserWindow.fromWebContents(event.sender)
+  const options: Electron.OpenDialogOptions = {
     title: 'Import audio file',
     properties: ['openFile'],
     filters: [{ name: 'Audio', extensions: ['mp3', 'wav', 'm4a', 'aac', 'ogg', 'opus', 'flac', 'aiff', 'wma'] }],
-  })
+  }
+  const result = await (parent ? dialog.showOpenDialog(parent, options) : dialog.showOpenDialog(options))
   if (result.canceled || result.filePaths.length === 0) return { canceled: true }
   const sourcePath = result.filePaths[0]
   const assetDirectory = path.join(app.getPath('userData'), 'audio-assets')
@@ -268,11 +271,12 @@ export async function handleOpenAudioFile(event: IpcMainInvokeEvent): Promise<{ 
 
 
 export async function handleOpenVideoFiles(event: IpcMainInvokeEvent): Promise<{ canceled: boolean; files?: { filePath: string; fileName: string }[] }> {
-  const parent = BrowserWindow.fromWebContents(event.sender) ?? undefined
-  const result = await dialog.showOpenDialog(parent, {
+  const parent = BrowserWindow.fromWebContents(event.sender)
+  const options: Electron.OpenDialogOptions = {
     title: 'Import video clips', properties: ['openFile', 'multiSelections'],
     filters: [{ name: 'Video', extensions: ['mp4', 'mov', 'mkv', 'webm', 'avi', 'm4v'] }],
-  })
+  }
+  const result = await (parent ? dialog.showOpenDialog(parent, options) : dialog.showOpenDialog(options))
   if (result.canceled || result.filePaths.length === 0) return { canceled: true }
   const assetDirectory = path.join(app.getPath('userData'), 'video-assets')
   await fs.mkdir(assetDirectory, { recursive: true })

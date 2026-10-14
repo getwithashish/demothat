@@ -6,6 +6,7 @@ const TooltipProvider = TooltipPrimitive.Provider
 const Tooltip = TooltipPrimitive.Root
 const TooltipTrigger = TooltipPrimitive.Trigger
 
+/** Tooltip (DESIGN_SPEC §6): panel bg, 1px line, 6px radius, 12px text, 4px 8px padding. */
 const TooltipContent = React.forwardRef<
   React.ElementRef<typeof TooltipPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Content>
@@ -14,7 +15,7 @@ const TooltipContent = React.forwardRef<
     ref={ref}
     sideOffset={sideOffset}
     className={cn(
-      'z-50 overflow-hidden rounded-md bg-gray-900 px-3 py-1.5 text-xs text-primary-foreground animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 dark:bg-gray-50',
+      'z-50 max-w-xs overflow-hidden rounded-ctl border border-line bg-panel px-2 py-1 text-sm text-fg shadow-md',
       className,
     )}
     {...props}

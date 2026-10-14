@@ -6,6 +6,8 @@ import { Input } from '../ui/input'
 import { PresetPreview } from './PresetPreview'
 import type { Preset } from '../../types'
 import { cn } from '../../lib/utils'
+import { ICON_SIZE, ICON_STROKE } from '../ui/icons'
+import { PanelHeader } from './PanelHeader'
 import { Plus, Trash, Check, Lock, Rectangle, BoxPadding, BorderRadius, Shadow, BorderAll } from 'tabler-icons-react'
 
 interface PresetModalProps {
@@ -93,23 +95,31 @@ export function PresetModal({ isOpen, onClose }: PresetModalProps) {
     }
   }
 
+  const stats = previewPreset
+    ? [
+        { icon: <Rectangle size={ICON_SIZE} strokeWidth={ICON_STROKE} />, value: previewPreset.aspectRatio },
+        { icon: <BoxPadding size={ICON_SIZE} strokeWidth={ICON_STROKE} />, value: `${previewPreset.styles.padding}%` },
+        { icon: <BorderRadius size={ICON_SIZE} strokeWidth={ICON_STROKE} />, value: `${previewPreset.styles.borderRadius}px` },
+        { icon: <Shadow size={ICON_SIZE} strokeWidth={ICON_STROKE} />, value: `${previewPreset.styles.shadowBlur}px` },
+        { icon: <BorderAll size={ICON_SIZE} strokeWidth={ICON_STROKE} />, value: `${previewPreset.styles.borderWidth}px` },
+      ]
+    : []
+
   return (
-    <div className="modal-backdrop z-50 flex items-center justify-center backdrop-blur-sm" onClick={onClose}>
+    <div className="modal-backdrop flex items-center justify-center" onClick={onClose}>
       <div
-        className="card-clean w-full max-w-5xl h-[85vh] max-h-[800px] flex flex-col m-4 shadow-2xl"
+        className="card-clean m-4 flex h-[85vh] max-h-[800px] w-full max-w-5xl flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="p-6 border-b border-border/50 flex-shrink-0 bg-gradient-to-b from-card/50 to-transparent">
-          <h2 className="text-xl font-bold text-foreground mb-1">Manage Presets</h2>
-          <p className="text-sm text-muted-foreground">Select, create, or delete your frame style presets.</p>
-        </div>
+        <PanelHeader title="Manage presets" subtitle="Select, create, or delete your frame style presets." />
 
-        <div className="flex-1 flex flex-row overflow-hidden">
-          <div className="w-1/3 border-r border-border/50 p-5 flex flex-col bg-muted/20">
-            <div className="flex-1 overflow-y-auto space-y-1.5 pr-2 custom-scrollbar">
+        <div className="flex min-h-0 flex-1 flex-row overflow-hidden">
+          {/* Preset list */}
+          <div className="flex w-1/3 flex-col border-r border-line p-4">
+            <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto stable-scrollbar">
               {presetList.map((p) =>
                 editingId === p.id ? (
-                  <div key={p.id} className="p-1">
+                  <div key={p.id} className="py-0.5">
                     <Input
                       value={editingName}
                       onChange={(e) => setEditingName(e.target.value)}
@@ -119,72 +129,67 @@ export function PresetModal({ isOpen, onClose }: PresetModalProps) {
                         if (e.key === 'Escape') cancelRename()
                       }}
                       autoFocus
-                      className="h-10"
+                      aria-label="Preset name"
                     />
                   </div>
                 ) : (
                   <button
                     key={p.id}
+                    type="button"
                     onClick={() => setPreviewId(p.id)}
                     onDoubleClick={() => handleDoubleClick(p)}
                     className={cn(
-                      'w-full text-left px-4 py-3 rounded-lg flex items-center justify-between transition-all duration-200',
+                      'flex w-full items-center justify-between rounded-ctl border-l-2 px-3 py-2 text-left text-ui transition-colors',
+                      'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
                       previewId === p.id
-                        ? 'bg-primary/15 text-primary shadow-sm border border-primary/20'
-                        : 'text-foreground hover:bg-accent/60 hover:shadow-sm',
+                        ? 'border-accent bg-ctl text-fg'
+                        : 'border-transparent text-fg hover:bg-ctl',
                     )}
                   >
-                    <span className="font-medium flex items-center gap-2">
-                      {p.name}
-                      {p.isDefault && <Lock className="w-3.5 h-3.5 text-muted-foreground" />}
+                    <span className="flex items-center gap-2">
+                      <span className="truncate">{p.name}</span>
+                      {p.isDefault && <Lock size={ICON_SIZE} strokeWidth={ICON_STROKE} className="shrink-0 text-muted" />}
                     </span>
-                    {activePresetId === p.id && <Check className="w-4 h-4 text-primary" />}
+                    {activePresetId === p.id && <Check size={ICON_SIZE} strokeWidth={ICON_STROKE} className="shrink-0 text-accent" />}
                   </button>
                 ),
               )}
             </div>
-            <div className="pt-4 border-t border-border/50 mt-3 space-y-2">
+            <div className="mt-3 space-y-2 border-t border-line pt-3">
               <Input
                 value={newPresetName}
                 onChange={(e) => setNewPresetName(e.target.value)}
-                placeholder="New preset name..."
-                className="h-10"
+                placeholder="New preset name…"
+                aria-label="New preset name"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && newPresetName.trim()) handleSaveNew()
                 }}
               />
-              <Button
-                size="sm"
-                onClick={handleSaveNew}
-                disabled={!newPresetName.trim()}
-                className="w-full h-10 font-medium"
-              >
-                <Plus className="w-4 h-4 mr-2" /> Save Current Style
+              <Button className="w-full" onClick={handleSaveNew} disabled={!newPresetName.trim()}>
+                <Plus size={ICON_SIZE} strokeWidth={ICON_STROKE} className="mr-2" />
+                Save current style
               </Button>
             </div>
           </div>
 
-          <div className="w-2/3 p-6 bg-gradient-to-br from-muted/30 to-muted/10 flex flex-col">
+          {/* Preview */}
+          <div className="flex w-2/3 flex-col bg-app p-5">
             {previewPreset ? (
-              <div className="w-full flex flex-col h-full">
-                <div className="flex items-center justify-between mb-5 flex-shrink-0">
-                  <h3 className="text-lg text-foreground font-semibold flex items-center gap-2.5">
-                    {previewPreset.name}
-                    {previewPreset.isDefault && <Lock className="w-4 h-4 text-muted-foreground" />}
+              <div className="flex h-full w-full min-h-0 flex-col">
+                <div className="mb-4 flex flex-shrink-0 items-center justify-between gap-3">
+                  <h3 className="flex min-w-0 items-center gap-2 text-title font-semibold text-fg">
+                    <span className="truncate">{previewPreset.name}</span>
+                    {previewPreset.isDefault && <Lock size={ICON_SIZE} strokeWidth={ICON_STROKE} className="shrink-0 text-muted" />}
                   </h3>
                   {!previewPreset.isDefault && (
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => handleDelete(previewPreset.id)}
-                      className="h-9"
-                    >
-                      <Trash className="w-4 h-4 mr-2" /> Delete
+                    <Button variant="danger" size="sm" onClick={() => handleDelete(previewPreset.id)}>
+                      <Trash size={ICON_SIZE} strokeWidth={ICON_STROKE} className="mr-2" />
+                      Delete
                     </Button>
                   )}
                 </div>
 
-                <div className="flex-1 flex items-center justify-center min-h-0 p-4">
+                <div className="flex min-h-0 flex-1 items-center justify-center">
                   <PresetPreview
                     styles={previewPreset.styles}
                     aspectRatio={previewPreset.aspectRatio}
@@ -194,43 +199,29 @@ export function PresetModal({ isOpen, onClose }: PresetModalProps) {
                   />
                 </div>
 
-                <div className="flex-shrink-0 flex items-center justify-center flex-wrap gap-x-6 gap-y-2 mt-5 pt-5 border-t border-border/30">
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground font-medium">
-                    <Rectangle className="w-4 h-4" />
-                    <span>{previewPreset.aspectRatio}</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground font-medium">
-                    <BoxPadding className="w-4 h-4" />
-                    <span>{previewPreset.styles.padding}%</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground font-medium">
-                    <BorderRadius className="w-4 h-4" />
-                    <span>{previewPreset.styles.borderRadius}px</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground font-medium">
-                    <Shadow className="w-4 h-4" />
-                    <span>{previewPreset.styles.shadowBlur}px</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground font-medium">
-                    <BorderAll className="w-4 h-4" />
-                    <span>{previewPreset.styles.borderWidth}px</span>
-                  </div>
+                <div className="mt-4 flex flex-shrink-0 flex-wrap items-center justify-center gap-x-5 gap-y-2 border-t border-line pt-4">
+                  {stats.map((stat) => (
+                    <span key={stat.value} className="flex items-center gap-1.5 text-sm text-muted">
+                      {stat.icon}
+                      <span className="font-mono tabular-nums">{stat.value}</span>
+                    </span>
+                  ))}
                 </div>
               </div>
             ) : (
-              <div className="flex-1 flex items-center justify-center">
-                <p className="text-muted-foreground">Select a preset to preview</p>
+              <div className="flex flex-1 items-center justify-center">
+                <p className="text-sm text-muted">Select a preset to preview</p>
               </div>
             )}
           </div>
         </div>
 
-        <div className="p-5 border-t border-border/50 flex justify-end gap-3 flex-shrink-0 bg-gradient-to-t from-card/50 to-transparent">
-          <Button variant="secondary" onClick={onClose} className="h-10 px-6">
+        <div className="flex flex-shrink-0 justify-end gap-2 border-t border-line p-4">
+          <Button variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={handleSelect} disabled={!previewId} className="h-10 px-6 font-medium">
-            Select Preset
+          <Button onClick={handleSelect} disabled={!previewId}>
+            Select preset
           </Button>
         </div>
       </div>

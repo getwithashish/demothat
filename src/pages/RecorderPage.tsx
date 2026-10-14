@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { ICON_SIZE, ICON_STROKE } from '../components/ui/icons'
 import {
   Microphone,
   MicrophoneOff,
@@ -452,33 +453,33 @@ export function RecorderPage() {
         <div data-interactive="true" className="relative">
           {/* Main Control Bar */}
           <div
-            className="relative flex items-center gap-3 px-4 py-3 rounded-2xl bg-card border border-border shadow-2xl"
+            className="relative flex items-center gap-3 rounded-pv border border-line bg-panel px-4 py-3 shadow-[var(--sa-popover-shadow)]"
             style={{ WebkitAppRegion: 'drag' }}
           >
             <button
               onClick={() => window.electronAPI.closeWindow()}
               style={{ WebkitAppRegion: 'no-drag' }}
-              className="absolute -top-2.5 -left-2.5 z-20 flex items-center justify-center w-6 h-6 rounded-full bg-destructive/90 hover:bg-destructive text-white shadow-lg transition-all hover:scale-110"
+              className="absolute -top-2.5 -left-2.5 z-20 flex h-6 w-6 items-center justify-center rounded-full border border-line bg-panel text-danger hover:bg-ctl"
               aria-label="Close Recorder"
               disabled={isRecording || isBusy}
             >
-              <X className="w-3.5 h-3.5" />
+              <X size={ICON_SIZE} strokeWidth={ICON_STROKE} />
             </button>
 
             {/* Source Toggle */}
             <div
-              className="flex items-center p-1 bg-muted/60 rounded-xl border border-border/50"
+              className="flex items-center gap-0.5 rounded-seg border border-line bg-ctl p-0.5"
               style={{ WebkitAppRegion: 'no-drag' }}
             >
               <SourceButton
-                icon={<DeviceDesktop size={16} />}
+                icon={<DeviceDesktop size={ICON_SIZE} strokeWidth={ICON_STROKE} />}
                 isActive={source === 'fullscreen'}
                 onClick={() => setSource('fullscreen')}
                 tooltip="Full Screen"
                 disabled={isRecording || isBusy}
               />
               <SourceButton
-                icon={<Marquee2 size={16} />}
+                icon={<Marquee2 size={ICON_SIZE} strokeWidth={ICON_STROKE} />}
                 isActive={source === 'area'}
                 onClick={() => setSource('area')}
                 tooltip="Area"
@@ -486,7 +487,7 @@ export function RecorderPage() {
               />
             </div>
 
-            <div className="w-px h-8 bg-border/50"></div>
+            <div className="h-5 w-px bg-line"></div>
 
             {/* Device Selectors */}
             <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' }}>
@@ -616,14 +617,14 @@ export function RecorderPage() {
                       : 'System audio: OFF (click to enable)'
                   }
                   className={cn(
-                    'flex items-center gap-1.5 h-9 px-2.5 rounded-lg border text-xs transition-all',
+                    'flex h-7 items-center gap-1.5 rounded-ctl border px-2.5 text-ui transition-colors',
                     systemAudioEnabled
-                      ? 'bg-primary/10 border-primary/30 text-primary'
-                      : 'bg-muted/40 border-border/50 text-muted-foreground hover:text-foreground hover:bg-background/50',
-                    (isRecording || isBusy) && 'opacity-50 cursor-not-allowed',
+                      ? 'border-accent bg-ctl text-fg'
+                      : 'border-line bg-ctl text-muted hover:text-fg',
+                    (isRecording || isBusy) && 'cursor-not-allowed opacity-45',
                   )}
                 >
-                  {systemAudioEnabled ? <Volume size={14} /> : <VolumeOff size={14} />}
+                  {systemAudioEnabled ? <Volume size={ICON_SIZE} strokeWidth={ICON_STROKE} /> : <VolumeOff size={ICON_SIZE} strokeWidth={ICON_STROKE} />}
                   <span className="truncate">System audio</span>
                 </button>
               )}
@@ -641,27 +642,27 @@ export function RecorderPage() {
                     : 'Clean Demo Mode: OFF (hide Dock, menu bar, other apps and desktop icons while recording)'
                 }
                 className={cn(
-                  'flex items-center gap-1.5 h-9 px-2.5 rounded-lg border text-xs transition-all',
+                  'flex h-7 items-center gap-1.5 rounded-ctl border px-2.5 text-ui transition-colors',
                   cleanDemoEnabled
-                    ? 'bg-primary/10 border-primary/30 text-primary'
-                    : 'bg-muted/40 border-border/50 text-muted-foreground hover:text-foreground hover:bg-background/50',
-                  (isRecording || isBusy) && 'opacity-50 cursor-not-allowed',
+                    ? 'border-accent bg-ctl text-fg'
+                    : 'border-line bg-ctl text-muted hover:text-fg',
+                  (isRecording || isBusy) && 'cursor-not-allowed opacity-45',
                 )}
               >
-                {cleanDemoEnabled ? <Presentation size={14} /> : <PresentationOff size={14} />}
+                {cleanDemoEnabled ? <Presentation size={ICON_SIZE} strokeWidth={ICON_STROKE} /> : <PresentationOff size={ICON_SIZE} strokeWidth={ICON_STROKE} />}
                 <span className="truncate">Clean demo</span>
               </button>
             </div>
 
-            <div className="w-px h-8 bg-border/50"></div>
+            <div className="h-5 w-px bg-line"></div>
 
             {/* Cursor Scale (Linux Only) */}
             {platform === 'linux' && (
               <>
                 <div className="flex items-center gap-1.5" style={{ WebkitAppRegion: 'no-drag' }}>
-                  <Pointer size={14} className="text-muted-foreground/60" />
+                  <Pointer size={ICON_SIZE} strokeWidth={ICON_STROKE} className="text-muted" />
                   <Select value={String(cursorScale)} onValueChange={handleCursorScaleChange} disabled={isRecording || isBusy}>
-                    <SelectTrigger variant="minimal" className="w-[56px] h-9 text-xs" aria-label="Select cursor scale">
+                    <SelectTrigger variant="minimal" className="w-16" aria-label="Select cursor scale">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent align="end">
@@ -673,7 +674,7 @@ export function RecorderPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="w-px h-8 bg-border/50"></div>
+                <div className="h-5 w-px bg-line"></div>
               </>
             )}
 
@@ -686,9 +687,8 @@ export function RecorderPage() {
                     title="Stop Recording"
                     variant="destructive"
                     size="icon"
-                    className="h-10 w-10 rounded-full shadow-lg"
                   >
-                    <Square size={16} fill="currentColor" />
+                    <Square size={ICON_SIZE} strokeWidth={ICON_STROKE} fill="currentColor" />
                   </Button>
                 ) : (
                   <Button
@@ -696,9 +696,8 @@ export function RecorderPage() {
                     title="Record"
                     disabled={isInitializing || isBusy}
                     size="icon"
-                    className="h-10 w-10 rounded-full shadow-lg"
                   >
-                    <Video size={18} />
+                    <Video size={ICON_SIZE} strokeWidth={ICON_STROKE} />
                   </Button>
                 )}
                 <Button
@@ -707,16 +706,15 @@ export function RecorderPage() {
                   disabled={isInitializing || isBusy || isRecording}
                   variant="secondary"
                   size="icon"
-                  className="h-10 w-10 rounded-full shadow-lg"
                 >
-                  <Folder size={18} />
+                  <Folder size={ICON_SIZE} strokeWidth={ICON_STROKE} />
                 </Button>
               </div>
               <div className="w-8 h-10 flex items-center justify-center">
                 <Loader2
-                  size={20}
+                  size={ICON_SIZE}
                   className={cn(
-                    'animate-spin text-primary transition-opacity duration-300',
+                    'animate-spin text-muted',
                     actionInProgress !== 'none' || isInitializing ? 'opacity-100' : 'opacity-0',
                   )}
                 />
@@ -727,7 +725,7 @@ export function RecorderPage() {
           {/* Webcam Preview */}
           <div
             className={cn(
-              'mt-4 mx-auto w-48 aspect-square rounded-[32%] overflow-hidden shadow-2xl bg-black ring-2 ring-border/20 transition-all duration-300',
+              'mx-auto mt-4 aspect-square w-48 overflow-hidden rounded-2xl bg-stage ring-1 ring-line',
               selectedWebcamId !== 'none' && actionInProgress === 'none' && !isRecording
                 ? 'opacity-100 scale-100'
                 : 'opacity-0 scale-95 pointer-events-none',
@@ -749,10 +747,11 @@ const SourceButton = ({
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & { icon: React.ReactNode; isActive: boolean; tooltip?: string }) => (
   <button
     className={cn(
-      'flex items-center justify-center w-10 h-9 rounded-lg transition-all duration-200 outline-none focus-visible:ring-2 focus-visible:ring-ring',
+      'flex h-7 w-8 items-center justify-center rounded-[5px] text-ui outline-none transition-colors',
+      'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
       isActive
-        ? 'bg-primary shadow-sm text-primary-foreground'
-        : 'text-muted-foreground hover:text-foreground hover:bg-background/50',
+        ? 'bg-panel text-fg shadow-[0_0_0_1px_var(--sa-line)]'
+        : 'text-muted hover:text-fg',
     )}
     title={tooltip}
     {...props}

@@ -4,6 +4,7 @@ import { cn } from '../../../lib/utils'
 import { PlayerTrackNext, Check } from 'tabler-icons-react'
 import { useEditorStore } from '../../../store/editorStore'
 import { ContextMenu, ContextMenuItem, ContextMenuDivider, ContextMenuLabel } from '../../ui/context-menu'
+import { ICON_SIZE, ICON_STROKE } from '../../ui/icons'
 
 interface SpeedRegionBlockProps {
   region: SpeedRegion
@@ -19,6 +20,10 @@ interface SpeedRegionBlockProps {
 
 const SPEED_OPTIONS = [1, 1.2, 1.4, 1.6, 2, 3, 4, 8, 16]
 
+/**
+ * Speed region (DESIGN_SPEC §8, flat restyle). Right-click menu, drag targets and
+ * resize-handle hit areas are unchanged.
+ */
 export const SpeedRegionBlock = memo(
   ({ region, isSelected, isBeingDragged, onMouseDown, setRef }: SpeedRegionBlockProps) => {
     const [isMenuOpen, setMenuOpen] = useState(false)
@@ -56,11 +61,9 @@ export const SpeedRegionBlock = memo(
           ref={setRef}
           data-region-id={region.id}
           className={cn(
-            'absolute w-full h-12 top-0 rounded-xl cursor-grab border-2 backdrop-blur-sm',
-            !isBeingDragged && 'transition-all duration-200 ease-out',
-            isSelected
-              ? 'bg-card/90 border-speed-accent shadow-lg shadow-speed-accent/10'
-              : 'bg-card/70 border-border/60 hover:border-speed-accent/80 hover:bg-card/80 hover:shadow-lg hover:shadow-speed-accent/10',
+            'absolute h-full w-full overflow-hidden rounded-clip border border-line bg-ctl',
+            isBeingDragged ? 'cursor-grabbing' : 'cursor-grab',
+            isSelected ? 'outline-solid outline-2 outline-accent' : 'hover:border-muted',
           )}
           style={{ willChange: 'transform, width' }}
           onMouseDown={(e) => {
@@ -71,43 +74,26 @@ export const SpeedRegionBlock = memo(
           }}
           onContextMenu={handleContextMenu}
         >
-          {/* Resize Handles */}
+          {/* Resize handles */}
           <div
-            className="absolute left-0 top-0 w-5 h-full cursor-ew-resize rounded-l-xl flex items-center justify-center z-10 group"
+            className="absolute left-0 top-0 z-10 flex h-full w-5 cursor-ew-resize items-center justify-center"
             onMouseDown={(e) => handleResizeMouseDown(e, 'resize-left')}
           >
-            <div
-              className={cn(
-                'w-1 h-6 bg-speed-accent/50 rounded-full group-hover:bg-speed-accent group-hover:h-8 transition-all duration-150',
-              )}
-            />
+            <span className="h-[calc(100%-10px)] w-[3px] rounded-[2px] bg-accent" />
           </div>
           <div
-            className="absolute right-0 top-0 w-5 h-full cursor-ew-resize rounded-r-xl flex items-center justify-center z-10 group"
+            className="absolute right-0 top-0 z-10 flex h-full w-5 cursor-ew-resize items-center justify-center"
             onMouseDown={(e) => handleResizeMouseDown(e, 'resize-right')}
           >
-            <div
-              className={cn(
-                'w-1 h-6 bg-speed-accent/50 rounded-full group-hover:bg-speed-accent group-hover:h-8 transition-all duration-150',
-              )}
-            />
+            <span className="h-[calc(100%-10px)] w-[3px] rounded-[2px] bg-accent" />
           </div>
 
           {/* Content */}
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none px-3">
-            <div className="flex items-center gap-2 overflow-hidden">
-              <PlayerTrackNext
-                className={cn('w-4 h-4 shrink-0 transition-colors text-speed-accent', !isSelected && 'opacity-70')}
-              />
-              <span
-                className={cn(
-                  'text-sm font-bold tracking-wide select-none whitespace-nowrap transition-colors text-speed-accent',
-                  !isSelected && 'opacity-70',
-                )}
-              >
-                {region.speed}x
-              </span>
-            </div>
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden px-3">
+            <span className="flex items-center gap-1.5 overflow-hidden">
+              <PlayerTrackNext size={ICON_SIZE} strokeWidth={ICON_STROKE} className="shrink-0 text-muted" />
+              <span className="truncate text-sm font-medium text-fg">{region.speed}x</span>
+            </span>
           </div>
         </div>
 

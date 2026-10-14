@@ -1,4 +1,15 @@
 /**
+ * Icon sizing for every tabler-icons-react usage in the renderer.
+ *
+ * AGENTS.md states this as a hard rule ("icons: keep tabler-icons-react, size 18,
+ * stroke 1.6"), so it lives here once rather than being repeated per call site.
+ * Note: tabler-icons-react's `stroke` prop is the SVG stroke *colour*; the width
+ * prop is `strokeWidth`.
+ */
+export const ICON_SIZE = 18
+export const ICON_STROKE = 1.6
+
+/**
  * Base icon properties that all icons inherit from
  */
 interface IconProps extends React.SVGProps<SVGSVGElement> {

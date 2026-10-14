@@ -1,53 +1,25 @@
-// Settings panel for video background (wallpaper, color, gradient, image)
+// Background controls for the Layout panel (wallpaper, colour, gradient, image).
+// Rebuilt on the shared primitives: flat Section, SegmentedControl, SwatchGrid, ColorField.
 import type React from 'react'
 import { useState, useRef, useEffect } from 'react'
 import { useEditorStore } from '../../../store/editorStore'
-import { cn } from '../../../lib/utils'
 import { WALLPAPERS } from '../../../lib/constants'
-import { Photo, Check, CloudUpload, X, Plus } from 'tabler-icons-react'
-import { PaintBrushIcon } from '../../ui/icons'
-import { ControlGroup } from './ControlGroup'
+import { CloudUpload } from 'tabler-icons-react'
 import { Button } from '../../ui/button'
-import { ColorPickerRoundedRect } from '../../ui/color-picker'
+import { ColorField } from '../../ui/color-field'
+import { HelperText } from '../../ui/helper-text'
+import { Section } from '../../ui/section'
+import { SegmentedControl } from '../../ui/segmented-control'
+import { SwatchGrid, type SwatchItem } from '../../ui/swatch-grid'
 
 type BackgroundTab = 'color' | 'gradient' | 'image' | 'wallpaper'
 
-// --- Sub-components for each tab ---
-
-const WallpaperSelector = () => {
-  const { frameStyles, updateBackground } = useEditorStore()
-  return (
-    <div className="grid grid-cols-6 gap-2">
-      {WALLPAPERS.slice(0, 18).map((wallpaper, index) => (
-        <button
-          key={`${wallpaper.thumbnailUrl}-${index}`}
-          onClick={() =>
-            updateBackground({ type: 'wallpaper', thumbnailUrl: wallpaper.thumbnailUrl, imageUrl: wallpaper.imageUrl })
-          }
-          className={cn(
-            'relative aspect-square rounded-lg overflow-hidden border-2 transition-all duration-200 hover:scale-105',
-            frameStyles.background.thumbnailUrl === wallpaper.thumbnailUrl
-              ? 'border-primary ring-2 ring-primary/20 scale-105'
-              : 'border-sidebar-border hover:border-primary/50',
-          )}
-        >
-          <img
-            src={wallpaper.thumbnailUrl || '/placeholder.svg'}
-            alt={`Wallpaper ${index + 1}`}
-            className="w-full h-full object-cover"
-          />
-          {frameStyles.background.thumbnailUrl === wallpaper.thumbnailUrl && (
-            <div className="absolute inset-0 bg-primary/10 flex items-center justify-center backdrop-blur-[1px]">
-              <div className="w-5 h-5 bg-primary rounded-full flex items-center justify-center shadow-lg">
-                <Check className="w-3 h-3 text-primary-foreground" />
-              </div>
-            </div>
-          )}
-        </button>
-      ))}
-    </div>
-  )
-}
+const TAB_OPTIONS: { value: BackgroundTab; label: string }[] = [
+  { value: 'wallpaper', label: 'Wallpaper' },
+  { value: 'color', label: 'Color' },
+  { value: 'gradient', label: 'Gradient' },
+  { value: 'image', label: 'Image' },
+]
 
 const COLOR_PRESETS = [
   '#7c3aed',
@@ -69,61 +41,6 @@ const COLOR_PRESETS = [
   '#d946ef',
 ]
 
-const ColorSelector = () => {
-  const { frameStyles, updateBackground } = useEditorStore()
-  return (
-    <div className="grid grid-cols-6 gap-2">
-      {COLOR_PRESETS.map((color) => (
-        <button
-          key={color}
-          onClick={() => updateBackground({ type: 'color', color })}
-          className={cn(
-            'w-full aspect-square rounded-lg border-2 transition-all duration-200 hover:scale-105',
-            frameStyles.background.color === color
-              ? 'border-primary ring-2 ring-primary/20 scale-105'
-              : 'border-sidebar-border hover:border-primary/50',
-          )}
-          style={{ backgroundColor: color }}
-          title={color}
-        >
-          {frameStyles.background.color === color && (
-            <div className="w-full h-full flex items-center justify-center">
-              <div className="w-5 h-5 bg-white/90 rounded-full flex items-center justify-center shadow-lg">
-                <Check className="w-3 h-3 text-gray-800" />
-              </div>
-            </div>
-          )}
-        </button>
-      ))}
-      <label
-        className={cn(
-          'relative w-full aspect-square rounded-lg border-2 cursor-pointer transition-all duration-200 hover:scale-105',
-          'border-sidebar-border hover:border-primary/50',
-        )}
-        title="Custom Color"
-      >
-        <input
-          type="color"
-          value={frameStyles.background.color || '#ffffff'}
-          onChange={(e) => updateBackground({ type: 'color', color: e.target.value })}
-          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-        />
-        <div
-          className="absolute inset-0 w-full h-full rounded-lg"
-          style={{
-            background:
-              'conic-gradient(from 90deg at 50% 50%, #ef4444 0%, #eab308 25%, #10b981 50%, #3b82f6 75%, #7c3aed 100%)',
-            opacity: 0.9,
-          }}
-        />
-        <div className="absolute inset-0 flex items-center justify-center bg-black/10 rounded-lg">
-          <Plus className="w-4 h-4 text-white/90 drop-shadow-sm" />
-        </div>
-      </label>
-    </div>
-  )
-}
-
 const GRADIENT_PRESETS = [
   { name: 'Top to Bottom', direction: 'to bottom' },
   { name: 'Bottom to Top', direction: 'to top' },
@@ -136,6 +53,56 @@ const GRADIENT_PRESETS = [
   { name: 'Center Out', direction: 'circle-out' },
   { name: 'Center In', direction: 'circle-in' },
 ]
+
+const gradientPreview = (direction: string): React.CSSProperties => {
+  if (direction === 'circle-in') return { background: 'radial-gradient(circle, #ffffff, #808080)' }
+  if (direction.startsWith('circle')) return { background: 'radial-gradient(circle, #808080, #ffffff)' }
+  return { background: `linear-gradient(${direction}, #808080, #ffffff)` }
+}
+
+const WallpaperSelector = () => {
+  const { frameStyles, updateBackground } = useEditorStore()
+  const items: SwatchItem[] = WALLPAPERS.slice(0, 18).map((wallpaper, index) => ({
+    id: wallpaper.thumbnailUrl,
+    label: `Wallpaper ${index + 1}`,
+    imageUrl: wallpaper.thumbnailUrl || '/placeholder.svg',
+  }))
+
+  return (
+    <SwatchGrid
+      aria-label="Wallpaper"
+      items={items}
+      selectedId={frameStyles.background.thumbnailUrl ?? null}
+      onSelect={(thumbnailUrl) => {
+        const wallpaper = WALLPAPERS.find((entry) => entry.thumbnailUrl === thumbnailUrl)
+        if (wallpaper) {
+          updateBackground({ type: 'wallpaper', thumbnailUrl: wallpaper.thumbnailUrl, imageUrl: wallpaper.imageUrl })
+        }
+      }}
+    />
+  )
+}
+
+const ColorSelector = () => {
+  const { frameStyles, updateBackground } = useEditorStore()
+  const items: SwatchItem[] = COLOR_PRESETS.map((color) => ({ id: color, label: color, color }))
+
+  return (
+    <div className="space-y-3">
+      <SwatchGrid
+        aria-label="Background colour"
+        items={items}
+        selectedId={frameStyles.background.color ?? null}
+        onSelect={(color) => updateBackground({ type: 'color', color })}
+      />
+      <ColorField
+        label="Custom colour"
+        value={frameStyles.background.color || '#ffffff'}
+        onChange={(color) => updateBackground({ type: 'color', color })}
+      />
+    </div>
+  )
+}
 
 const GradientSelector = () => {
   const { frameStyles, updateBackground } = useEditorStore()
@@ -161,70 +128,35 @@ const GradientSelector = () => {
       gradientDirection: frameStyles.background.gradientDirection,
     })
 
-  return (
-    <div className="space-y-5">
-      <div className="grid grid-cols-12 gap-5">
-        <div className="col-span-4">
-          <h5 className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wider">Colors</h5>
-          <div className="flex flex-col items-start gap-3">
-            <ColorPickerRoundedRect
-              label="Start"
-              color={localGradient.start}
-              name="gradientStart"
-              onChange={(e) => setLocalGradient((p) => ({ ...p, start: e.target.value }))}
-              size="sm"
-            />
-            <ColorPickerRoundedRect
-              label="End"
-              color={localGradient.end}
-              name="gradientEnd"
-              onChange={(e) => setLocalGradient((p) => ({ ...p, end: e.target.value }))}
-              size="sm"
-            />
-          </div>
-        </div>
-        <div className="col-span-8">
-          <h5 className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wider">Direction</h5>
-          <div className="grid grid-cols-5 gap-1.5">
-            {GRADIENT_PRESETS.map((preset) => {
-              let bgStyle
-              if (preset.direction === 'circle-in') {
-                bgStyle = { background: `radial-gradient(circle, #ffffff, #808080)` }
-              } else if (preset.direction.startsWith('circle')) {
-                bgStyle = { background: `radial-gradient(circle, #808080, #ffffff)` }
-              } else {
-                bgStyle = { background: `linear-gradient(${preset.direction}, #808080, #ffffff)` }
-              }
+  const items: SwatchItem[] = GRADIENT_PRESETS.map((preset) => ({
+    id: preset.direction,
+    label: preset.name,
+    style: gradientPreview(preset.direction),
+  }))
 
-              return (
-                <button
-                  key={preset.direction}
-                  className={cn(
-                    'relative aspect-square rounded-lg overflow-hidden border-2 transition-all duration-200 hover:scale-105',
-                    frameStyles.background.gradientDirection === preset.direction
-                      ? 'border-primary ring-2 ring-primary/20 scale-105'
-                      : 'border-sidebar-border hover:border-primary/50',
-                  )}
-                  style={bgStyle}
-                  onClick={() => updateBackground({ type: 'gradient', gradientDirection: preset.direction })}
-                  title={preset.name}
-                >
-                  {frameStyles.background.gradientDirection === preset.direction && (
-                    <div className="absolute inset-0 bg-black/10 flex items-center justify-center">
-                      <div className="w-5 h-5 bg-white/90 rounded-full flex items-center justify-center shadow-lg">
-                        <Check className="w-3 h-3 text-gray-800" />
-                      </div>
-                    </div>
-                  )}
-                </button>
-              )
-            })}
-          </div>
-        </div>
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-3">
+        <ColorField
+          label="Start"
+          value={localGradient.start}
+          onChange={(start) => setLocalGradient((previous) => ({ ...previous, start }))}
+        />
+        <ColorField
+          label="End"
+          value={localGradient.end}
+          onChange={(end) => setLocalGradient((previous) => ({ ...previous, end }))}
+        />
       </div>
-      <Button onClick={handleApplyGradient} size="sm" className="w-full">
-        <PaintBrushIcon className="w-4 h-4 mr-2" />
-        Apply Colors
+      <SwatchGrid
+        aria-label="Gradient direction"
+        columns={5}
+        items={items}
+        selectedId={frameStyles.background.gradientDirection ?? null}
+        onSelect={(gradientDirection) => updateBackground({ type: 'gradient', gradientDirection })}
+      />
+      <Button variant="secondary" className="w-full" onClick={handleApplyGradient}>
+        Apply colours
       </Button>
     </div>
   )
@@ -252,66 +184,47 @@ const ImageSelector = () => {
     })
   }
 
+  const hasImage = Boolean(frameStyles.background.imageUrl) && frameStyles.background.type === 'image'
+
   return (
-    <div className="relative group">
-      <label
-        className={cn(
-          'flex flex-col items-center justify-center w-full rounded-xl cursor-pointer border-2 border-dashed transition-all duration-300 overflow-hidden',
-          frameStyles.background.imageUrl
-            ? 'h-48 border-primary/30 bg-sidebar-accent/10'
-            : 'h-32 border-sidebar-border hover:border-primary/60 hover:bg-primary/5',
-        )}
-      >
-        {frameStyles.background.imageUrl && frameStyles.background.type === 'image' ? (
-          <>
+    <div className="space-y-3">
+      <div className="overflow-hidden rounded-ctl border border-dashed border-line">
+        {hasImage ? (
+          <div className="relative">
             <img
               src={frameStyles.background.imageUrl || '/placeholder.svg'}
               alt="Background"
-              className="w-full h-full object-cover"
+              className="h-40 w-full object-cover"
             />
-            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-center justify-center gap-3 backdrop-blur-sm">
-              <button
-                onClick={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  removeUploadedImage()
-                }}
-                className="px-4 py-2 bg-destructive text-destructive-foreground rounded-lg font-medium text-sm hover:bg-destructive/90 transition-colors shadow-lg"
-              >
-                <X className="w-4 h-4 mr-1.5 inline" />
-                Remove
-              </button>
-              <button
-                onClick={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  imageInputRef.current?.click()
-                }}
-                className="px-4 py-2 bg-primary text-primary-foreground rounded-lg font-medium text-sm hover:bg-primary/90 transition-colors shadow-lg"
-              >
-                <CloudUpload className="w-4 h-4 mr-1.5 inline" />
+            <div className="flex items-center justify-end gap-2 border-t border-line bg-panel px-2 py-2">
+              <Button variant="secondary" size="sm" onClick={() => imageInputRef.current?.click()}>
                 Replace
-              </button>
+              </Button>
+              <Button variant="danger" size="sm" onClick={removeUploadedImage}>
+                Remove
+              </Button>
             </div>
-          </>
+          </div>
         ) : (
-          <div className="flex flex-col items-center gap-3 text-center p-6">
-            <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-              <CloudUpload className="w-6 h-6 text-primary" />
-            </div>
+          <div className="flex flex-col items-center gap-3 px-4 py-6 text-center">
+            <CloudUpload size={24} strokeWidth={1.6} className="text-muted" />
             <div>
-              <p className="text-sm font-semibold text-foreground mb-1">Upload Image</p>
-              <p className="text-xs text-muted-foreground">PNG, JPG, GIF up to 10MB</p>
+              <p className="text-ui text-fg">Upload image</p>
+              <p className="text-sm text-muted">PNG, JPG, GIF up to 10MB</p>
             </div>
           </div>
         )}
-        <input ref={imageInputRef} type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
-      </label>
+      </div>
+
+      <Button variant="secondary" className="w-full" onClick={() => imageInputRef.current?.click()}>
+        Choose image
+      </Button>
+      <HelperText>Or drop an image here — it becomes the video background.</HelperText>
+
+      <input ref={imageInputRef} type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
     </div>
   )
 }
-
-// --- Main Component ---
 
 export function BackgroundSettings() {
   const { frameStyles } = useEditorStore()
@@ -321,46 +234,21 @@ export function BackgroundSettings() {
     setActiveTab(frameStyles.background.type)
   }, [frameStyles.background.type])
 
-  const tabs = [
-    { id: 'wallpaper', name: 'Wallpaper', component: <WallpaperSelector /> },
-    { id: 'color', name: 'Color', component: <ColorSelector /> },
-    { id: 'gradient', name: 'Gradient', component: <GradientSelector /> },
-    { id: 'image', name: 'Image', component: <ImageSelector /> },
-  ]
-
   return (
-    <ControlGroup
-      label="Background"
-      icon={<Photo className="w-4 h-4 text-primary" />}
-      description="Choose how your video background looks"
-    >
-      <div className="space-y-6">
-        <div className="relative p-1 bg-muted/50 rounded-full">
-          <div className="relative grid grid-cols-4 gap-1">
-            <div
-              className="absolute top-0 left-0 h-full bg-background rounded-full shadow-sm transition-all duration-300 ease-out border border-sidebar-border"
-              style={{
-                width: `calc(25% - 0.125rem)`,
-                transform: `translateX(calc(${tabs.findIndex((t) => t.id === activeTab) * 100}% + ${tabs.findIndex((t) => t.id === activeTab) * 0.25}rem))`,
-              }}
-            />
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id as BackgroundTab)}
-                className={cn(
-                  'relative z-10 py-2.5 text-sm font-medium transition-colors duration-200 rounded-full',
-                  activeTab === tab.id ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
-                )}
-              >
-                {tab.name}
-              </button>
-            ))}
-          </div>
-        </div>
+    <Section first label="Background">
+      <SegmentedControl
+        aria-label="Background type"
+        options={TAB_OPTIONS}
+        value={activeTab}
+        onChange={(value) => setActiveTab(value)}
+      />
 
-        <div className="min-h-[200px]">{tabs.find((t) => t.id === activeTab)?.component}</div>
+      <div className="mt-3">
+        {activeTab === 'wallpaper' && <WallpaperSelector />}
+        {activeTab === 'color' && <ColorSelector />}
+        {activeTab === 'gradient' && <GradientSelector />}
+        {activeTab === 'image' && <ImageSelector />}
       </div>
-    </ControlGroup>
+    </Section>
   )
 }

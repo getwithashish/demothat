@@ -1,6 +1,7 @@
-// Notification button for available app updates
+// Notification button for available app updates (DESIGN_SPEC §10: flat, tokenised).
 import { Download } from 'tabler-icons-react'
 import { Button } from '../ui/button'
+import { ICON_SIZE, ICON_STROKE } from '../ui/icons'
 
 interface UpdateNotificationProps {
   info: {
@@ -15,18 +16,16 @@ export function UpdateNotification({ info }: UpdateNotificationProps) {
   }
 
   return (
-    <div className="animate-in fade-in-50 slide-in-from-top-2 duration-500">
-      <Button
-        data-version={info.version}
-        variant="secondary"
-        size="sm"
-        onClick={handleDownload}
-        aria-label="Update Available"
-        className="bg-sky-500/10 hover:bg-sky-500/20 text-sky-600 dark:text-sky-400 border border-sky-500/20 h-8 shadow-sm hover:shadow-md transition-all duration-200 backdrop-blur-sm font-medium"
-      >
-        <Download className="w-4 h-4 mr-2" />
-        Update Available
-      </Button>
-    </div>
+    <Button
+      data-version={info.version}
+      variant="secondary"
+      size="sm"
+      onClick={handleDownload}
+      aria-label="Update available"
+      className="text-accent"
+    >
+      <Download size={ICON_SIZE} strokeWidth={ICON_STROKE} className="mr-2" />
+      Update available
+    </Button>
   )
 }

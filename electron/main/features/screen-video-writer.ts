@@ -124,12 +124,23 @@ export class ScreenVideoWriter {
     try {
       stream.destroy()
       await this.queue.catch(() => {})
+      // Wait until the stream has actually closed before dropping our error
+      // handler: a destroyed stream can still emit 'error' asynchronously.
+      if (!stream.closed) await finished(stream).catch(() => {})
     } finally {
       this.reset()
     }
   }
 
   private reset(): void {
+    // Keep the handler attached while the stream is still closing. Detaching it
+    // early leaves a late async 'error' with no listener, which Node raises as an
+    // unhandled 'error' event and takes the process down.
+    if (this.stream && !this.stream.closed) {
+      this.stream = null
+      return
+    }
+
     this.detachStreamErrorListener?.()
     this.detachStreamErrorListener = null
     this.stream = null

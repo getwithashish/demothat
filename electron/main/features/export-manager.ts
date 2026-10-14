@@ -1,7 +1,7 @@
 // Contains business logic for video export.
 
 import log from 'electron-log/main'
-import { BrowserWindow, IpcMainInvokeEvent, ipcMain } from 'electron'
+import { BrowserWindow, IpcMainEvent, IpcMainInvokeEvent, ipcMain } from 'electron'
 import { spawn } from 'node:child_process'
 import path from 'node:path'
 import os from 'node:os'
@@ -9,6 +9,7 @@ import fs from 'node:fs'
 import fsPromises from 'node:fs/promises'
 import { appState } from '../state'
 import { getFFmpegPath, calculateExportDimensions } from '../lib/utils'
+import type { ResolutionKey } from '../lib/constants'
 import { VITE_DEV_SERVER_URL, RENDERER_DIST, PRELOAD_SCRIPT } from '../lib/constants'
 
 const FFMPEG_PATH = getFFmpegPath()
@@ -40,14 +41,59 @@ function createBuiltInClickWav(): Buffer {
   }
   return buffer
 }
+/** Shapes the renderer sends over IPC for an export. Declared structurally here
+ *  (mirroring src/types) so the main process does not depend on renderer types. */
+interface ExportRegion {
+  startTime: number
+  duration: number
+}
 
-function mapSourceTimeToExportTime(sourceTime: number, projectState: any): number {
+interface ExportSpeedRegion extends ExportRegion {
+  speed: number
+}
+
+interface ExportAudioClip {
+  filePath: string
+  startTime: number
+  duration: number
+  sourceStart: number
+  sourceDuration: number
+  volume: number
+  fadeIn: number
+  fadeOut: number
+  loop: boolean
+  kind?: 'music' | 'click'
+  speed?: number
+}
+
+interface ExportProjectState {
+  aspectRatio: string
+  duration: number
+  videoPath?: string
+  hasAudioTrack?: boolean
+  isMuted?: boolean
+  volume?: number
+  mouseClickSoundsEnabled?: boolean
+  mouseClickSoundPath?: string | null
+  mouseClickSoundVolume?: number
+  cutRegions?: Record<string, ExportRegion>
+  speedRegions?: Record<string, ExportSpeedRegion>
+  audioClips?: ExportAudioClip[]
+}
+
+interface ExportRequest {
+  projectState: ExportProjectState
+  exportSettings: { resolution: ResolutionKey; fps: number; format: string }
+  outputPath: string
+}
+
+function mapSourceTimeToExportTime(sourceTime: number, projectState: ExportProjectState): number {
   let exportTime = Math.max(0, sourceTime)
-  for (const region of Object.values(projectState.cutRegions ?? {}) as any[]) {
+  for (const region of Object.values(projectState.cutRegions ?? {}) as ExportRegion[]) {
     if (region.startTime + region.duration <= sourceTime) exportTime -= region.duration
     else if (region.startTime < sourceTime) exportTime -= sourceTime - region.startTime
   }
-  for (const region of Object.values(projectState.speedRegions ?? {}) as any[]) {
+  for (const region of Object.values(projectState.speedRegions ?? {}) as ExportSpeedRegion[]) {
     if (region.startTime + region.duration <= sourceTime) exportTime += region.duration - region.duration / region.speed
     else if (region.startTime < sourceTime) {
       const elapsed = sourceTime - region.startTime
@@ -57,8 +103,7 @@ function mapSourceTimeToExportTime(sourceTime: number, projectState: any): numbe
   return Math.max(0, exportTime)
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function startExport(event: IpcMainInvokeEvent, { projectState, exportSettings, outputPath }: any) {
+export async function startExport(event: IpcMainInvokeEvent, { projectState, exportSettings, outputPath }: ExportRequest) {
   log.info('[ExportManager] Starting export process...')
   const editorWindow = BrowserWindow.fromWebContents(event.sender)
   if (!editorWindow) return
@@ -102,8 +147,8 @@ export async function startExport(event: IpcMainInvokeEvent, { projectState, exp
   const audioFilterParts: string[] = []
   const audioLabels: string[] = []
   let exportDuration = Math.max(0, Number(projectState.duration) || 0)
-  for (const region of Object.values(projectState.cutRegions ?? {}) as any[]) exportDuration -= Number(region.duration) || 0
-  for (const region of Object.values(projectState.speedRegions ?? {}) as any[]) {
+  for (const region of Object.values(projectState.cutRegions ?? {}) as ExportRegion[]) exportDuration -= Number(region.duration) || 0
+  for (const region of Object.values(projectState.speedRegions ?? {}) as ExportSpeedRegion[]) {
     exportDuration -= Number(region.duration) || 0
     exportDuration += (Number(region.duration) || 0) / Math.max(0.01, Number(region.speed) || 1)
   }
@@ -120,8 +165,8 @@ export async function startExport(event: IpcMainInvokeEvent, { projectState, exp
       inputIndex++
     }
 
-    const clips = (projectState.audioClips ?? []).filter((clip: any) => clip.kind !== 'click' && clip.filePath && clip.duration > 0 && clip.volume > 0 && Number(clip.startTime) < Number(projectState.duration))
-    clips.forEach((clip: any, index: number) => {
+    const clips = (projectState.audioClips ?? []).filter((clip: ExportAudioClip) => clip.kind !== 'click' && clip.filePath && clip.duration > 0 && clip.volume > 0 && Number(clip.startTime) < Number(projectState.duration))
+    clips.forEach((clip: ExportAudioClip, index: number) => {
       const start = mapSourceTimeToExportTime(Math.max(0, Number(clip.startTime) || 0), projectState)
       if (start >= exportDuration) return
       const clipDuration = Math.min(Number(clip.duration) || 0.1, exportDuration - start)
@@ -144,14 +189,14 @@ export async function startExport(event: IpcMainInvokeEvent, { projectState, exp
       inputIndex++
     })
 
-    const cuts = Object.values(projectState.cutRegions ?? {}) as any[]
+    const cuts = Object.values(projectState.cutRegions ?? {}) as ExportRegion[]
     // Each click sound is its own timeline clip, so deleting one removes only that event from export.
     const clicks = projectState.mouseClickSoundsEnabled
-      ? (projectState.audioClips ?? []).filter((clip: any) => clip.kind === 'click' && clip.startTime >= 0 && clip.startTime < projectState.duration && clip.volume > 0 && !cuts.some((region) => clip.startTime >= region.startTime && clip.startTime < region.startTime + region.duration))
+      ? (projectState.audioClips ?? []).filter((clip: ExportAudioClip) => clip.kind === 'click' && clip.startTime >= 0 && clip.startTime < projectState.duration && clip.volume > 0 && !cuts.some((region) => clip.startTime >= region.startTime && clip.startTime < region.startTime + region.duration))
       : []
-    const mappedClicks = clicks.map((click: any) => ({ start: mapSourceTimeToExportTime(Number(click.startTime) || 0, projectState), clipVolume: Math.max(0, Math.min(1, Number(click.volume) || 0)) })).filter((click: any) => click.start < exportDuration)
+    const mappedClicks = clicks.map((click) => ({ start: mapSourceTimeToExportTime(Number(click.startTime) || 0, projectState), clipVolume: Math.max(0, Math.min(1, Number(click.volume) || 0)) })).filter((click) => click.start < exportDuration)
     if (mappedClicks.length > 0) {
-      let clickPath = projectState.mouseClickSoundPath as string | null
+      let clickPath: string | null = projectState.mouseClickSoundPath ?? null
       if (!clickPath) {
         const generatedClickPath = path.join(os.tmpdir(), `screenarc-click-${Date.now()}.wav`)
         clickPath = generatedClickPath
@@ -160,10 +205,10 @@ export async function startExport(event: IpcMainInvokeEvent, { projectState, exp
       }
       const resolvedClickPath = clickPath as string
       ffmpegArgs.push('-i', resolvedClickPath)
-      const splitLabels = mappedClicks.map((_click: any, index: number) => `[clicksrc${index}]`).join('')
+      const splitLabels = mappedClicks.map((_click, index: number) => `[clicksrc${index}]`).join('')
       audioFilterParts.push(`[${inputIndex}:a]asplit=${mappedClicks.length}${splitLabels}`)
       const volume = Math.max(0, Math.min(1, Number(projectState.mouseClickSoundVolume ?? 0.8)))
-      mappedClicks.forEach((click: any, index: number) => {
+      mappedClicks.forEach((click, index: number) => {
         const label = `click${index}`
         const delay = Math.round(click.start * 1000)
         audioFilterParts.push(`[clicksrc${index}]atrim=duration=0.25,asetpts=PTS-STARTPTS,volume=${volume * click.clipVolume},adelay=${delay}|${delay}[${label}]`)
@@ -207,8 +252,7 @@ export async function startExport(event: IpcMainInvokeEvent, { projectState, exp
     for (const temporaryFile of temporaryFiles) fsPromises.unlink(temporaryFile).catch(() => undefined)
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const frameListener = (_e: any, { frame, progress }: { frame: Buffer; progress: number }) => {
+  const frameListener = (_e: IpcMainEvent, { frame, progress }: { frame: Buffer; progress: number }) => {
     if (!ffmpegClosed && ffmpeg.stdin.writable) ffmpeg.stdin.write(frame)
     if (editorWindow && !editorWindow.isDestroyed()) {
       editorWindow.webContents.send('export:progress', { progress, stage: 'Rendering...' })

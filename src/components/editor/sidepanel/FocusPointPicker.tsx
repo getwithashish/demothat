@@ -1,8 +1,12 @@
-// Interactive component for selecting zoom focus point on video frame
+// Focus-point picker for a fixed zoom region (DESIGN_SPEC §10).
+// Flat Section + token surfaces; the pointer maths are unchanged.
 import type React from 'react'
 import { useRef, useState, useEffect, useCallback } from 'react'
 import { useEditorStore } from '../../../store/editorStore'
 import { Loader2 } from 'tabler-icons-react'
+import { HelperText } from '../../ui/helper-text'
+import { Section } from '../../ui/section'
+import { ICON_SIZE, ICON_STROKE } from '../../ui/icons'
 
 interface FocusPointPickerProps {
   regionId: string
@@ -88,40 +92,35 @@ export function FocusPointPicker({ regionId, targetX, targetY, startTime, onTarg
   const reticleTop = (targetY + 0.5) * 100
 
   return (
-    <div className="space-y-3">
-      <div>
-        <h4 className="text-sm font-medium text-sidebar-foreground mb-1">Focus Point</h4>
-        <p className="text-xs text-muted-foreground leading-relaxed">
-          Click and drag the circle to set the zoom point.
-        </p>
-      </div>
+    <Section label="Focus point">
+      <HelperText className="mt-0">Click and drag the circle to set the zoom point.</HelperText>
       <div
         ref={containerRef}
         onMouseDown={handleMouseDown}
-        className="relative aspect-video w-full bg-black rounded-lg overflow-hidden cursor-crosshair border-2 border-sidebar-border hover:border-primary/50 transition-colors duration-200"
+        className="relative mt-3.5 aspect-video w-full cursor-crosshair overflow-hidden rounded-ctl border border-line bg-stage hover:border-muted"
       >
         {isLoading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-muted/50 backdrop-blur-sm">
-            <Loader2 className="w-6 h-6 animate-spin text-primary" />
+          <div className="absolute inset-0 flex items-center justify-center bg-panel/70">
+            <Loader2 size={ICON_SIZE} strokeWidth={ICON_STROKE} className="animate-spin text-muted" />
           </div>
         )}
         {thumbnailUrl && (
           <img
             src={thumbnailUrl || '/placeholder.svg'}
-            className="w-full h-full object-contain pointer-events-none"
-            alt="Video Frame Preview"
+            className="pointer-events-none h-full w-full object-contain"
+            alt="Video frame preview"
           />
         )}
         <div
-          className="absolute w-8 h-8 rounded-full border-2 border-primary bg-primary/20 backdrop-blur-sm shadow-lg pointer-events-none transform -translate-x-1/2 -translate-y-1/2 flex items-center justify-center transition-none"
+          className="pointer-events-none absolute flex h-8 w-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-accent bg-accent/20"
           style={{
             left: `${reticleLeft}%`,
             top: `${reticleTop}%`,
           }}
         >
-          <div className="w-2 h-2 bg-primary rounded-full shadow-sm" />
+          <div className="h-2 w-2 rounded-full bg-accent" />
         </div>
       </div>
-    </div>
+    </Section>
   )
 }

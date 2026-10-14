@@ -1,16 +1,18 @@
 import React from 'react'
+import { Section } from '../ui/section'
+import { PanelHeader } from '../editor/PanelHeader'
 
 const ShortcutItem = ({ keys, description }: { keys: string[]; description: string }) => {
   return (
-    <div className="flex items-center justify-between py-3">
-      <p className="text-sm text-foreground">{description}</p>
-      <div className="flex items-center gap-1.5">
+    <div className="flex items-center justify-between gap-3 py-2.5">
+      <p className="text-ui text-fg">{description}</p>
+      <div className="flex shrink-0 items-center gap-1">
         {keys.map((key, index) => (
           <React.Fragment key={key}>
-            <kbd className="px-2 py-1 text-xs font-semibold text-muted-foreground bg-muted rounded-md border border-border">
+            <kbd className="rounded-ctl border border-line bg-ctl px-1.5 py-0.5 font-mono text-sm text-muted">
               {key}
             </kbd>
-            {index < keys.length - 1 && <span className="text-sm text-muted-foreground">+</span>}
+            {index < keys.length - 1 && <span className="text-sm text-muted">+</span>}
           </React.Fragment>
         ))}
       </div>
@@ -61,19 +63,17 @@ export function ShortcutsTab() {
   ]
 
   return (
-    <div className="p-8 h-full overflow-y-auto">
-      <h2 className="text-lg font-semibold text-foreground mb-6">Keyboard Shortcuts</h2>
-
-      <div className="space-y-6">
-        {shortcutCategories.map((category) => (
-          <div key={category.title}>
-            <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider mb-2">{category.title}</h3>
-            <div className="divide-y divide-border rounded-lg border border-border bg-muted/30 px-4">
+    <div className="flex h-full flex-col">
+      <PanelHeader title="Keyboard shortcuts" subtitle="Every binding the editor listens for" />
+      <div className="min-h-0 flex-1 overflow-y-auto stable-scrollbar">
+        {shortcutCategories.map((category, index) => (
+          <Section key={category.title} first={index === 0} label={category.title}>
+            <div className="divide-y divide-line">
               {category.shortcuts.map((shortcut) => (
                 <ShortcutItem key={shortcut.description} keys={shortcut.keys} description={shortcut.description} />
               ))}
             </div>
-          </div>
+          </Section>
         ))}
       </div>
     </div>

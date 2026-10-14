@@ -9,7 +9,6 @@ export function AudioTimelinePreview() {
     const audioById = new Map<string, HTMLAudioElement>()
     let previousTime = 0
     let clickContext: AudioContext | null = null
-    let timer: number | undefined
 
     const tick = () => {
       const state = useEditorStore.getState()
@@ -81,9 +80,9 @@ export function AudioTimelinePreview() {
       previousTime = state.currentTime
     }
 
-    timer = window.setInterval(tick, 80)
+    const timer = window.setInterval(tick, 80)
     return () => {
-      if (timer !== undefined) window.clearInterval(timer)
+      window.clearInterval(timer)
       for (const audio of audioById.values()) {
         audio.pause()
         audio.removeAttribute('src')

@@ -1,8 +1,15 @@
+// Inspector for a selected 3D camera clip. Flat Sections on the shared primitives (§10).
 import { useRef, useState } from 'react'
 import { useEditorStore } from '../../../store/editorStore'
 import type { CameraMoveKind, CameraPose, CameraMotionTrack } from '../../../types'
 import { Slider } from '../../ui/slider'
-import { Camera, Download, Refresh, Trash, Upload } from 'tabler-icons-react'
+import { Button } from '../../ui/button'
+import { HelperText } from '../../ui/helper-text'
+import { Section } from '../../ui/section'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../ui/select'
+import { Download, Refresh, Trash, Upload } from 'tabler-icons-react'
+import { ICON_SIZE, ICON_STROKE } from '../../ui/icons'
+import { PanelHeader } from '../PanelHeader'
 
 const KINDS: { value: CameraMoveKind; label: string }[] = [
   { value: 'dolly-in', label: 'Dolly in' }, { value: 'dolly-out', label: 'Dolly out' },
@@ -29,6 +36,16 @@ function getDestinationPose(kind: CameraMoveKind, from: CameraPose, currentTo: C
   }
   return to
 }
+
+const POSE_FIELDS: { key: keyof CameraPose; label: string; min: number; max: number; step: number; format: (value: number) => string }[] = [
+  { key: 'x', label: 'Position X', min: -30, max: 30, step: 1, format: (v) => `${v}%` },
+  { key: 'y', label: 'Position Y', min: -30, max: 30, step: 1, format: (v) => `${v}%` },
+  { key: 'scale', label: 'Scale', min: 0.5, max: 1.6, step: 0.01, format: (v) => `${v.toFixed(2)}\u00d7` },
+  { key: 'rotationX', label: 'Rotation X', min: -45, max: 45, step: 1, format: (v) => `${v}\u00b0` },
+  { key: 'rotationY', label: 'Rotation Y', min: -45, max: 45, step: 1, format: (v) => `${v}\u00b0` },
+  { key: 'rotationZ', label: 'Rotation Z', min: -30, max: 30, step: 1, format: (v) => `${v}\u00b0` },
+  { key: 'perspective', label: 'Perspective', min: 0, max: 100, step: 1, format: (v) => `${v}%` },
+]
 
 export function CameraMotionSettings() {
   const { cameraMotions, updateCameraMotion, deleteCameraMotion, selectedRegionId, setSelectedRegionId } = useEditorStore()
@@ -71,31 +88,127 @@ export function CameraMotionSettings() {
   }
 
   if (!selected) return null
-  return <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
-    <header className="border-b border-sidebar-border p-5">
-      <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary"><Camera className="h-5 w-5" /></div>
-        <div className="min-w-0 flex-1"><h2 className="text-base font-semibold text-sidebar-foreground">Cinematic 3D Camera</h2><p className="text-xs text-muted-foreground">Drag the clip edges on the timeline to set its timing.</p></div>
-        <button type="button" title="Delete camera move" onClick={() => { deleteCameraMotion(selected.id); setSelectedRegionId(null) }} className="rounded-md p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><Trash size={16} /></button>
-      </div>
-    </header>
-    <div className="flex-1 space-y-5 overflow-y-auto p-5">
-      <div className="space-y-2"><label className="text-xs font-medium text-sidebar-foreground">Camera move</label><select aria-label="Camera move type" className="h-9 w-full rounded-md border border-sidebar-border bg-background px-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring" value={selected.kind} onChange={(event) => {
-        const kind = event.target.value as CameraMoveKind
-        updateCameraMotion(selected.id, { kind, name: KINDS.find((item) => item.value === kind)?.label ?? 'Custom move', to: getDestinationPose(kind, selected.from, selected.to) })
-      }}>{KINDS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select><p className="text-xs text-muted-foreground">Changing the move recalculates its destination from the clip’s starting pose. Choose Custom to keep your current destination.</p></div>
-      <div className="space-y-2"><label className="text-xs font-medium text-sidebar-foreground">Motion curve</label><select aria-label="Motion curve" className="h-9 w-full rounded-md border border-sidebar-border bg-background px-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring" value={selected.easing} onChange={(e) => updateCameraMotion(selected.id, { easing: e.target.value })}>{['Smooth', 'Balanced', 'Dynamic', 'Gentle Spring', 'Bouncy Spring'].map((easing) => <option key={easing}>{easing}</option>)}</select><p className="text-xs text-muted-foreground">Controls acceleration and deceleration between the start and end poses. Compare the middle of the clip while previewing.</p></div>
-      <section className="space-y-3 rounded-lg border border-sidebar-border p-3">
-        <div className="flex items-center justify-between"><h3 className="text-sm font-semibold text-sidebar-foreground">End pose</h3><button type="button" title="Reset end pose" onClick={() => updateCameraMotion(selected.id, { to: { ...DEFAULT_POSE } })} className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"><Refresh size={14} /></button></div>
-        <p className="text-xs text-muted-foreground">Set the camera destination. The starting pose is preserved from the camera’s current position.</p>
-        {([{key:'x',label:'Position X',min:-30,max:30,step:1,unit:'%'},{key:'y',label:'Position Y',min:-30,max:30,step:1,unit:'%'},{key:'scale',label:'Scale',min:0.5,max:1.6,step:0.01,unit:'×'},{key:'rotationX',label:'Rotation X',min:-45,max:45,step:1,unit:'°'},{key:'rotationY',label:'Rotation Y',min:-45,max:45,step:1,unit:'°'},{key:'rotationZ',label:'Rotation Z',min:-30,max:30,step:1,unit:'°'},{key:'perspective',label:'Perspective',min:0,max:100,step:1,unit:'%'}] as const).map(({key,label,min,max,step,unit}) => <div key={key} className="space-y-1"><div className="flex justify-between text-xs"><label className="text-muted-foreground">{label}</label><span className="font-medium tabular-nums text-sidebar-foreground">{selected.to[key]}{unit}</span></div><Slider min={min} max={max} step={step} value={selected.to[key]} onChange={(value) => updatePose(key, value)} /></div>)}
-        <button type="button" onClick={savePreset} className="w-full rounded-md border border-sidebar-border bg-background px-3 py-2 text-xs font-medium text-foreground hover:bg-accent hover:text-accent-foreground">Save selected move as preset</button>
-      </section>
-      <section className="space-y-3 border-t border-sidebar-border pt-4"><div className="flex items-center justify-between"><h3 className="text-sm font-semibold text-sidebar-foreground">Motion presets</h3><div className="flex gap-1"><button type="button" title="Import presets" onClick={() => importRef.current?.click()} className="rounded p-2 text-muted-foreground hover:bg-accent hover:text-accent-foreground"><Upload size={15} /></button><button type="button" title="Export presets" onClick={exportPresets} className="rounded p-2 text-muted-foreground hover:bg-accent hover:text-accent-foreground"><Download size={15} /></button></div></div>
+  return <div className="flex h-full flex-col">
+    <PanelHeader
+      title="Cinematic 3D camera"
+      subtitle="Drag the clip edges on the timeline to set its timing."
+      actions={
+        <button
+          type="button"
+          title="Delete camera move"
+          aria-label="Delete camera move"
+          onClick={() => { deleteCameraMotion(selected.id); setSelectedRegionId(null) }}
+          className="rounded-ctl p-1.5 text-muted hover:text-danger"
+        >
+          <Trash size={ICON_SIZE} strokeWidth={ICON_STROKE} />
+        </button>
+      }
+    />
+    <div className="min-h-0 flex-1 overflow-y-auto stable-scrollbar">
+      <Section first label="Camera move">
+        <Select
+          value={selected.kind}
+          onValueChange={(kind) => {
+            const next = kind as CameraMoveKind
+            updateCameraMotion(selected.id, { kind: next, name: KINDS.find((item) => item.value === next)?.label ?? 'Custom move', to: getDestinationPose(next, selected.from, selected.to) })
+          }}
+        >
+          <SelectTrigger aria-label="Camera move type">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {KINDS.map((item) => (
+              <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <HelperText>Changing the move recalculates its destination from the clip's starting pose. Choose Custom to keep your current destination.</HelperText>
+      </Section>
+
+      <Section label="Motion curve">
+        <Select value={selected.easing} onValueChange={(easing) => updateCameraMotion(selected.id, { easing })}>
+          <SelectTrigger aria-label="Motion curve">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {['Smooth', 'Balanced', 'Dynamic', 'Gentle Spring', 'Bouncy Spring'].map((easing) => (
+              <SelectItem key={easing} value={easing}>{easing}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <HelperText>Controls acceleration and deceleration between the start and end poses. Compare the middle of the clip while previewing.</HelperText>
+      </Section>
+
+      <Section
+        label="End pose"
+        labelRight={
+          <Button
+            variant="ghost"
+            size="icon"
+            title="Reset end pose"
+            aria-label="Reset end pose"
+            onClick={() => updateCameraMotion(selected.id, { to: { ...DEFAULT_POSE } })}
+          >
+            <Refresh size={ICON_SIZE} strokeWidth={ICON_STROKE} />
+          </Button>
+        }
+      >
+        <HelperText className="mt-0">Set the camera destination. The starting pose is preserved from the camera's current position.</HelperText>
+        <div className="mt-3.5 space-y-3.5">
+          {POSE_FIELDS.map(({ key, label, min, max, step, format }) => (
+            <Slider
+              key={key}
+              label={label}
+              min={min}
+              max={max}
+              step={step}
+              value={selected.to[key]}
+              onChange={(value) => updatePose(key, value)}
+              formatValue={format}
+            />
+          ))}
+        </div>
+        <Button variant="secondary" className="mt-3.5 w-full" onClick={savePreset}>
+          Save selected move as preset
+        </Button>
+      </Section>
+
+      <Section
+        label="Motion presets"
+        labelRight={
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="icon" title="Import presets" aria-label="Import presets" onClick={() => importRef.current?.click()}>
+              <Upload size={ICON_SIZE} strokeWidth={ICON_STROKE} />
+            </Button>
+            <Button variant="ghost" size="icon" title="Export presets" aria-label="Export presets" onClick={exportPresets}>
+              <Download size={ICON_SIZE} strokeWidth={ICON_STROKE} />
+            </Button>
+          </div>
+        }
+      >
         <input ref={importRef} type="file" accept="application/json,.json" className="hidden" onChange={(e) => { void importPresets(e.target.files?.[0]); e.currentTarget.value = '' }} />
-        {presets.length === 0 && <p className="text-xs text-muted-foreground">Save a camera move to build your reusable preset library.</p>}
-        {presets.map((preset) => <div key={preset.id} className="flex items-center gap-2 rounded-md border border-sidebar-border p-2"><span className="min-w-0 flex-1 truncate text-sm text-sidebar-foreground">{preset.name}</span><button type="button" onClick={() => applyPreset(preset)} className="rounded border border-sidebar-border px-2 py-1 text-xs text-foreground hover:bg-accent">Apply</button><button type="button" title="Remove preset" onClick={() => { const next = presets.filter((item) => item.id !== preset.id); setPresets(next); localStorage.setItem(PRESETS_KEY, JSON.stringify(next)) }} className="rounded p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><Trash size={13} /></button></div>)}
-      </section>
+        {presets.length === 0 && <HelperText className="mt-0">Save a camera move to build your reusable preset library.</HelperText>}
+        {presets.length > 0 && (
+          <div className="divide-y divide-line border-t border-line">
+            {presets.map((preset) => (
+              <div key={preset.id} className="flex items-center gap-2 py-2">
+                <span className="min-w-0 flex-1 truncate text-sm text-fg">{preset.name}</span>
+                <Button variant="secondary" size="sm" onClick={() => applyPreset(preset)}>Apply</Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  title="Remove preset"
+                  aria-label={`Remove ${preset.name}`}
+                  className="text-danger"
+                  onClick={() => { const next = presets.filter((item) => item.id !== preset.id); setPresets(next); localStorage.setItem(PRESETS_KEY, JSON.stringify(next)) }}
+                >
+                  <Trash size={ICON_SIZE} strokeWidth={ICON_STROKE} />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </Section>
     </div>
   </div>
 }

@@ -1,4 +1,4 @@
-// Visual preview component for frame style presets
+// Visual preview component for frame style presets (DESIGN_SPEC §10).
 import { useMemo, useRef } from 'react'
 import { WALLPAPERS } from '../../lib/constants'
 import type { FrameStyles, AspectRatio, WebcamStyles, WebcamPosition } from '../../types'
@@ -97,7 +97,7 @@ export function PresetPreview({
 
   const fakeWebcamClasses = useMemo(() => {
     if (!webcamPosition) return ''
-    return cn('absolute z-20 overflow-hidden', 'transition-all duration-300 ease-in-out', {
+    return cn('absolute z-20 overflow-hidden', {
       'top-4 left-4': webcamPosition.pos === 'top-left',
       'top-4 left-1/2 -translate-x-1/2': webcamPosition.pos === 'top-center',
       'top-4 right-4': webcamPosition.pos === 'top-right',
@@ -114,29 +114,29 @@ export function PresetPreview({
   return (
     <div
       ref={previewRef}
-      className="h-full rounded-xl flex items-center justify-center transition-all duration-300 ease-out max-w-full max-h-full shadow-lg"
+      className="flex h-full max-h-full max-w-full items-center justify-center rounded-pv"
       style={{ ...backgroundStyle, aspectRatio: cssAspectRatio }}
     >
-      <div className="w-full h-full" style={{ padding: `${styles.padding}%`, position: 'relative' }}>
-        <div className="w-full h-full" style={frameStyle}>
+      <div className="h-full w-full" style={{ padding: `${styles.padding}%`, position: 'relative' }}>
+        <div className="h-full w-full" style={frameStyle}>
           <div
-            className="w-full h-full bg-muted/30"
+            className="h-full w-full bg-ctl"
             style={{
               borderRadius: `${Math.max(0, styles.borderRadius - styles.borderWidth)}px`,
             }}
           >
-            <div className="p-4 opacity-50 space-y-2">
-              <div className="w-1/2 h-2.5 bg-foreground/20 rounded-full"></div>
-              <div className="w-3/4 h-2 bg-foreground/15 rounded-full"></div>
-              <div className="w-2/3 h-2 bg-foreground/10 rounded-full"></div>
+            <div className="space-y-2 p-4 opacity-60">
+              <div className="h-2.5 w-1/2 rounded-full bg-muted/40"></div>
+              <div className="h-2 w-3/4 rounded-full bg-muted/30"></div>
+              <div className="h-2 w-2/3 rounded-full bg-muted/25"></div>
             </div>
           </div>
         </div>
 
         {isWebcamVisible && webcamStyles && webcamPosition && (
           <div className={fakeWebcamClasses} style={fakeWebcamStyle}>
-            <div className="w-full h-full bg-card flex items-center justify-center shadow-lg">
-              <Video className="w-1/2 h-1/2 text-foreground/40" />
+            <div className="flex h-full w-full items-center justify-center bg-ctl">
+              <Video className="h-1/2 w-1/2 text-muted" />
             </div>
           </div>
         )}

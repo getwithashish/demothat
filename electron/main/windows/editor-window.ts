@@ -42,8 +42,8 @@ export function createEditorWindow(
     titleBarOptions = {
       titleBarStyle: 'hidden',
       titleBarOverlay: {
-        color: isDarkMode ? '#1D2025' : '#F9FAFB', // Matches dark/light card/sidebar background
-        symbolColor: isDarkMode ? '#EEEEEE' : '#333333',
+        color: isDarkMode ? '#17181b' : '#f6f5f2', // Paper tokens: --sa-panel (dark/light)
+        symbolColor: isDarkMode ? '#ebecee' : '#1d1d1b', // Paper tokens: --sa-text (dark/light)
         height: 48, // h-12 in Tailwind
       },
     }

@@ -1,83 +1,43 @@
 import { useEditorStore } from '../../store/editorStore'
 import { RegionSettingsPanel } from './RegionSettingsPanel'
-import { Microphone, DeviceComputerCamera, LayoutBoard, Route, Pointer } from 'tabler-icons-react'
+import type { SidePanelTab } from '../../types'
 import { BackgroundSettings } from './sidepanel/BackgroundSettings'
 import { FrameEffectsSettings } from './sidepanel/FrameEffectsSettings'
 import { CameraSettings } from './sidepanel/CameraSettings'
 import { CursorSettings } from './sidepanel/CursorSettings'
 import { AnimationSettingsPanel } from './sidepanel/AnimationSettingsPanel'
 import { useShallow } from 'zustand/react/shallow'
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { cn } from '../../lib/utils'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip'
 import { AudioSettings } from './sidepanel/AudioSettings'
 import { CameraMotionSettings } from './sidepanel/CameraMotionSettings'
 import { CompositionLayoutSettings } from './sidepanel/CompositionLayoutSettings'
 import { VisualEffectsSettings } from './sidepanel/VisualEffectsSettings'
+import { PanelHeader } from './PanelHeader'
 
-interface TabButtonProps {
-  label: string
-  icon: React.ReactNode
-  isActive: boolean
-  onClick: () => void
-  disabled?: boolean
-}
-
-function TabButton({ label, icon, isActive, onClick, disabled }: TabButtonProps) {
-  return (
-    <TooltipProvider delayDuration={500}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            onClick={onClick}
-            className={cn(
-              'w-full flex flex-col items-center justify-center p-1 rounded-lg transition-colors',
-              'hover:bg-accent/50 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ring-offset-sidebar',
-              isActive ? 'bg-accent text-primary' : 'text-muted-foreground hover:text-foreground',
-              disabled && 'opacity-50 cursor-not-allowed hover:bg-transparent',
-            )}
-            aria-label={label}
-            disabled={disabled}
-          >
-            <div className="w-6 h-6 flex items-center justify-center">{icon}</div>
-          </button>
-        </TooltipTrigger>
-        <TooltipContent
-          side="left"
-          sideOffset={8}
-          className="capitalize px-3 py-1.5 text-sm font-medium bg-popover text-popover-foreground shadow-md rounded-md border border-border/50 dark:bg-popover/95 dark:border-border/80 dark:text-foreground"
-        >
-          <p className="whitespace-nowrap">{label}</p>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  )
-}
+/**
+ * Inspector destinations. The store values are unchanged from the icon rail
+ * (general/camera/audio/animation/cursor) — only the labels and the presentation
+ * changed. DESIGN_SPEC §5: text tabs, 13px, 12px 8px padding, active = text colour
+ * + 2px accent underline, hairline under the strip.
+ */
+const TABS: { id: SidePanelTab; label: string }[] = [
+  { id: 'general', label: 'Layout' },
+  { id: 'camera', label: 'Camera' },
+  { id: 'audio', label: 'Audio' },
+  { id: 'animation', label: 'Motion' },
+  { id: 'cursor', label: 'Cursor' },
+]
 
 function FrameSettingsPanel() {
   return (
-    <div className="h-full flex flex-col">
-      {/* Header */}
-      <div className="p-6 border-b border-sidebar-border">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-            <LayoutBoard className="w-5 h-5 text-primary" />
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-sidebar-foreground">General Settings</h2>
-            <p className="text-sm text-muted-foreground">Customize your video&apos;s appearance</p>
-          </div>
-        </div>
-      </div>
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto stable-scrollbar">
-        {' '}
-        {/* MODIFIED HERE */}
-        <div className="p-6 space-y-8">
-          <BackgroundSettings />
-          <FrameEffectsSettings />
-          <VisualEffectsSettings />
-        </div>
+    <div className="flex h-full flex-col">
+      <PanelHeader title="Layout" subtitle="Background, spacing and depth" />
+      <div className="min-h-0 flex-1 overflow-y-auto stable-scrollbar">
+        {/* Sections carry their own padding + hairline dividers (flat, no wrappers). */}
+        <BackgroundSettings />
+        <FrameEffectsSettings />
+        <VisualEffectsSettings />
       </div>
     </div>
   )
@@ -116,6 +76,39 @@ export function SidePanel() {
       setActiveSidePanelTab: state.setActiveSidePanelTab,
     })),
   )
+
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([])
+
+  const isTabDisabled = (id: SidePanelTab) => id === 'camera' && !webcamVideoUrl
+
+  // Roving tabindex: arrows move between enabled tabs, Home/End jump to the ends.
+  const handleTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
+    const forward = event.key === 'ArrowRight' || event.key === 'ArrowDown'
+    const backward = event.key === 'ArrowLeft' || event.key === 'ArrowUp'
+    const isHome = event.key === 'Home'
+    const isEnd = event.key === 'End'
+    if (!forward && !backward && !isHome && !isEnd) return
+
+    event.preventDefault()
+    const enabled = TABS.map((tab, i) => ({ tab, i })).filter(({ tab }) => !isTabDisabled(tab.id))
+    if (enabled.length === 0) return
+
+    let target = enabled.find(({ i }) => i === index) ?? enabled[0]
+    if (isHome) {
+      target = enabled[0]
+    } else if (isEnd) {
+      target = enabled[enabled.length - 1]
+    } else if (forward || backward) {
+      const position = enabled.findIndex(({ i }) => i === index)
+      if (position !== -1) {
+        const next = (position + (forward ? 1 : -1) + enabled.length) % enabled.length
+        target = enabled[next]
+      }
+    }
+
+    setActiveSidePanelTab(target.tab.id)
+    tabRefs.current[target.i]?.focus()
+  }
 
   // Optimize region lookup using useMemo
   const selectedCameraMotion = useMemo(() => cameraMotions.find((motion) => motion.id === selectedRegionId) ?? null, [cameraMotions, selectedRegionId])
@@ -170,62 +163,89 @@ export function SidePanel() {
   }, [selectedRegionId, cameraMotions, compositionLayouts, audioClips, deleteAudioClip, deleteCameraMotion, deleteCompositionLayout, setSelectedRegionId])
 
   return (
-    <div className="h-full flex">
-      {/* Main content area */}
-      <div className="flex-1 bg-sidebar overflow-hidden relative">
-        {/* Render all panels but only show the active one.
-            This prevents unmounting and preserves the internal state of components like Collapse. */}
-        <div className="h-full" hidden={activeSidePanelTab !== 'general'}>
-          {selectedCompositionLayout ? <CompositionLayoutSettings /> : selectedCameraMotion ? <CameraMotionSettings /> : selectedRegion ? <RegionSettingsPanel region={selectedRegion} /> : <FrameSettingsPanel />}
-        </div>
-        <div className="h-full" hidden={activeSidePanelTab !== 'camera'}>
-          <CameraSettings />
-        </div>
-        <div className="h-full" hidden={activeSidePanelTab !== 'audio'}>
-          <AudioSettings />
-        </div>
-        <div className="h-full" hidden={activeSidePanelTab !== 'animation'}>
-          <AnimationSettingsPanel />
-        </div>
-        <div className="h-full" hidden={activeSidePanelTab !== 'cursor'}>
-          <CursorSettings />
-        </div>
+    <div className="flex h-full flex-col bg-panel">
+      {/* Tab strip (replaces the 64px icon rail) */}
+      <div role="tablist" aria-label="Inspector sections" className="flex shrink-0 items-stretch border-b border-line px-2.5">
+        {TABS.map((tab, index) => {
+          const disabled = isTabDisabled(tab.id)
+          const active = activeSidePanelTab === tab.id
+          return (
+            <button
+              key={tab.id}
+              ref={(el) => {
+                tabRefs.current[index] = el
+              }}
+              type="button"
+              role="tab"
+              id={`inspector-tab-${tab.id}`}
+              aria-controls={`inspector-panel-${tab.id}`}
+              aria-selected={active}
+              aria-label={tab.label}
+              tabIndex={active ? 0 : -1}
+              disabled={disabled}
+              onClick={() => setActiveSidePanelTab(tab.id)}
+              onKeyDown={(event) => handleTabKeyDown(event, index)}
+              className={cn(
+                'border-b-2 border-transparent px-2 py-3 text-ui transition-colors',
+                '-mb-px',
+                active ? 'border-accent text-fg' : 'text-muted hover:text-fg',
+                disabled && 'cursor-not-allowed opacity-45 hover:text-muted',
+                'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
+              )}
+            >
+              {tab.label}
+            </button>
+          )
+        })}
       </div>
 
-      {/* Vertical Tab Navigator (Always visible) */}
-      <div className="w-[64px] flex-shrink-0 p-3 border-l border-sidebar-border bg-sidebar/80">
-        <div className="flex flex-col items-center space-y-2">
-          <TabButton
-            label="General"
-            icon={<LayoutBoard className="w-5 h-5" />}
-            isActive={activeSidePanelTab === 'general'}
-            onClick={() => setActiveSidePanelTab('general')}
-          />
-          <TabButton
-            label="Camera"
-            icon={<DeviceComputerCamera className="w-5 h-5" />}
-            isActive={activeSidePanelTab === 'camera'}
-            onClick={() => setActiveSidePanelTab('camera')}
-            disabled={!webcamVideoUrl}
-          />
-          <TabButton
-            label="Audio"
-            icon={<Microphone className="w-5 h-5" />}
-            isActive={activeSidePanelTab === 'audio'}
-            onClick={() => setActiveSidePanelTab('audio')}
-          />
-          <TabButton
-            label="Animation"
-            icon={<Route className="w-5 h-5" />}
-            isActive={activeSidePanelTab === 'animation'}
-            onClick={() => setActiveSidePanelTab('animation')}
-          />
-          <TabButton
-            label="Cursor"
-            icon={<Pointer className="w-5 h-5" />}
-            isActive={activeSidePanelTab === 'cursor'}
-            onClick={() => setActiveSidePanelTab('cursor')}
-          />
+      {/* Panels are all mounted and toggled with `hidden` so internal state (e.g. an
+          open Collapse) survives a tab switch. */}
+      <div className="min-h-0 flex-1 overflow-hidden">
+        <div
+          role="tabpanel"
+          id="inspector-panel-general"
+          aria-labelledby="inspector-tab-general"
+          className="h-full"
+          hidden={activeSidePanelTab !== 'general'}
+        >
+          {selectedCompositionLayout ? <CompositionLayoutSettings /> : selectedCameraMotion ? <CameraMotionSettings /> : selectedRegion ? <RegionSettingsPanel region={selectedRegion} /> : <FrameSettingsPanel />}
+        </div>
+        <div
+          role="tabpanel"
+          id="inspector-panel-camera"
+          aria-labelledby="inspector-tab-camera"
+          className="h-full"
+          hidden={activeSidePanelTab !== 'camera'}
+        >
+          <CameraSettings />
+        </div>
+        <div
+          role="tabpanel"
+          id="inspector-panel-audio"
+          aria-labelledby="inspector-tab-audio"
+          className="h-full"
+          hidden={activeSidePanelTab !== 'audio'}
+        >
+          <AudioSettings />
+        </div>
+        <div
+          role="tabpanel"
+          id="inspector-panel-animation"
+          aria-labelledby="inspector-tab-animation"
+          className="h-full"
+          hidden={activeSidePanelTab !== 'animation'}
+        >
+          <AnimationSettingsPanel />
+        </div>
+        <div
+          role="tabpanel"
+          id="inspector-panel-cursor"
+          aria-labelledby="inspector-tab-cursor"
+          className="h-full"
+          hidden={activeSidePanelTab !== 'cursor'}
+        >
+          <CursorSettings />
         </div>
       </div>
     </div>

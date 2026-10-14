@@ -1,11 +1,22 @@
-import { useMemo } from 'react'
+// Frame / Shadow / Border sections for the Layout panel.
+// Flat Sections on the shared primitives: no Collapsible, no card-in-card.
+import { useEffect, useMemo, useState } from 'react'
 import { useEditorStore } from '../../../store/editorStore'
-import { ColorPicker } from '../../ui/color-picker'
+import { Button } from '../../ui/button'
+import { ColorField } from '../../ui/color-field'
+import { Section } from '../../ui/section'
 import { Slider } from '../../ui/slider'
-import { Collapse } from '../../ui/collapse'
+import { ToggleRow } from '../../ui/toggle-row'
 import { rgbaToHexAlpha, hexToRgb } from '../../../lib/utils'
-import { BoxPadding, Shadow, BorderAll } from 'tabler-icons-react'
 import { DEFAULTS } from '../../../lib/constants'
+
+function ResetButton({ onClick, label }: { onClick: () => void; label: string }) {
+  return (
+    <Button variant="ghost" size="sm" onClick={onClick} aria-label={`Reset ${label}`}>
+      Reset
+    </Button>
+  )
+}
 
 export function FrameEffectsSettings() {
   const { frameStyles, updateFrameStyle } = useEditorStore()
@@ -47,7 +58,7 @@ export function FrameEffectsSettings() {
     }
   }
 
-  // --- Reset Handlers ---
+  // --- Reset Handlers (kept from the previous Collapse headers) ---
   const handleResetPadding = () => {
     updateFrameStyle({ padding: DEFAULTS.FRAME.PADDING.defaultValue })
   }
@@ -69,147 +80,105 @@ export function FrameEffectsSettings() {
     })
   }
 
-  return (
-    <div className="space-y-4">
-      {/* Padding Section */}
-      <Collapse
-        title="Padding"
-        description="Space around your video content"
-        icon={<BoxPadding />}
-        defaultOpen={true}
-        onReset={handleResetPadding}
-      >
-        <div className="space-y-3">
-          <label className="flex items-center justify-between text-sm text-muted-foreground">
-            <span>Padding</span>
-            <span className="text-xs font-semibold text-primary tabular-nums">{frameStyles.padding}%</span>
-          </label>
-          <Slider
-            min={DEFAULTS.FRAME.PADDING.min}
-            max={DEFAULTS.FRAME.PADDING.max}
-            step={DEFAULTS.FRAME.PADDING.step}
-            value={frameStyles.padding}
-            onChange={(value) => handleStyleChange('padding', value)}
-          />
-        </div>
-      </Collapse>
+  // The store has no border on/off flag, so the toggle is derived from the width and
+  // remembers the last non-zero value locally (presentation only, no store change).
+  const borderOn = frameStyles.borderWidth > 0
+  const [lastBorderWidth, setLastBorderWidth] = useState(
+    frameStyles.borderWidth || DEFAULTS.FRAME.BORDER.WIDTH.defaultValue,
+  )
+  useEffect(() => {
+    if (frameStyles.borderWidth > 0) setLastBorderWidth(frameStyles.borderWidth)
+  }, [frameStyles.borderWidth])
+  const handleBorderToggle = (on: boolean) => {
+    updateFrameStyle({ borderWidth: on ? lastBorderWidth || DEFAULTS.FRAME.BORDER.WIDTH.defaultValue : 0 })
+  }
 
-      {/* Shadow Section */}
-      <Collapse
-        title="Shadow"
-        description="Add depth with drop shadows"
-        icon={<Shadow />}
-        defaultOpen={true}
-        onReset={handleResetShadow}
-      >
-        <div className="space-y-4">
-          <div className="space-y-2.5">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Blur</span>
-              <span className="text-xs font-semibold text-primary tabular-nums">{frameStyles.shadowBlur}px</span>
+  return (
+    <>
+      <Section label="Frame" labelRight={<ResetButton onClick={handleResetPadding} label="frame padding" />}>
+        <Slider
+          label="Padding"
+          min={DEFAULTS.FRAME.PADDING.min}
+          max={DEFAULTS.FRAME.PADDING.max}
+          step={DEFAULTS.FRAME.PADDING.step}
+          value={frameStyles.padding}
+          onChange={(value) => handleStyleChange('padding', value)}
+          formatValue={(value) => `${value}%`}
+        />
+      </Section>
+
+      <Section label="Shadow" labelRight={<ResetButton onClick={handleResetShadow} label="shadow" />}>
+        <div className="space-y-3.5">
+          <Slider
+            label="Blur"
+            min={DEFAULTS.FRAME.SHADOW.BLUR.min}
+            max={DEFAULTS.FRAME.SHADOW.BLUR.max}
+            step={DEFAULTS.FRAME.SHADOW.BLUR.step}
+            value={frameStyles.shadowBlur}
+            onChange={(value) => handleStyleChange('shadowBlur', value)}
+            formatValue={(value) => `${value} px`}
+          />
+          <Slider
+            label="Offset X"
+            min={DEFAULTS.FRAME.SHADOW.OFFSET_X.min}
+            max={DEFAULTS.FRAME.SHADOW.OFFSET_X.max}
+            step={DEFAULTS.FRAME.SHADOW.OFFSET_X.step}
+            value={frameStyles.shadowOffsetX}
+            onChange={(value) => handleStyleChange('shadowOffsetX', value)}
+            formatValue={(value) => `${value} px`}
+          />
+          <Slider
+            label="Offset Y"
+            min={DEFAULTS.FRAME.SHADOW.OFFSET_Y.min}
+            max={DEFAULTS.FRAME.SHADOW.OFFSET_Y.max}
+            step={DEFAULTS.FRAME.SHADOW.OFFSET_Y.step}
+            value={frameStyles.shadowOffsetY}
+            onChange={(value) => handleStyleChange('shadowOffsetY', value)}
+            formatValue={(value) => `${value} px`}
+          />
+          <div className="grid grid-cols-2 gap-3">
+            <div className="pt-0.5">
+              <ColorField label="Color" value={shadowHex} onChange={handleShadowColorChange} />
             </div>
             <Slider
-              min={DEFAULTS.FRAME.SHADOW.BLUR.min}
-              max={DEFAULTS.FRAME.SHADOW.BLUR.max}
-              step={DEFAULTS.FRAME.SHADOW.BLUR.step}
-              value={frameStyles.shadowBlur}
-              onChange={(v) => handleStyleChange('shadowBlur', v)}
+              label="Opacity"
+              min={DEFAULTS.FRAME.SHADOW.OPACITY.min}
+              max={DEFAULTS.FRAME.SHADOW.OPACITY.max}
+              step={DEFAULTS.FRAME.SHADOW.OPACITY.step}
+              value={shadowAlpha}
+              onChange={handleShadowOpacityChange}
+              formatValue={(value) => `${Math.round(value * 100)}%`}
             />
           </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2.5">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Offset X</span>
-                <span className="text-xs font-semibold text-primary tabular-nums">{frameStyles.shadowOffsetX}px</span>
-              </div>
-              <Slider
-                min={DEFAULTS.FRAME.SHADOW.OFFSET_X.min}
-                max={DEFAULTS.FRAME.SHADOW.OFFSET_X.max}
-                step={DEFAULTS.FRAME.SHADOW.OFFSET_X.step}
-                value={frameStyles.shadowOffsetX}
-                onChange={(v) => handleStyleChange('shadowOffsetX', v)}
-              />
-            </div>
-            <div className="space-y-2.5">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Offset Y</span>
-                <span className="text-xs font-semibold text-primary tabular-nums">{frameStyles.shadowOffsetY}px</span>
-              </div>
-              <Slider
-                min={DEFAULTS.FRAME.SHADOW.OFFSET_Y.min}
-                max={DEFAULTS.FRAME.SHADOW.OFFSET_Y.max}
-                step={DEFAULTS.FRAME.SHADOW.OFFSET_Y.step}
-                value={frameStyles.shadowOffsetY}
-                onChange={(v) => handleStyleChange('shadowOffsetY', v)}
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <ColorPicker label="Color" value={shadowHex} onChange={handleShadowColorChange} />
-            </div>
-            <div className="space-y-2.5">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Opacity</span>
-                <span className="text-xs font-semibold text-primary tabular-nums">
-                  {Math.round(shadowAlpha * 100)}%
-                </span>
-              </div>
-              <Slider
-                min={DEFAULTS.FRAME.SHADOW.OPACITY.min}
-                max={DEFAULTS.FRAME.SHADOW.OPACITY.max}
-                step={DEFAULTS.FRAME.SHADOW.OPACITY.step}
-                value={shadowAlpha}
-                onChange={handleShadowOpacityChange}
-              />
-            </div>
-          </div>
         </div>
-      </Collapse>
+      </Section>
 
-      {/* Border Section */}
-      <Collapse
-        title="Border"
-        description="Frame your video with a border"
-        icon={<BorderAll />}
-        defaultOpen={false}
-        onReset={handleResetBorder}
-      >
-        <div className="space-y-4">
-          <div className="space-y-2.5">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Radius</span>
-              <span className="text-xs font-semibold text-primary tabular-nums">{frameStyles.borderRadius}px</span>
-            </div>
-
+      <Section label="Border" labelRight={<ResetButton onClick={handleResetBorder} label="border" />}>
+        <ToggleRow label="Border" checked={borderOn} onCheckedChange={handleBorderToggle} />
+        {borderOn && (
+          <div className="mt-3.5 space-y-3.5">
             <Slider
+              label="Radius"
               min={DEFAULTS.FRAME.RADIUS.min}
               max={DEFAULTS.FRAME.RADIUS.max}
               step={DEFAULTS.FRAME.RADIUS.step}
               value={frameStyles.borderRadius}
               onChange={(value) => handleStyleChange('borderRadius', value)}
+              formatValue={(value) => `${value} px`}
             />
-          </div>
-          <div className="space-y-2.5">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Thickness</span>
-              <span className="text-xs font-semibold text-primary tabular-nums">{frameStyles.borderWidth}px</span>
-            </div>
             <Slider
+              label="Thickness"
               min={DEFAULTS.FRAME.BORDER.WIDTH.min}
               max={DEFAULTS.FRAME.BORDER.WIDTH.max}
               step={DEFAULTS.FRAME.BORDER.WIDTH.step}
               value={frameStyles.borderWidth}
-              onChange={(v) => handleStyleChange('borderWidth', v)}
+              onChange={(value) => handleStyleChange('borderWidth', value)}
+              formatValue={(value) => `${value} px`}
             />
+            <ColorField label="Color" value={borderHex} onChange={handleBorderColorChange} />
           </div>
-          <div>
-            <ColorPicker label="Color" value={borderHex} onChange={handleBorderColorChange} />
-          </div>
-        </div>
-      </Collapse>
-    </div>
+        )}
+      </Section>
+    </>
   )
 }

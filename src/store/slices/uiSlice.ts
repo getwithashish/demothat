@@ -30,8 +30,8 @@ const updateWindowsTitleBar = (mode: 'light' | 'dark', platform: NodeJS.Platform
 
   const options =
     mode === 'dark'
-      ? { color: '#1D2025', symbolColor: '#EEEEEE' } // Matches dark card/sidebar
-      : { color: '#F9FAFB', symbolColor: '#333333' } // Matches light card/sidebar
+      ? { color: '#17181b', symbolColor: '#ebecee' } // Paper tokens: --sa-panel / --sa-text (dark)
+      : { color: '#f6f5f2', symbolColor: '#1d1d1b' } // Paper tokens: --sa-panel / --sa-text (light)
   window.electronAPI.updateTitleBarOverlay(options)
 }
 
@@ -53,14 +53,17 @@ export const createUISlice: Slice<UIState, UIActions> = (set, get) => ({
         cursorStyles: Partial<CursorStyles>
       }>('appearance')
 
-      let finalMode: 'light' | 'dark' = 'light'
+      // Default to the OS colour scheme (Electron's nativeTheme drives the
+      // renderer's `prefers-color-scheme`); a persisted override wins.
+      const preferred: 'light' | 'dark' =
+        typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)').matches
+          ? 'dark'
+          : 'light'
+      const finalMode: 'light' | 'dark' = appearance?.mode ?? preferred
 
-      if (appearance?.mode) {
-        finalMode = appearance.mode
-        set((state) => {
-          state.mode = appearance.mode
-        })
-      }
+      set((state) => {
+        state.mode = finalMode
+      })
       if (appearance?.cursorThemeName) {
         set((state) => {
           state.cursorThemeName = appearance.cursorThemeName

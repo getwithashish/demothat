@@ -2,6 +2,7 @@ import { memo } from 'react'
 import { TimelineRegion, ZoomRegion } from '../../../types'
 import { cn } from '../../../lib/utils'
 import { Search } from 'tabler-icons-react'
+import { ICON_SIZE, ICON_STROKE } from '../../ui/icons'
 
 interface ZoomRegionBlockProps {
   region: ZoomRegion
@@ -15,6 +16,14 @@ interface ZoomRegionBlockProps {
   setRef: (el: HTMLDivElement | null) => void
 }
 
+/**
+ * Zoom region (DESIGN_SPEC §8): ctl fill, 1px line, 5px radius, centred 12px/500 label
+ * with a 16px-style icon (18px per the AGENTS hard rule), 3px accent trim bars inset 5px,
+ * selected = 2px accent outline.
+ *
+ * The root element is the drag target: `willChange` and the resize-handle hit areas are
+ * unchanged from the previous version, so the drag/trim math and hit-testing are identical.
+ */
 export const ZoomRegionBlock = memo(
   ({ region, isSelected, isBeingDragged, onMouseDown, setRef }: ZoomRegionBlockProps) => {
     const handleResizeMouseDown = (e: React.MouseEvent<HTMLDivElement>, type: 'resize-left' | 'resize-right') => {
@@ -27,41 +36,32 @@ export const ZoomRegionBlock = memo(
         ref={setRef}
         data-region-id={region.id}
         className={cn(
-          'absolute w-full h-14 top-1/2 -translate-y-1/2 rounded-xl cursor-grab border-2 backdrop-blur-sm group/zoom-region',
-          !isBeingDragged && 'transition-all duration-200 ease-out',
-          isSelected
-            ? 'bg-card/90 border-primary -translate-y-[calc(50%+10px)] shadow-lg shadow-primary/10'
-            : 'bg-card/70 border-border/60 hover:border-primary hover:bg-card/90 hover:shadow-lg hover:shadow-primary/10',
+          'group/zoom-region absolute h-full w-full overflow-hidden rounded-clip border border-line bg-ctl',
+          isBeingDragged ? 'cursor-grabbing' : 'cursor-grab',
+          isSelected ? 'outline-solid outline-2 outline-accent' : 'hover:border-muted',
         )}
         style={{ willChange: 'transform, width' }}
         onMouseDown={(e) => onMouseDown(e, region, 'move')}
       >
         <div
-          className="absolute left-0 top-0 w-5 h-full cursor-ew-resize rounded-l-xl flex items-center justify-center z-10 group"
+          className="absolute left-0 top-0 z-10 flex h-full w-5 cursor-ew-resize items-center justify-center"
           onMouseDown={(e) => handleResizeMouseDown(e, 'resize-left')}
         >
-          <div className={cn('w-1 h-8 rounded-full transition-all duration-150 bg-primary group-hover:h-10')} />
+          <span className="h-[calc(100%-10px)] w-[3px] rounded-[2px] bg-accent" />
         </div>
 
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none px-3">
-          <div className="flex items-center gap-2.5 overflow-hidden">
-            <Search className={cn('w-5 h-5 shrink-0 transition-colors', 'text-primary')} />
-            <span
-              className={cn(
-                'text-xs font-semibold tracking-wide select-none whitespace-nowrap overflow-hidden text-ellipsis transition-colors',
-                'text-primary',
-              )}
-            >
-              ZOOM
-            </span>
-          </div>
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden px-3">
+          <span className="flex items-center gap-1.5 overflow-hidden">
+            <Search size={ICON_SIZE} strokeWidth={ICON_STROKE} className="shrink-0 text-muted" />
+            <span className="truncate text-sm font-medium text-fg">Zoom</span>
+          </span>
         </div>
 
         <div
-          className="absolute right-0 top-0 w-5 h-full cursor-ew-resize rounded-xl flex items-center justify-center z-10 group"
+          className="absolute right-0 top-0 z-10 flex h-full w-5 cursor-ew-resize items-center justify-center"
           onMouseDown={(e) => handleResizeMouseDown(e, 'resize-right')}
         >
-          <div className={cn('w-1 h-8 rounded-full transition-all duration-150 bg-primary group-hover:h-10')} />
+          <span className="h-[calc(100%-10px)] w-[3px] rounded-[2px] bg-accent" />
         </div>
       </div>
     )

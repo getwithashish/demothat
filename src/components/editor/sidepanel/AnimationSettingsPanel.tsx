@@ -1,13 +1,18 @@
+// Motion panel: default animation applied to new (or all) zoom regions.
+// Flat Sections on the shared primitives — no Collapsible, no icon tiles.
 import { useState } from 'react'
 import { useEditorStore } from '../../../store/editorStore'
-import { Route, Wand, Check } from 'tabler-icons-react'
+import { Check, Wand } from 'tabler-icons-react'
 import { ZOOM, DEFAULTS } from '../../../lib/constants'
 import { EASING_MAP } from '../../../lib/easing'
-import { cn } from '../../../lib/utils'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../ui/select'
-import { Slider } from '../../ui/slider'
 import { Button } from '../../ui/button'
-import { Collapse } from '../../ui/collapse'
+import { HelperText } from '../../ui/helper-text'
+import { Section, SectionLabel } from '../../ui/section'
+import { SegmentedControl } from '../../ui/segmented-control'
+import { Slider } from '../../ui/slider'
+import { ICON_SIZE, ICON_STROKE } from '../../ui/icons'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../ui/select'
+import { PanelHeader } from '../PanelHeader'
 
 const speedOptions = Object.keys(ZOOM.SPEED_OPTIONS)
 const easingOptions = Object.keys(EASING_MAP)
@@ -38,109 +43,71 @@ export function AnimationSettingsPanel() {
   }
 
   return (
-    <div className="h-full flex flex-col">
-      {/* Header */}
-      <div className="p-6 border-b border-sidebar-border flex-shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-            <Route className="w-5 h-5 text-primary" />
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-sidebar-foreground">Global Animation</h2>
-            <p className="text-sm text-muted-foreground">Set default animation for all zoom regions</p>
-          </div>
-        </div>
-      </div>
+    <div className="flex h-full flex-col">
+      <PanelHeader title="Motion" subtitle="Default animation for all zoom regions" />
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto stable-scrollbar p-6 space-y-6">
-        {/* Animation Settings Collapse */}
-        <Collapse
-          title="Animation Settings"
-          description="These settings will be applied to all zoom regions."
-          icon={<Route />}
-          defaultOpen={true}
-          onReset={handleResetAnimation}
+      <div className="min-h-0 flex-1 overflow-y-auto stable-scrollbar">
+        <Section
+          first
+          label="Speed"
+          labelRight={
+            <Button variant="ghost" size="sm" onClick={handleResetAnimation} aria-label="Reset animation settings">
+              Reset
+            </Button>
+          }
         >
-          <div className="space-y-6 pt-2">
-            {/* Speed Selector */}
-            <div className="space-y-3">
-              <label className="text-sm font-medium text-sidebar-foreground">Speed</label>
-              <div className="grid grid-cols-4 gap-1 p-1 bg-muted/50 rounded-lg">
-                {speedOptions.map((s) => (
-                  <button
-                    key={s}
-                    onClick={() => setSpeed(s)}
-                    className={cn(
-                      'py-2 text-sm font-medium rounded-md transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                      speed === s
-                        ? 'bg-background shadow-sm text-foreground'
-                        : 'text-muted-foreground hover:text-foreground',
-                    )}
-                  >
-                    {s}
-                  </button>
+          <SegmentedControl
+            aria-label="Speed"
+            options={speedOptions.map((option) => ({ value: option, label: option }))}
+            value={speed}
+            onChange={setSpeed}
+          />
+
+          <div className="mt-3.5 space-y-2">
+            <SectionLabel>Easing</SectionLabel>
+            <Select value={easing} onValueChange={setEasing}>
+              <SelectTrigger aria-label="Easing">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {easingOptions.map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {option}
+                  </SelectItem>
                 ))}
-              </div>
-            </div>
-
-            {/* Easing Selector */}
-            <div className="space-y-3">
-              <label className="text-sm font-medium text-sidebar-foreground">Style (Easing)</label>
-              <Select value={easing} onValueChange={setEasing}>
-                <SelectTrigger className="h-10 bg-background/50">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {easingOptions.map((e) => (
-                    <SelectItem key={e} value={e}>
-                      {e}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Zoom Level */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <label className="text-sm font-medium text-sidebar-foreground">Zoom Level</label>
-                <span className="text-xs font-semibold text-primary tabular-nums">{zoomLevel.toFixed(1)}x</span>
-              </div>
-              <Slider
-                min={DEFAULTS.ANIMATION.ZOOM_LEVEL.min}
-                max={DEFAULTS.ANIMATION.ZOOM_LEVEL.max}
-                step={DEFAULTS.ANIMATION.ZOOM_LEVEL.step}
-                value={zoomLevel}
-                onChange={setZoomLevel}
-              />
-            </div>
-
-            {/* Apply Collapse */}
-            <div className="space-y-3">
-              <Button
-                onClick={handleApplyToAll}
-                disabled={applyStatus !== 'idle'}
-                className={cn(
-                  'w-full h-11 font-semibold transition-all duration-300',
-                  applyStatus === 'applied' && 'bg-green-500 hover:bg-green-500/90',
-                )}
-              >
-                {applyStatus === 'idle' ? (
-                  <>
-                    <Wand className="w-4 h-4 mr-2" />
-                    Apply to All Zoom Regions
-                  </>
-                ) : (
-                  <>
-                    <Check className="w-5 h-5 mr-2" />
-                    Applied!
-                  </>
-                )}
-              </Button>
-            </div>
+              </SelectContent>
+            </Select>
           </div>
-        </Collapse>
+        </Section>
+
+        <Section label="Zoom">
+          <Slider
+            label="Zoom level"
+            min={DEFAULTS.ANIMATION.ZOOM_LEVEL.min}
+            max={DEFAULTS.ANIMATION.ZOOM_LEVEL.max}
+            step={DEFAULTS.ANIMATION.ZOOM_LEVEL.step}
+            value={zoomLevel}
+            onChange={setZoomLevel}
+            formatValue={(value) => `${value.toFixed(1)}\u00d7`}
+          />
+          <HelperText>Applies to new zoom regions. Existing regions keep their values until you apply.</HelperText>
+        </Section>
+
+        <Section>
+          <Button className="w-full" onClick={handleApplyToAll} disabled={applyStatus !== 'idle'}>
+            {applyStatus === 'idle' ? (
+              <>
+                <Wand size={ICON_SIZE} strokeWidth={ICON_STROKE} className="mr-2" />
+                Apply to all zoom regions
+              </>
+            ) : (
+              <>
+                <Check size={ICON_SIZE} strokeWidth={ICON_STROKE} className="mr-2" />
+                Applied
+              </>
+            )}
+          </Button>
+        </Section>
       </div>
     </div>
   )

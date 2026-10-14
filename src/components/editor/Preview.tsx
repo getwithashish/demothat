@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, memo, useState, useCallback } from 'react'
 import { useEditorStore, usePlaybackState } from '../../store/editorStore'
 import { Movie } from 'tabler-icons-react'
-import { FullscreenIcon, ExitFullscreenIcon } from '../ui/icons'
+import { FullscreenIcon, ExitFullscreenIcon, ICON_SIZE, ICON_STROKE } from '../ui/icons'
 import {
   PlayerPlay,
   PlayerTrackPrev as RewindIcon,
@@ -88,6 +88,10 @@ export const Preview = memo(
     const [controlBarWidth, setControlBarWidth] = useState(0)
     const [effectOverlayBounds, setEffectOverlayBounds] = useState({ left: 0, top: 0, width: 0, height: 0 })
     const visualEffects = useEditorStore(state => state.visualEffects)
+    // Drives the "Mask" chip: true while an effect covers the playhead.
+    const maskActive = visualEffects.some(
+      (effect) => currentTime >= effect.startTime && currentTime < effect.startTime + effect.duration,
+    )
     const selectedRegionId = useEditorStore(state => state.selectedRegionId)
     const setSelectedRegionId = useEditorStore(state => state.setSelectedRegionId)
     const updateVisualEffect = useEditorStore(state => state.updateVisualEffect)
@@ -465,16 +469,14 @@ export const Preview = memo(
               width={canvasDimensions.width}
               height={canvasDimensions.height}
               style={{ maxWidth: '100%', maxHeight: '100%', width: 'auto', height: 'auto' }}
-              className="rounded-lg shadow-2xl"
+              className="rounded-pv ring-1 ring-line shadow-[var(--sa-preview-shadow)]"
             />
           ) : (
-            <div className="w-full h-full bg-gradient-to-br from-muted/30 to-muted/10 border-2 border-dashed border-border/40 rounded-xl flex flex-col items-center justify-center text-muted-foreground gap-4 backdrop-blur-sm">
-              <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center backdrop-blur-md border border-border/30 shadow-lg">
-                <Movie className="w-10 h-10 text-primary/60" />
-              </div>
-              <div className="text-center space-y-1">
-                <p className="text-lg font-semibold text-foreground/80">No project loaded</p>
-                <p className="text-sm text-muted-foreground/70">Load a project to begin editing</p>
+            <div className="flex h-full w-full flex-col items-center justify-center gap-3 rounded-pv border border-dashed border-line text-muted">
+              <Movie size={32} strokeWidth={ICON_STROKE} className="text-muted" />
+              <div className="space-y-0.5 text-center">
+                <p className="text-title font-semibold text-fg">No project loaded</p>
+                <p className="text-sm text-muted">Load a project to begin editing</p>
               </div>
             </div>
           )}
@@ -499,11 +501,19 @@ export const Preview = memo(
                 boxSizing: 'border-box', pointerEvents: 'auto', cursor: 'move', touchAction: 'none',
               }
               return <div key={effect.id} role="button" tabIndex={selected ? 0 : -1} aria-label={`Move ${effect.kind} effect`} onMouseDown={event => beginEffectTransform(event, effect, 'move')} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') setSelectedRegionId(effect.id) }} style={shapeStyle} title={`${effect.kind} — drag to move${selected ? ', use corner handle to resize' : ''}`}>
-                <span className="absolute -left-px -top-5 rounded px-1.5 py-0.5 text-[10px] font-semibold capitalize text-white shadow" style={{ backgroundColor: effect.color, maxWidth: 120, overflow: 'hidden', whiteSpace: 'nowrap' }}>{effect.kind}</span>
+                <span className="absolute -left-px -top-5 rounded px-1.5 py-0.5 text-label font-semibold capitalize text-white shadow" style={{ backgroundColor: effect.color, maxWidth: 120, overflow: 'hidden', whiteSpace: 'nowrap' }}>{effect.kind}</span>
                 {selected && <span role="presentation" onMouseDown={event => beginEffectTransform(event, effect, 'resize')} className="absolute -bottom-1.5 -right-1.5 h-3.5 w-3.5 rounded-sm border-2 border-white shadow-md" style={{ backgroundColor: effect.color, cursor: 'nwse-resize', pointerEvents: 'auto' }} />}
               </div>
             })}
           </div>
+        )}
+
+        {/* "Mask" chip (DESIGN_SPEC §5): shown while a masking/visual effect is active at
+            the playhead. Small panel-coloured chip with a 1px line. */}
+        {videoUrl && maskActive && (
+          <span className="pointer-events-none absolute left-3 top-3 z-20 rounded-ctl border border-line bg-panel px-2 py-1 text-sm text-muted">
+            Mask
+          </span>
         )}
 
         <video
@@ -552,55 +562,62 @@ export const Preview = memo(
             )}
             style={{ maxWidth: isPreviewFullScreen ? 'min(90%, 800px)' : '100%' }}
           >
+            {/* Transport (DESIGN_SPEC §5): play circle, time, progress track, duration. */}
             <div
-              className="bg-card/95 backdrop-blur-xl border border-border/40 shadow-md rounded-xl px-3 py-2 flex items-center gap-2 max-w-full mx-auto"
+              className="mx-auto flex max-w-full items-center gap-3 rounded-pv border border-line bg-panel px-3 py-2"
               style={{
                 width: isPreviewFullScreen ? 'auto' : controlBarWidth,
                 minWidth: isPreviewFullScreen ? 'auto' : 420,
               }}
             >
               <Button
-                variant="ghost"
+                variant="secondary"
                 size="icon"
                 onClick={togglePlay}
                 title="Play/Pause (Space)"
-                className="flex-shrink-0 text-foreground hover:text-foreground hover:bg-accent h-10 w-10 rounded-xl transition-all duration-150"
+                aria-label="Play or pause"
+                className="h-8 w-8 shrink-0 rounded-full"
               >
-                {isPlaying ? <PlayerPause className="w-4 h-4" /> : <PlayerPlay className="w-4 h-4 ml-0.5" />}
+                {isPlaying ? (
+                  <PlayerPause size={ICON_SIZE} strokeWidth={ICON_STROKE} />
+                ) : (
+                  <PlayerPlay className="ml-0.5" size={ICON_SIZE} strokeWidth={ICON_STROKE} />
+                )}
               </Button>
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={handleRewind}
                 title="Rewind to Start"
-                className="flex-shrink-0 text-foreground hover:text-foreground hover:bg-accent h-10 w-10 rounded-xl transition-all duration-150"
+                aria-label="Rewind to start"
+                className="h-8 w-8 shrink-0"
               >
-                <RewindIcon className="w-4 h-4" />
+                <RewindIcon size={ICON_SIZE} strokeWidth={ICON_STROKE} />
               </Button>
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={() => onSeekFrame('prev')}
                 title="Previous Frame (J)"
-                className="flex-shrink-0 text-foreground hover:text-foreground hover:bg-accent h-10 w-10 rounded-xl transition-all duration-150"
+                aria-label="Previous frame"
+                className="h-8 w-8 shrink-0"
               >
-                <PlayerSkipBack className="w-4 h-4" />
+                <PlayerSkipBack size={ICON_SIZE} strokeWidth={ICON_STROKE} />
               </Button>
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={() => onSeekFrame('next')}
                 title="Next Frame (K)"
-                className="flex-shrink-0 text-foreground hover:text-foreground hover:bg-accent h-10 w-10 rounded-xl transition-all duration-150"
+                aria-label="Next frame"
+                className="h-8 w-8 shrink-0"
               >
-                <PlayerSkipForward className="w-4 h-4" />
+                <PlayerSkipForward size={ICON_SIZE} strokeWidth={ICON_STROKE} />
               </Button>
 
-              <div className="flex items-baseline gap-2 text-xs font-mono tabular-nums text-muted-foreground min-w-[130px] ml-2">
-                <span className="text-foreground font-semibold">{formatTime(currentTime, true)}</span>
-                <span className="text-muted-foreground/50">/</span>
-                <span className="text-muted-foreground">{formatTime(duration, true)}</span>
-              </div>
+              <span className="ml-1 shrink-0 font-mono text-sm tabular-nums text-fg">
+                {formatTime(currentTime, true)}
+              </span>
               <Slider
                 min={0}
                 max={duration}
@@ -608,18 +625,23 @@ export const Preview = memo(
                 value={currentTime}
                 onChange={handleScrub}
                 disabled={duration === 0}
-                className="flex-1"
+                className="min-w-0 flex-1"
               />
+              <span className="shrink-0 font-mono text-sm tabular-nums text-muted">
+                {formatTime(duration, true)}
+              </span>
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={togglePreviewFullScreen}
-                className="flex-shrink-0 text-foreground hover:text-foreground hover:bg-accent h-10 w-10 rounded-xl transition-all duration-150"
+                title="Fullscreen (F)"
+                aria-label="Toggle fullscreen"
+                className="h-8 w-8 shrink-0"
               >
                 {isPreviewFullScreen ? (
-                  <ExitFullscreenIcon className="w-4 h-4" />
+                  <ExitFullscreenIcon size={ICON_SIZE} strokeWidth={ICON_STROKE} />
                 ) : (
-                  <FullscreenIcon className="w-4 h-4" />
+                  <FullscreenIcon size={ICON_SIZE} strokeWidth={ICON_STROKE} />
                 )}
               </Button>
             </div>

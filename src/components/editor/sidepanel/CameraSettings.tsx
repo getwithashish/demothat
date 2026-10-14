@@ -1,33 +1,32 @@
-// Settings panel for webcam overlay (visibility, position, size, shadow)
-import { useMemo, useState } from 'react'
+// Settings panel for the webcam overlay (visibility, style, placement, drop shadow).
+// Rebuilt flat on the shared primitives: Section / SegmentedControl / Slider /
+// ToggleRow / PositionGrid / ColorField. No Collapsible, no icon tiles.
+import type React from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useEditorStore } from '../../../store/editorStore'
-import { ControlGroup } from './ControlGroup'
-import {
-  DeviceComputerCamera,
-  Eye,
-  Photo,
-  Circle,
-  Square,
-  Rectangle,
-  Wand,
-  BorderRadius,
-  SquareToggle,
-  DeviceComputerCameraOff,
-  ZoomIn,
-  ArrowsUpRight,
-} from 'tabler-icons-react'
+import { PanelHeader } from '../PanelHeader'
+import { DeviceComputerCameraOff, Trash, Upload, Video } from 'tabler-icons-react'
 import { Button } from '../../ui/button'
-import { Switch } from '../../ui/switch'
+import { ColorField } from '../../ui/color-field'
+import { HelperText } from '../../ui/helper-text'
+import { PositionGrid, type PositionGridValue } from '../../ui/position-grid'
+import { Section } from '../../ui/section'
+import { SegmentedControl } from '../../ui/segmented-control'
 import { Slider } from '../../ui/slider'
-import { ColorPicker } from '../../ui/color-picker'
+import { ToggleRow } from '../../ui/toggle-row'
+import { ICON_SIZE, ICON_STROKE } from '../../ui/icons'
 import { rgbaToHexAlpha, hexToRgb, formatTime } from '../../../lib/utils'
-import { useShallow } from 'zustand/react/shallow'
-import { Collapse } from '../../ui/collapse'
-import { cn } from '../../../lib/utils'
-import type { WebcamPosition } from '../../../types'
 import { DEFAULTS } from '../../../lib/constants'
-import { TransformPointBottomLeftIcon } from '../../ui/icons'
-import { Trash, Upload, Video } from 'tabler-icons-react'
+import { useShallow } from 'zustand/react/shallow'
+import type { WebcamPosition, WebcamShape } from '../../../types'
+
+function ResetButton({ onClick, label }: { onClick: () => void; label: string }) {
+  return (
+    <Button variant="ghost" size="sm" onClick={onClick} aria-label={`Reset ${label}`}>
+      Reset
+    </Button>
+  )
+}
 
 const DisabledPanelPlaceholder = ({
   icon,
@@ -38,12 +37,12 @@ const DisabledPanelPlaceholder = ({
   title: string
   message: string
 }) => (
-  <div className="flex flex-col items-center justify-center h-full text-center p-8 bg-muted/30">
-    <div className="w-16 h-16 rounded-full bg-background/60 flex items-center justify-center mb-4 border border-border">
-      {icon}
+  <div className="flex flex-col items-center gap-3 px-[18px] py-10 text-center">
+    <div className="text-muted">{icon}</div>
+    <div>
+      <h3 className="text-ui font-medium text-fg">{title}</h3>
+      <p className="mx-auto mt-1 max-w-xs text-sm text-muted">{message}</p>
     </div>
-    <h3 className="font-semibold text-foreground">{title}</h3>
-    <p className="text-sm text-muted-foreground mt-1 max-w-xs">{message}</p>
   </div>
 )
 
@@ -153,304 +152,220 @@ export function CameraSettings() {
   }
 
   const isCircle = webcamStyles.shape === 'circle'
-  const positions: { pos: WebcamPosition['pos']; classes: string }[] = [
-    { pos: 'top-left', classes: 'top-2 left-2' },
-    { pos: 'top-center', classes: 'top-2 left-1/2 -translate-x-1/2' },
-    { pos: 'top-right', classes: 'top-2 right-2' },
-    { pos: 'left-center', classes: 'top-1/2 -translate-y-1/2 left-2' },
-    { pos: 'right-center', classes: 'top-1/2 -translate-y-1/2 right-2' },
-    { pos: 'bottom-left', classes: 'bottom-2 left-2' },
-    { pos: 'bottom-center', classes: 'bottom-2 left-1/2 -translate-x-1/2' },
-    { pos: 'bottom-right', classes: 'bottom-2 right-2' },
+
+  // The store has no drop-shadow on/off flag, so the toggle is derived from the blur
+  // and remembers the last non-zero value locally (presentation only).
+  const shadowOn = webcamStyles.shadowBlur > 0
+  const [lastShadowBlur, setLastShadowBlur] = useState(
+    webcamStyles.shadowBlur || DEFAULTS.CAMERA.EFFECTS.BLUR.defaultValue,
+  )
+  useEffect(() => {
+    if (webcamStyles.shadowBlur > 0) setLastShadowBlur(webcamStyles.shadowBlur)
+  }, [webcamStyles.shadowBlur])
+  const handleShadowToggle = (on: boolean) => {
+    updateWebcamStyle({ shadowBlur: on ? lastShadowBlur || DEFAULTS.CAMERA.EFFECTS.BLUR.defaultValue : 0 })
+  }
+
+  // Labels follow the reference (Rectangle / Rounded / Circle). The stored values are
+  // unchanged: 'square' is the app's rounded-corner shape.
+  const SHAPE_OPTIONS: { value: WebcamShape; label: string }[] = [
+    { value: 'rectangle', label: 'Rectangle' },
+    { value: 'square', label: 'Rounded' },
+    { value: 'circle', label: 'Circle' },
   ]
 
   return (
-    <div className="h-full flex flex-col">
-      {/* Header */}
-      <div className="p-6 border-b border-sidebar-border flex-shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-            <DeviceComputerCamera className="w-5 h-5 text-primary" />
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-sidebar-foreground">Camera Settings</h2>
-            <p className="text-sm text-muted-foreground">Adjust your webcam overlay</p>
-          </div>
-        </div>
-      </div>
+    <div className="flex h-full flex-col">
+      <PanelHeader title="Camera" subtitle="Webcam overlay" />
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto stable-scrollbar">
-        <div className="p-6 space-y-4 border-b border-sidebar-border">
-          <ControlGroup label="Video clips" icon={<Video className="w-4 h-4 text-primary" />}>
-            <p className="text-xs text-muted-foreground">Import multiple videos as independent clips. They start at the playhead and can be moved separately on the video track.</p>
-            <Button className="w-full mt-3" onClick={importVideos} disabled={isImportingVideos}><Upload className="mr-2 h-4 w-4" />{isImportingVideos ? 'Importing videos…' : 'Import video files'}</Button>
-            {videoClips.length > 0 && <div className="mt-3 space-y-2">{videoClips.map((clip) => <div key={clip.id} className="rounded-lg border border-sidebar-border p-3 space-y-2">
-              <div className="flex items-center gap-2"><Video className="h-4 w-4 shrink-0 text-sky-500" /><span className="min-w-0 flex-1 truncate text-xs font-medium" title={clip.name}>{clip.name}</span><Button variant="ghost" size="icon" aria-label={`Delete ${clip.name}`} className="h-7 w-7 text-red-600 hover:bg-red-500/10 hover:text-red-700 dark:text-red-400" onClick={() => deleteVideoClip(clip.id)}><Trash className="h-3.5 w-3.5" /></Button></div>
-              <div className="grid grid-cols-2 gap-2"><label className="text-[11px] text-muted-foreground">Timeline start (s)<input type="number" min="0" max={Math.max(0, duration - 0.1)} step="0.1" value={Number(clip.startTime.toFixed(2))} onChange={(e) => updateVideoClip(clip.id, { startTime: Math.max(0, Math.min(duration - clip.duration, Number(e.target.value) || 0)) })} className="mt-1 w-full rounded-md border border-input bg-background p-2 text-xs text-foreground" /></label><label className="text-[11px] text-muted-foreground">Duration (s)<input type="number" min="0.1" max={Math.max(0.1, duration - clip.startTime)} step="0.1" value={Number(clip.duration.toFixed(2))} onChange={(e) => updateVideoClip(clip.id, { duration: Math.max(0.1, Math.min(duration - clip.startTime, Number(e.target.value) || 0.1)) })} className="mt-1 w-full rounded-md border border-input bg-background p-2 text-xs text-foreground" /></label></div>
-              <p className="text-[10px] text-muted-foreground">{formatTime(clip.startTime)} – {formatTime(clip.startTime + clip.duration)} · source {formatTime(clip.sourceDuration)}</p>
-            </div>)}</div>}
-          </ControlGroup>
-        </div>
+      <div className="min-h-0 flex-1 overflow-y-auto stable-scrollbar">
+        <Section first label="Video clips">
+          <HelperText className="mt-0">
+            Clips start at the playhead and move independently on the video track.
+          </HelperText>
+          <Button className="mt-3 w-full" onClick={importVideos} disabled={isImportingVideos}>
+            <Upload size={ICON_SIZE} strokeWidth={ICON_STROKE} />
+            {isImportingVideos ? 'Importing videos…' : 'Import video files'}
+          </Button>
+
+          {videoClips.length > 0 && (
+            <div className="mt-3 divide-y divide-line border-t border-line">
+              {videoClips.map((clip) => (
+                <div key={clip.id} className="space-y-2 py-3">
+                  <div className="flex items-center gap-2">
+                    <Video size={ICON_SIZE} strokeWidth={ICON_STROKE} className="shrink-0 text-muted" />
+                    <span className="min-w-0 flex-1 truncate text-ui text-fg" title={clip.name}>{clip.name}</span>
+                    <Button
+                      variant="danger"
+                      size="icon"
+                      aria-label={`Delete ${clip.name}`}
+                      onClick={() => deleteVideoClip(clip.id)}
+                    >
+                      <Trash size={ICON_SIZE} strokeWidth={ICON_STROKE} />
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="text-sm text-muted">
+                      Timeline start (s)
+                      <input
+                        type="number"
+                        min="0"
+                        max={Math.max(0, duration - 0.1)}
+                        step="0.1"
+                        value={Number(clip.startTime.toFixed(2))}
+                        onChange={(e) => updateVideoClip(clip.id, { startTime: Math.max(0, Math.min(duration - clip.duration, Number(e.target.value) || 0)) })}
+                        className="mt-1 w-full rounded-ctl border border-line bg-ctl px-2 py-1.5 font-mono text-sm text-fg outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                      />
+                    </label>
+                    <label className="text-sm text-muted">
+                      Duration (s)
+                      <input
+                        type="number"
+                        min="0.1"
+                        max={Math.max(0.1, duration - clip.startTime)}
+                        step="0.1"
+                        value={Number(clip.duration.toFixed(2))}
+                        onChange={(e) => updateVideoClip(clip.id, { duration: Math.max(0.1, Math.min(duration - clip.startTime, Number(e.target.value) || 0.1)) })}
+                        className="mt-1 w-full rounded-ctl border border-line bg-ctl px-2 py-1.5 font-mono text-sm text-fg outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                      />
+                    </label>
+                  </div>
+                  <p className="text-sm text-muted">
+                    {formatTime(clip.startTime)} – {formatTime(clip.startTime + clip.duration)} · source {formatTime(clip.sourceDuration)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </Section>
+
         {!webcamVideoUrl ? (
           <DisabledPanelPlaceholder
-            icon={<DeviceComputerCameraOff className="w-8 h-8 text-muted-foreground" />}
-            title="No Webcam Recorded"
+            icon={<DeviceComputerCameraOff size={32} strokeWidth={1.6} />}
+            title="No webcam recorded"
             message="These settings are unavailable because a webcam was not included in this recording."
           />
         ) : (
-          <div className="p-6 space-y-6">
-            <ControlGroup label="Visibility" icon={<Eye className="w-4 h-4 text-primary" />}>
-              <div className="flex items-center justify-between p-3 rounded-lg bg-sidebar-accent/30 border border-sidebar-border">
-                <span className="text-sm font-medium text-sidebar-foreground">
-                  {isWebcamVisible ? 'Visible' : 'Hidden'}
-                </span>
-                <Switch
-                  checked={isWebcamVisible}
-                  onCheckedChange={setWebcamVisibility}
-                  className="data-[state=on]:bg-primary"
+          <>
+            <Section label="Visible">
+              <ToggleRow label="Visible" checked={isWebcamVisible} onCheckedChange={setWebcamVisibility} />
+            </Section>
+
+            <Section label="Style" labelRight={<ResetButton onClick={handleResetStyle} label="camera style" />}>
+              <div className="space-y-3.5">
+                <SegmentedControl
+                  aria-label="Shape"
+                  options={SHAPE_OPTIONS}
+                  value={webcamStyles.shape}
+                  onChange={(shape) => updateWebcamStyle({ shape })}
+                />
+                <Slider
+                  label="Corner radius"
+                  min={DEFAULTS.CAMERA.STYLE.RADIUS.min}
+                  max={DEFAULTS.CAMERA.STYLE.RADIUS.max}
+                  step={DEFAULTS.CAMERA.STYLE.RADIUS.step}
+                  value={isCircle ? 50 : webcamStyles.borderRadius}
+                  onChange={(value) => updateWebcamStyle({ borderRadius: value })}
+                  disabled={isCircle}
+                  formatValue={(value) => (isCircle ? '—' : `${value}%`)}
+                />
+                <ToggleRow
+                  label="Flip horizontal"
+                  checked={webcamStyles.isFlipped}
+                  onCheckedChange={(isChecked) => updateWebcamStyle({ isFlipped: isChecked })}
                 />
               </div>
-            </ControlGroup>
+            </Section>
 
-            <Collapse
-              title="Style"
-              description="Change shape and orientation"
-              icon={<Photo />}
-              defaultOpen={false}
-              onReset={handleResetStyle}
-            >
-              <div className="space-y-6">
-                {/* Shape Selector */}
-                <div className="space-y-3">
-                  <label className="text-sm font-medium text-sidebar-foreground">Shape</label>
-                  <div className="grid grid-cols-3 gap-2 p-1 bg-muted/50 rounded-lg">
-                    <Button
-                      variant={webcamStyles.shape === 'rectangle' ? 'secondary' : 'ghost'}
-                      onClick={() => updateWebcamStyle({ shape: 'rectangle' })}
-                      className="h-auto py-2.5 flex items-center justify-center gap-2"
-                    >
-                      <Rectangle className="w-5 h-4" />
-                    </Button>
-                    <Button
-                      variant={webcamStyles.shape === 'square' ? 'secondary' : 'ghost'}
-                      onClick={() => updateWebcamStyle({ shape: 'square' })}
-                      className="h-auto py-2.5 flex items-center justify-center gap-2"
-                    >
-                      <Square className="w-4 h-4" />
-                    </Button>
-                    <Button
-                      variant={webcamStyles.shape === 'circle' ? 'secondary' : 'ghost'}
-                      onClick={() => updateWebcamStyle({ shape: 'circle' })}
-                      className="h-auto py-2.5 flex items-center justify-center gap-2"
-                    >
-                      <Circle className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Border Radius Control */}
-                <div className="space-y-3">
-                  <label className="flex items-center justify-between text-sm font-medium text-sidebar-foreground">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-5 h-5 flex items-center justify-center text-primary">
-                        {' '}
-                        <BorderRadius className="w-4 h-4" />{' '}
-                      </div>
-                      <span className={isCircle ? 'text-muted-foreground' : ''}>Corner Radius</span>
-                    </div>
-                    {!isCircle && (
-                      <span className="text-xs font-semibold text-primary tabular-nums">
-                        {webcamStyles.borderRadius}%
-                      </span>
-                    )}
-                  </label>
-                  <Slider
-                    min={DEFAULTS.CAMERA.STYLE.RADIUS.min}
-                    max={DEFAULTS.CAMERA.STYLE.RADIUS.max}
-                    step={DEFAULTS.CAMERA.STYLE.RADIUS.step}
-                    value={isCircle ? 50 : webcamStyles.borderRadius}
-                    onChange={(value) => updateWebcamStyle({ borderRadius: value })}
-                    disabled={isCircle}
+            <Section label="Placement" labelRight={<ResetButton onClick={handleResetPlacement} label="camera placement" />}>
+              <div className="space-y-3.5">
+                <Slider
+                  label="Size"
+                  min={DEFAULTS.CAMERA.PLACEMENT.SIZE.min}
+                  max={DEFAULTS.CAMERA.PLACEMENT.SIZE.max}
+                  step={DEFAULTS.CAMERA.PLACEMENT.SIZE.step}
+                  value={webcamStyles.size}
+                  onChange={(value) => updateWebcamStyle({ size: value })}
+                  formatValue={(value) => `${value}%`}
+                />
+                <ToggleRow
+                  label="Scale on zoom"
+                  checked={webcamStyles.scaleOnZoom}
+                  onCheckedChange={(isChecked) => updateWebcamStyle({ scaleOnZoom: isChecked })}
+                />
+                <ToggleRow
+                  label="Smart position"
+                  description="Avoid cursor and key content"
+                  checked={webcamStyles.smartPosition}
+                  onCheckedChange={(isChecked) => updateWebcamStyle({ smartPosition: isChecked })}
+                />
+                <div className="space-y-2 pt-1">
+                  <span className="text-label uppercase tracking-[0.06em] text-muted">Position</span>
+                  <PositionGrid
+                    aria-label="Camera position"
+                    value={webcamPosition.pos as PositionGridValue}
+                    onChange={(pos) => setWebcamPosition({ pos: pos as WebcamPosition['pos'] })}
                   />
-                </div>
-
-                {/* Flip Horizontal Control */}
-                <div className="space-y-3">
-                  <label className="flex items-center justify-between text-sm font-medium text-sidebar-foreground">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-5 h-5 flex items-center justify-center text-primary">
-                        <SquareToggle className="w-4 h-4" />
-                      </div>
-                      <span>Flip Horizontal</span>
-                    </div>
-                    <Switch
-                      checked={webcamStyles.isFlipped}
-                      onCheckedChange={(isChecked) => updateWebcamStyle({ isFlipped: isChecked })}
-                    />
-                  </label>
                 </div>
               </div>
-            </Collapse>
+            </Section>
 
-            <Collapse
-              title="Placement"
-              description="Adjust size and corner position"
-              icon={<TransformPointBottomLeftIcon />}
-              defaultOpen={false}
-              onReset={handleResetPlacement}
-            >
-              <div className="space-y-6">
-                <div className="space-y-3">
-                  <label className="flex items-center justify-between text-sm font-medium text-sidebar-foreground">
-                    <span>Size</span>
-                    <span className="text-xs font-semibold text-primary tabular-nums">{webcamStyles.size}%</span>
-                  </label>
-                  <Slider
-                    min={DEFAULTS.CAMERA.PLACEMENT.SIZE.min}
-                    max={DEFAULTS.CAMERA.PLACEMENT.SIZE.max}
-                    step={DEFAULTS.CAMERA.PLACEMENT.SIZE.step}
-                    value={webcamStyles.size}
-                    onChange={(value) => updateWebcamStyle({ size: value })}
-                  />
-                </div>
-                <div className="space-y-3">
-                  <label className="flex items-center justify-between text-sm font-medium text-sidebar-foreground">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-5 h-5 flex items-center justify-center text-primary">
-                        <ZoomIn className="w-4 h-4" />
-                      </div>
-                      <span>Scale on Zoom</span>
-                    </div>
-                    <Switch
-                      checked={webcamStyles.scaleOnZoom}
-                      onCheckedChange={(isChecked) => updateWebcamStyle({ scaleOnZoom: isChecked })}
-                    />
-                  </label>
-                </div>
-
-                <div className="space-y-3">
-                  <label className="flex items-center justify-between text-sm font-medium text-sidebar-foreground">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-5 h-5 flex items-center justify-center text-primary">
-                        <ArrowsUpRight className="w-4 h-4" />
-                      </div>
-                      <span>Smart Position</span>
-                    </div>
-                    <Switch
-                      checked={webcamStyles.smartPosition}
-                      onCheckedChange={(isChecked) => updateWebcamStyle({ smartPosition: isChecked })}
-                    />
-                  </label>
-                </div>
-
-                <div className="space-y-3">
-                  <label className="text-sm font-medium text-sidebar-foreground">Position</label>
-                  <div className="relative aspect-video w-full bg-muted/50 rounded-lg p-2 border border-border">
-                    {positions.map(({ pos, classes }) => {
-                      const isActive = webcamPosition.pos === pos
-                      return (
-                        <button
-                          key={pos}
-                          onClick={() => setWebcamPosition({ pos })}
-                          className={cn(
-                            'absolute w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200 hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring ring-offset-background group',
-                            classes,
-                          )}
-                          aria-label={`Position ${pos.replace('-', ' ')}`}
-                        >
-                          <div
-                            className={cn(
-                              'w-4 h-4 rounded-md transition-all duration-200 border-2',
-                              isActive
-                                ? 'bg-primary border-primary'
-                                : 'bg-transparent border-muted-foreground/50 group-hover:border-primary',
-                            )}
-                          />
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              </div>
-            </Collapse>
-
-            <Collapse
-              title="Effects"
-              description="Add a drop shadow for depth"
-              icon={<Wand />}
-              defaultOpen={false}
-              onReset={handleResetEffects}
-            >
-              <div className="space-y-4">
-                <div className="space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Blur</span>
-                    <span className="text-xs font-semibold text-primary tabular-nums">{webcamStyles.shadowBlur}px</span>
-                  </div>
-                  <Slider
-                    min={DEFAULTS.CAMERA.EFFECTS.BLUR.min}
-                    max={DEFAULTS.CAMERA.EFFECTS.BLUR.max}
-                    step={DEFAULTS.CAMERA.EFFECTS.BLUR.step}
-                    value={webcamStyles.shadowBlur}
-                    onChange={(v) => updateWebcamStyle({ shadowBlur: v })}
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">Offset X</span>
-                      <span className="text-xs font-semibold text-primary tabular-nums">
-                        {webcamStyles.shadowOffsetX}px
-                      </span>
-                    </div>
+            <Section label="Effects" labelRight={<ResetButton onClick={handleResetEffects} label="camera effects" />}>
+              <div className="space-y-3.5">
+                <ToggleRow
+                  label="Drop shadow"
+                  description="Adds depth behind the camera"
+                  checked={shadowOn}
+                  onCheckedChange={handleShadowToggle}
+                />
+                {shadowOn && (
+                  <>
                     <Slider
+                      label="Blur"
+                      min={DEFAULTS.CAMERA.EFFECTS.BLUR.min}
+                      max={DEFAULTS.CAMERA.EFFECTS.BLUR.max}
+                      step={DEFAULTS.CAMERA.EFFECTS.BLUR.step}
+                      value={webcamStyles.shadowBlur}
+                      onChange={(v) => updateWebcamStyle({ shadowBlur: v })}
+                      formatValue={(v) => `${v} px`}
+                    />
+                    <Slider
+                      label="Offset X"
                       min={DEFAULTS.CAMERA.EFFECTS.OFFSET_X.min}
                       max={DEFAULTS.CAMERA.EFFECTS.OFFSET_X.max}
                       step={DEFAULTS.CAMERA.EFFECTS.OFFSET_X.step}
                       value={webcamStyles.shadowOffsetX}
                       onChange={(v) => updateWebcamStyle({ shadowOffsetX: v })}
+                      formatValue={(v) => `${v} px`}
                     />
-                  </div>
-                  <div className="space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">Offset Y</span>
-                      <span className="text-xs font-semibold text-primary tabular-nums">
-                        {webcamStyles.shadowOffsetY}px
-                      </span>
-                    </div>
                     <Slider
+                      label="Offset Y"
                       min={DEFAULTS.CAMERA.EFFECTS.OFFSET_Y.min}
                       max={DEFAULTS.CAMERA.EFFECTS.OFFSET_Y.max}
                       step={DEFAULTS.CAMERA.EFFECTS.OFFSET_Y.step}
                       value={webcamStyles.shadowOffsetY}
                       onChange={(v) => updateWebcamStyle({ shadowOffsetY: v })}
+                      formatValue={(v) => `${v} px`}
                     />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <ColorPicker label="Color" value={shadowHex} onChange={handleShadowColorChange} />
-                  </div>
-                  <div className="space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">Opacity</span>
-                      <span className="text-xs font-semibold text-primary tabular-nums">
-                        {Math.round(shadowAlpha * 100)}%
-                      </span>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="pt-0.5">
+                        <ColorField label="Color" value={shadowHex} onChange={handleShadowColorChange} />
+                      </div>
+                      <Slider
+                        label="Opacity"
+                        min={DEFAULTS.CAMERA.EFFECTS.OPACITY.min}
+                        max={DEFAULTS.CAMERA.EFFECTS.OPACITY.max}
+                        step={DEFAULTS.CAMERA.EFFECTS.OPACITY.step}
+                        value={shadowAlpha}
+                        onChange={handleShadowOpacityChange}
+                        formatValue={(v) => `${Math.round(v * 100)}%`}
+                      />
                     </div>
-                    <Slider
-                      min={DEFAULTS.CAMERA.EFFECTS.OPACITY.min}
-                      max={DEFAULTS.CAMERA.EFFECTS.OPACITY.max}
-                      step={DEFAULTS.CAMERA.EFFECTS.OPACITY.step}
-                      value={shadowAlpha}
-                      onChange={handleShadowOpacityChange}
-                    />
-                  </div>
-                </div>
+                  </>
+                )}
               </div>
-            </Collapse>
-          </div>
+            </Section>
+          </>
         )}
       </div>
     </div>

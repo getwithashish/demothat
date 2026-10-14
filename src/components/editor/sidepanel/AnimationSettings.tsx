@@ -1,12 +1,14 @@
+// Per-zoom-region animation editor (inspector for a selected zoom region).
+// Flat Section on the shared primitives — no Collapsible (DESIGN_SPEC §10).
 import { useEditorStore } from '../../../store/editorStore'
 import type { ZoomRegion } from '../../../types'
-import { Collapse } from '../../ui/collapse'
-import { Route } from 'tabler-icons-react'
 import { ZOOM, DEFAULTS } from '../../../lib/constants'
 import { EASING_MAP } from '../../../lib/easing'
-import { cn } from '../../../lib/utils'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../ui/select'
+import { Button } from '../../ui/button'
+import { Section, SectionLabel } from '../../ui/section'
+import { SegmentedControl } from '../../ui/segmented-control'
 import { Slider } from '../../ui/slider'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../ui/select'
 
 const speedOptions = Object.keys(ZOOM.SPEED_OPTIONS)
 const easingOptions = Object.keys(EASING_MAP)
@@ -45,40 +47,29 @@ export function AnimationSettings({ region }: AnimationSettingsProps) {
     ) || ZOOM.DEFAULT_SPEED
 
   return (
-    <Collapse
-      title="Animation & Level"
-      description="Adjust transition and zoom level"
-      icon={<Route className="w-4 h-4 text-primary" />}
-      defaultOpen={true}
-      onReset={handleResetAnimation}
+    <Section
+      label="Animation"
+      labelRight={
+        <Button variant="ghost" size="sm" onClick={handleResetAnimation} aria-label="Reset animation">
+          Reset
+        </Button>
+      }
     >
-      <div className="space-y-6">
-        {/* Speed Selector */}
-        <div className="space-y-3">
-          <label className="text-sm font-medium text-sidebar-foreground">Speed</label>
-          <div className="grid grid-cols-4 gap-1 p-1 bg-muted/50 rounded-lg">
-            {speedOptions.map((speed) => (
-              <button
-                key={speed}
-                onClick={() => handleSpeedChange(speed)}
-                className={cn(
-                  'py-2 text-sm font-medium rounded-md transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                  currentSpeed === speed
-                    ? 'bg-background shadow-sm text-foreground'
-                    : 'text-muted-foreground hover:text-foreground',
-                )}
-              >
-                {speed}
-              </button>
-            ))}
-          </div>
+      <div className="space-y-3.5">
+        <div className="space-y-2">
+          <SectionLabel>Speed</SectionLabel>
+          <SegmentedControl
+            aria-label="Speed"
+            options={speedOptions.map((speed) => ({ value: speed, label: speed }))}
+            value={currentSpeed}
+            onChange={handleSpeedChange}
+          />
         </div>
 
-        {/* Easing Selector */}
-        <div className="space-y-3">
-          <label className="text-sm font-medium text-sidebar-foreground">Style (Easing)</label>
+        <div className="space-y-2">
+          <SectionLabel>Easing</SectionLabel>
           <Select value={region.easing} onValueChange={handleEasingChange}>
-            <SelectTrigger className="h-10 bg-background/50">
+            <SelectTrigger aria-label="Easing">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -91,21 +82,16 @@ export function AnimationSettings({ region }: AnimationSettingsProps) {
           </Select>
         </div>
 
-        {/* Zoom Level */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <label className="text-sm font-medium text-sidebar-foreground">Zoom Level</label>
-            <span className="text-xs font-semibold text-primary tabular-nums">{region.zoomLevel.toFixed(1)}x</span>
-          </div>
-          <Slider
-            min={DEFAULTS.ANIMATION.ZOOM_LEVEL.min}
-            max={DEFAULTS.ANIMATION.ZOOM_LEVEL.max}
-            step={DEFAULTS.ANIMATION.ZOOM_LEVEL.step}
-            value={region.zoomLevel}
-            onChange={handleZoomLevelChange}
-          />
-        </div>
+        <Slider
+          label="Zoom level"
+          min={DEFAULTS.ANIMATION.ZOOM_LEVEL.min}
+          max={DEFAULTS.ANIMATION.ZOOM_LEVEL.max}
+          step={DEFAULTS.ANIMATION.ZOOM_LEVEL.step}
+          value={region.zoomLevel}
+          onChange={handleZoomLevelChange}
+          formatValue={(value) => `${value.toFixed(1)}\u00d7`}
+        />
       </div>
-    </Collapse>
+    </Section>
   )
 }

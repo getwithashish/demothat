@@ -50,7 +50,10 @@ the render/upload finished, and they are never used for billing.
     { "id": "realesrgan-plus", "label": "Real-ESRGAN+", "scales": [4] }
   ],
   "defaultModel": "realesr-animevideov3",
-  "targets": [ { "key": "4k", "width": 3840, "height": 2160 }, { "key": "8k", "width": 7680, "height": 4320 } ],
+  "targets": [
+    { "key": "4k", "width": 3840, "height": 2160 },
+    { "key": "8k", "width": 7680, "height": 4320 }
+  ],
   "upscaleFps": { "720p": 30, "1080p": 18, "2k": 12, "4k": 7, "8k": 2.5 },
   "startupSeconds": 25,
   "pricing": { "creditsPerOutputMegapixelFrame": 0.0004, "currency": "credits" },
@@ -71,9 +74,13 @@ never invents a number of its own. `credits` is the account balance.
 
 ```json
 {
-  "sourceWidth": 3840, "sourceHeight": 2160,
-  "fps": 30, "durationSec": 12.5, "fileSizeBytes": 48213332,
-  "targetWidth": 7680, "targetHeight": 4320,
+  "sourceWidth": 3840,
+  "sourceHeight": 2160,
+  "fps": 30,
+  "durationSec": 12.5,
+  "fileSizeBytes": 48213332,
+  "targetWidth": 7680,
+  "targetHeight": 4320,
   "model": "realesr-animevideov3"
 }
 ```
@@ -151,13 +158,13 @@ better served by the final Lanczos pass than by running the model on far more
 pixels. If no factor is big enough, use the largest and let Lanczos finish the
 remaining factor. Then scale to the exact target with `flags=lanczos`.
 
-| source | target | need | model | model output | final |
-| --- | --- | --- | --- | --- | --- |
-| 1080p | 8K | 4 | 4x | 7680×4320 | none |
-| 1440p | 8K | 3 | 3x | 7680×4320 | none |
-| 720p | 8K | 6 | 4x | 5120×2880 | Lanczos **up** to 7680×4320 |
-| 4K | 8K | 2 | 2x | 7680×4320 | none |
-| 1080p | 4K | 2 | 2x | 3840×2160 | none |
+| source | target | need | model | model output | final                       |
+| ------ | ------ | ---- | ----- | ------------ | --------------------------- |
+| 1080p  | 8K     | 4    | 4x    | 7680×4320    | none                        |
+| 1440p  | 8K     | 3    | 3x    | 7680×4320    | none                        |
+| 720p   | 8K     | 6    | 4x    | 5120×2880    | Lanczos **up** to 7680×4320 |
+| 4K     | 8K     | 2    | 2x    | 7680×4320    | none                        |
+| 1080p  | 4K     | 2    | 2x    | 3840×2160    | none                        |
 
 (Note: the 720p→8K row is an upscale after the model, not a downscale — 4× of
 720p is below 8K. See the phase report.)
@@ -179,7 +186,7 @@ to Google Drive and subject to session limits; do not automate Colab):
   which are mostly flat UI and text) or `realesrgan-plus` (4x only). Others are
   advertised through `capabilities.models`.
 - Final encode: HEVC via **NVENC** (`hevc_nvenc`), `-tag:v hvc1`, `-pix_fmt
-  yuv420p`; audio is copied from the intermediate (`-c:a copy`) since the client
+yuv420p`; audio is copied from the intermediate (`-c:a copy`) since the client
   already muxed it.
 
 The worker probes the upload, runs the model at the planned factor, applies the
@@ -192,14 +199,14 @@ the project file, the editor state or the user's filesystem.
 node scripts/mock-upscale-server.mjs            # http://127.0.0.1:8787
 ```
 
-| env | default | meaning |
-| --- | --- | --- |
-| `MOCK_PORT` | `8787` | listen port |
-| `MOCK_TOKEN` | `dev-token` | expected bearer token |
-| `MOCK_CREDITS` | `500` | starting balance; `0` forces `insufficient_credits` |
-| `MOCK_STARTUP_MS` | `1500` | simulated worker startup |
-| `MOCK_FFMPEG` | `binaries/linux/ffmpeg` | binary used for probe + "upscale" |
-| `MOCK_FAIL_UPSCALE` | – | set to fail the upscale stage |
+| env                 | default                 | meaning                                             |
+| ------------------- | ----------------------- | --------------------------------------------------- |
+| `MOCK_PORT`         | `8787`                  | listen port                                         |
+| `MOCK_TOKEN`        | `dev-token`             | expected bearer token                               |
+| `MOCK_CREDITS`      | `500`                   | starting balance; `0` forces `insufficient_credits` |
+| `MOCK_STARTUP_MS`   | `1500`                  | simulated worker startup                            |
+| `MOCK_FFMPEG`       | `binaries/linux/ffmpeg` | binary used for probe + "upscale"                   |
+| `MOCK_FAIL_UPSCALE` | –                       | set to fail the upscale stage                       |
 
 The mock probes with the bundled `ffmpeg -i` (stderr parsing — this repo ships no
 `ffprobe`) and performs the upscale with FFmpeg's Lanczos + HEVC, standing in for

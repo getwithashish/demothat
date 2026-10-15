@@ -41,10 +41,12 @@ interface ExportModalProps {
   isOpen: boolean
   onClose: () => void
   onMinimize?: () => void
-  onStartExport: (settings: ExportSettings, outputPath: string) => void
+  onStartExport: (settings: ExportSettings, outputPath: string, options?: { cloud?: boolean }) => void
   onCancelExport: () => void
   isExporting: boolean
   progress: number
+  /** Current export stage, for the cloud flow's labels. */
+  stage?: string | null
   result: { success: boolean; outputPath?: string; error?: string } | null
 }
 
@@ -56,6 +58,8 @@ const generateFilename = (format: 'mp4' | 'gif') => {
 
 /** Config the cloud client will populate (Phase 5); absent means "not set up". */
 interface CloudConfig {
+  /** Account balance reported by the backend. */
+  credits: number
   baseUrl: string
   startupSeconds: number
   upscaleFps: number
@@ -106,7 +110,7 @@ const SettingsView = ({
   onStartExport,
   onClose,
 }: {
-  onStartExport: (settings: ExportSettings, outputPath: string) => void
+  onStartExport: (settings: ExportSettings, outputPath: string, options?: { cloud?: boolean }) => void
   onClose: () => void
 }) => {
   const [settings, setSettings] = useState<ExportSettings>({
@@ -159,21 +163,21 @@ const SettingsView = ({
 
     const loadCloud = async () => {
       try {
-        const baseUrl = await window.electronAPI.getSetting<string>('cloud.baseUrl')
-        if (typeof baseUrl !== 'string' || !baseUrl.trim()) {
+        // The client's own view: whether the backend is configured, its live
+        // capabilities, the credit balance and the consent state.
+        const status = await window.electronAPI.cloudStatus()
+        if (!status.configured || !status.capabilities) {
           setCloud(null)
           return
         }
-        const capabilities = await window.electronAPI.getSetting<{
-          startupSeconds?: number
-          upscaleFps?: number
-        }>('cloud.capabilities')
         const uplinkMbps = Number(await window.electronAPI.getSetting('cloud.uplinkMbps')) || 20
         const downlinkMbps = Number(await window.electronAPI.getSetting('cloud.downlinkMbps')) || 100
         setCloud({
-          baseUrl: baseUrl.trim(),
-          startupSeconds: Number(capabilities?.startupSeconds) || 0,
-          upscaleFps: Number(capabilities?.upscaleFps) || 0,
+          baseUrl: '',
+          startupSeconds: Number(status.capabilities.startupSeconds) || 0,
+          // The server benchmarks per target size; use the one being exported.
+          upscaleFps: Number(status.capabilities.upscaleFps?.[settings.resolution]) || 0,
+          credits: Number(status.capabilities.credits) || 0,
           uplinkMbps,
           downlinkMbps,
         })
@@ -182,7 +186,7 @@ const SettingsView = ({
       }
     }
     loadCloud()
-  }, [])
+  }, [settings.resolution])
 
   const resolutionDisabledReason = (key: ResolutionKey): string | null => {
     if (key === '8k' && encoderCapabilities && !encoderCapabilities.libx265) {
@@ -277,6 +281,11 @@ const SettingsView = ({
         })
       : null
   const faster = cloudEstimate ? fasterMethod(localEstimate.seconds, cloudEstimate.totalSeconds) : null
+
+  // The backend is the enforcement point; this only spares the user an export that
+  // would be refused, and says why. The exact price comes from the preflight,
+  // which quotes the server's own number.
+  const cloudStartable = cloudReady && Boolean(entitlement?.pro) && (cloud?.credits ?? 0) > 0
 
   const handleUnlock = () => {
     const url = entitlement?.unlockUrl
@@ -509,7 +518,10 @@ const SettingsView = ({
         <Button variant="secondary" onClick={onClose}>
           Cancel
         </Button>
-        <Button onClick={() => onStartExport(settings, outputPath)} disabled={!outputPath || proLocked}>
+        <Button
+          onClick={() => onStartExport(settings, outputPath, { cloud: effectiveMethod === 'ai' })}
+          disabled={!outputPath || proLocked || (effectiveMethod === 'ai' && !cloudStartable)}
+        >
           Start export
         </Button>
       </div>

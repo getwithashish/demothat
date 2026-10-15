@@ -96,11 +96,30 @@ describe('cloud upscale client against the mock server', () => {
     spawnSync(
       FFMPEG,
       [
-        '-y', '-hide_banner', '-loglevel', 'error',
-        '-f', 'lavfi', '-i', 'testsrc2=size=320x180:rate=30:duration=1',
-        '-f', 'lavfi', '-i', 'sine=frequency=440:duration=1',
-        '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p',
-        '-c:a', 'aac', '-shortest', sourcePath,
+        '-y',
+        '-hide_banner',
+        '-loglevel',
+        'error',
+        '-f',
+        'lavfi',
+        '-i',
+        'testsrc2=size=320x180:rate=30:duration=1',
+        '-f',
+        'lavfi',
+        '-i',
+        'sine=frequency=440:duration=1',
+        '-c:v',
+        'libx264',
+        '-preset',
+        'veryfast',
+        '-crf',
+        '20',
+        '-pix_fmt',
+        'yuv420p',
+        '-c:a',
+        'aac',
+        '-shortest',
+        sourcePath,
       ],
       { stdio: 'ignore' },
     )
@@ -262,16 +281,19 @@ describe('cloud upscale client against the mock server', () => {
       status: 401,
     })
     await expect(
-      createJob({ baseUrl: BASE_URL, token: 'wrong' }, {
-        sourceWidth: 320,
-        sourceHeight: 180,
-        fps: 30,
-        durationSec: 1,
-        fileSizeBytes: 1,
-        targetWidth: 640,
-        targetHeight: 360,
-        model: 'realesr-animevideov3',
-      }),
+      createJob(
+        { baseUrl: BASE_URL, token: 'wrong' },
+        {
+          sourceWidth: 320,
+          sourceHeight: 180,
+          fps: 30,
+          durationSec: 1,
+          fileSizeBytes: 1,
+          targetWidth: 640,
+          targetHeight: 360,
+          model: 'realesr-animevideov3',
+        },
+      ),
     ).rejects.toMatchObject({ code: 'unauthorized', status: 401 })
   }, 60_000)
 })

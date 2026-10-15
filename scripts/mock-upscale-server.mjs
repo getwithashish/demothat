@@ -73,8 +73,7 @@ const json = (res, status, body) => {
   res.writeHead(status, { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) })
   res.end(payload)
 }
-const fail = (res, status, code, message, extra = {}) =>
-  json(res, status, { error: { code, message, ...extra } })
+const fail = (res, status, code, message, extra = {}) => json(res, status, { error: { code, message, ...extra } })
 
 // --- Signing -----------------------------------------------------------------
 
@@ -117,9 +116,7 @@ function probe(filePath) {
         reject(new Error('ffprobe (ffmpeg -i) could not find a video stream'))
         return
       }
-      const seconds = duration
-        ? Number(duration[1]) * 3600 + Number(duration[2]) * 60 + Number(duration[3])
-        : 0
+      const seconds = duration ? Number(duration[1]) * 3600 + Number(duration[2]) * 60 + Number(duration[3]) : 0
       resolve({
         width: Number(video[1]),
         height: Number(video[2]),
@@ -238,7 +235,9 @@ async function startJob(job) {
       creditsCharged: job.creditsCharged,
     }
     job.downloadUrl = presignedUrl(job.request, 'downloads', job.jobId)
-    log(`job ${job.jobId} ready (${job.result.width}x${job.result.height}, ${stats.size} bytes, ${job.creditsCharged} credits)`)
+    log(
+      `job ${job.jobId} ready (${job.result.width}x${job.result.height}, ${stats.size} bytes, ${job.creditsCharged} credits)`,
+    )
   } catch (error) {
     job.status = 'failed'
     job.error = { code: 'upscale_failed', message: String(error.message ?? error) }
@@ -278,7 +277,9 @@ function authorized(req) {
 function jobView(job) {
   const elapsed = Date.now() - (job.startedAt ?? Date.now())
   const etaSeconds =
-    job.status === 'upscaling' && job.progress > 0 ? Math.max(0, Math.round((elapsed / job.progress) * (100 - job.progress) / 1000)) : null
+    job.status === 'upscaling' && job.progress > 0
+      ? Math.max(0, Math.round(((elapsed / job.progress) * (100 - job.progress)) / 1000))
+      : null
   return {
     jobId: job.jobId,
     status: job.status,
@@ -405,6 +406,13 @@ const server = http.createServer(async (req, res) => {
   log(`${req.method} ${url.pathname}`)
 
   try {
+    // Everything except the presigned upload/download URLs needs the bearer
+    // token; those two are authenticated by their signature instead.
+    const presigned = parts[0] === 'v1' && (parts[1] === 'uploads' || parts[1] === 'downloads')
+    if (!presigned && !authorized(req)) {
+      return fail(res, 401, 'unauthorized', 'Missing or bad bearer token')
+    }
+
     if (req.method === 'GET' && url.pathname === '/v1/capabilities') {
       return json(res, 200, { ...CAPABILITIES, credits: balance })
     }
@@ -421,6 +429,17 @@ const server = http.createServer(async (req, res) => {
       }
       if (Number(fileSizeBytes) > CAPABILITIES.limits.maxFileSizeBytes) {
         return fail(res, 413, 'too_large', 'File exceeds the upload limit')
+      }
+      const targetMegapixels = (targetWidth * targetHeight) / 1_000_000
+      if (targetMegapixels > CAPABILITIES.limits.maxOutputMegapixels) {
+        return fail(res, 422, 'invalid_request', 'Target exceeds the maximum output size', {
+          maxOutputMegapixels: CAPABILITIES.limits.maxOutputMegapixels,
+        })
+      }
+      if (Number(durationSec) > CAPABILITIES.limits.maxDurationSec) {
+        return fail(res, 422, 'invalid_request', 'Source exceeds the maximum duration', {
+          maxDurationSec: CAPABILITIES.limits.maxDurationSec,
+        })
       }
       const chosen = CAPABILITIES.models.find((entry) => entry.id === model) ?? CAPABILITIES.models[0]
       // Advisory estimate only; settled from the probe after the upload.
@@ -509,17 +528,20 @@ const server = http.createServer(async (req, res) => {
 })
 
 // Retention sweep: nothing lives longer than RETAIN_MS.
-setInterval(() => {
-  const now = Date.now()
-  for (const job of jobs.values()) {
-    if (now - job.createdAt > RETAIN_MS && job.status !== 'upscaling') {
-      releaseReservation(job)
-      void removeJobFiles(job)
-      jobs.delete(job.jobId)
-      log(`expired ${job.jobId}`)
+setInterval(
+  () => {
+    const now = Date.now()
+    for (const job of jobs.values()) {
+      if (now - job.createdAt > RETAIN_MS && job.status !== 'upscaling') {
+        releaseReservation(job)
+        void removeJobFiles(job)
+        jobs.delete(job.jobId)
+        log(`expired ${job.jobId}`)
+      }
     }
-  }
-}, 10 * 60 * 1000).unref()
+  },
+  10 * 60 * 1000,
+).unref()
 
 await fsp.mkdir(WORK_DIR, { recursive: true })
 server.listen(PORT, '127.0.0.1', () => {

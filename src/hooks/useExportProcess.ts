@@ -11,12 +11,14 @@ export const useExportProcess = () => {
   const [isModalOpen, setModalOpen] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
   const [progress, setProgress] = useState(0)
+  const [stage, setStage] = useState<string | null>(null)
   const [result, setResult] = useState<{ success: boolean; outputPath?: string; error?: string } | null>(null)
 
   // Effect to set up and tear down IPC listeners for export progress and completion
   useEffect(() => {
-    const cleanProgressListener = window.electronAPI.onExportProgress(({ progress }) => {
+    const cleanProgressListener = window.electronAPI.onExportProgress(({ progress, stage }) => {
       setProgress(progress)
+      setStage(stage ?? null)
     })
 
     const cleanCompleteListener = window.electronAPI.onExportComplete(({ success, outputPath, error }) => {
@@ -32,59 +34,65 @@ export const useExportProcess = () => {
   }, [])
 
   // Handler to initiate the export process
-  const handleStartExport = useCallback(async (settings: ExportSettings, outputPath: string) => {
-    const fullState = useEditorStore.getState()
-    const plainState = {
-      platform: fullState.platform,
-      videoPath: fullState.videoPath,
-      metadata: fullState.metadata,
-      videoDimensions: fullState.videoDimensions,
-      duration: fullState.duration,
-      frameStyles: fullState.frameStyles,
-      aspectRatio: fullState.aspectRatio,
-      // Preserve cinematic 3D camera tracks in the state sent to the export renderer.
-      cameraMotions: fullState.cameraMotions,
-      visualEffects: fullState.visualEffects,
-      compositionLayouts: fullState.compositionLayouts,
-      audioClips: fullState.audioClips,
-      mouseClickSoundsEnabled: fullState.mouseClickSoundsEnabled,
-      mouseClickSoundPath: fullState.mouseClickSoundPath,
-      mouseClickSoundName: fullState.mouseClickSoundName,
-      mouseClickSoundVolume: fullState.mouseClickSoundVolume,
-      hasAudioTrack: fullState.hasAudioTrack,
-      volume: fullState.volume,
-      isMuted: fullState.isMuted,
-      zoomRegions: fullState.zoomRegions,
-      cutRegions: fullState.cutRegions,
-      speedRegions: fullState.speedRegions,
-      videoClips: fullState.videoClips,
-      webcamVideoPath: fullState.webcamVideoPath,
-      webcamPosition: fullState.webcamPosition,
-      webcamStyles: fullState.webcamStyles,
-      isWebcamVisible: fullState.isWebcamVisible,
-      recordingGeometry: fullState.recordingGeometry,
-      cursorImages: fullState.cursorImages,
-      cursorTheme: fullState.cursorTheme,
-      cursorStyles: fullState.cursorStyles,
-      syncOffset: fullState.syncOffset,
-    }
+  const handleStartExport = useCallback(
+    async (settings: ExportSettings, outputPath: string, options?: { cloud?: boolean }) => {
+      const fullState = useEditorStore.getState()
+      const plainState = {
+        platform: fullState.platform,
+        videoPath: fullState.videoPath,
+        metadata: fullState.metadata,
+        videoDimensions: fullState.videoDimensions,
+        duration: fullState.duration,
+        frameStyles: fullState.frameStyles,
+        aspectRatio: fullState.aspectRatio,
+        // Preserve cinematic 3D camera tracks in the state sent to the export renderer.
+        cameraMotions: fullState.cameraMotions,
+        visualEffects: fullState.visualEffects,
+        compositionLayouts: fullState.compositionLayouts,
+        audioClips: fullState.audioClips,
+        mouseClickSoundsEnabled: fullState.mouseClickSoundsEnabled,
+        mouseClickSoundPath: fullState.mouseClickSoundPath,
+        mouseClickSoundName: fullState.mouseClickSoundName,
+        mouseClickSoundVolume: fullState.mouseClickSoundVolume,
+        hasAudioTrack: fullState.hasAudioTrack,
+        volume: fullState.volume,
+        isMuted: fullState.isMuted,
+        zoomRegions: fullState.zoomRegions,
+        cutRegions: fullState.cutRegions,
+        speedRegions: fullState.speedRegions,
+        videoClips: fullState.videoClips,
+        webcamVideoPath: fullState.webcamVideoPath,
+        webcamPosition: fullState.webcamPosition,
+        webcamStyles: fullState.webcamStyles,
+        isWebcamVisible: fullState.isWebcamVisible,
+        recordingGeometry: fullState.recordingGeometry,
+        cursorImages: fullState.cursorImages,
+        cursorTheme: fullState.cursorTheme,
+        cursorStyles: fullState.cursorStyles,
+        syncOffset: fullState.syncOffset,
+      }
 
-    setResult(null)
-    setIsExporting(true)
-    setProgress(0)
+      setResult(null)
+      setIsExporting(true)
+      setProgress(0)
+      setStage(null)
 
-    try {
-      await window.electronAPI.startExport({
-        projectState: plainState,
-        exportSettings: settings,
-        outputPath: outputPath,
-      })
-    } catch (e) {
-      console.error('Export invocation failed', e)
-      setResult({ success: false, error: `An error occurred while starting the export: ${e}` })
-      setIsExporting(false)
-    }
-  }, [])
+      try {
+        await window.electronAPI.startExport({
+          projectState: plainState,
+          exportSettings: settings,
+          outputPath: outputPath,
+          // The AI (cloud) method: render the intermediate here, upscale there.
+          ...(options?.cloud ? { cloud: {} } : {}),
+        })
+      } catch (e) {
+        console.error('Export invocation failed', e)
+        setResult({ success: false, error: `An error occurred while starting the export: ${e}` })
+        setIsExporting(false)
+      }
+    },
+    [],
+  )
 
   // Handler to cancel an ongoing export
   const handleCancelExport = () => {
@@ -103,6 +111,7 @@ export const useExportProcess = () => {
     isModalOpen,
     isExporting,
     progress,
+    stage,
     result,
     openExportModal: () => setModalOpen(true),
     closeExportModal: handleCloseModal,

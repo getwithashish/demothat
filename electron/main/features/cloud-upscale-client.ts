@@ -166,7 +166,11 @@ export function estimateCredits(
 }
 
 /** The target key the server advertises for a size, for its `upscaleFps` table. */
-export function targetKeyFor(capabilities: Pick<CloudCapabilities, 'targets'>, width: number, height: number): string | null {
+export function targetKeyFor(
+  capabilities: Pick<CloudCapabilities, 'targets'>,
+  width: number,
+  height: number,
+): string | null {
   const match = capabilities.targets.find((target) => target.width === width && target.height === height)
   return match?.key ?? null
 }
@@ -229,9 +233,7 @@ export async function requestJson<T>(
             headers: {
               Authorization: `Bearer ${settings.token}`,
               Accept: 'application/json',
-              ...(payload
-                ? { 'Content-Type': 'application/json', 'Content-Length': String(payload.length) }
-                : {}),
+              ...(payload ? { 'Content-Type': 'application/json', 'Content-Length': String(payload.length) } : {}),
             },
           },
           (response) => {
@@ -269,7 +271,10 @@ export async function requestJson<T>(
   throw new CloudError('Unreachable', 'unreachable')
 }
 
-export async function fetchCapabilities(settings: CloudSettings, cancel?: CloudCancellation): Promise<CloudCapabilities> {
+export async function fetchCapabilities(
+  settings: CloudSettings,
+  cancel?: CloudCancellation,
+): Promise<CloudCapabilities> {
   return requestJson<CloudCapabilities>(settings, 'GET', '/v1/capabilities', undefined, { cancel })
 }
 
@@ -358,7 +363,9 @@ export async function uploadIntermediate(
     } catch (error) {
       const isLast = attempt === attempts
       if (isLast || !retryable(error) || cancel?.cancelled) throw error
-      log.warn(`[CloudClient] Upload failed (${(error as Error).message}); restarting (attempt ${attempt + 1}/${attempts})`)
+      log.warn(
+        `[CloudClient] Upload failed (${(error as Error).message}); restarting (attempt ${attempt + 1}/${attempts})`,
+      )
       onProgress(0, 0, stat.size)
       await sleep(RETRY_DELAYS_MS[attempt - 1] ?? 3000)
     }
@@ -377,7 +384,11 @@ export interface PollOptions {
 }
 
 /** Polls until the job settles, easing the interval off between calls. */
-export async function pollJob(settings: CloudSettings, jobId: string, options: PollOptions = {}): Promise<CloudJobView> {
+export async function pollJob(
+  settings: CloudSettings,
+  jobId: string,
+  options: PollOptions = {},
+): Promise<CloudJobView> {
   const startedAt = Date.now()
   const maxWaitMs = options.maxWaitMs ?? 30 * 60 * 1000
   let delay = options.initialDelayMs ?? 700

@@ -138,7 +138,12 @@ export async function handleCloudRetry(
         'export:complete',
         result.ok
           ? { success: true, outputPath: request.outputPath }
-          : { success: false, error: result.error, intermediatePath: result.intermediatePath, canRetryCloud: !cancel.cancelled },
+          : {
+              success: false,
+              error: result.error,
+              intermediatePath: result.intermediatePath,
+              canRetryCloud: !cancel.cancelled,
+            },
       )
     }
     return { ok: result.ok, error: result.error }

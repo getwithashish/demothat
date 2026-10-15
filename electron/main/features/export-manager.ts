@@ -168,7 +168,9 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
     cloudJob = preflight.job
     cloudSettings = preflight.settings
     intermediatePath = intermediatePathFor(os.tmpdir(), Date.now())
-    log.info(`[ExportManager] Cloud job ${cloudJob.jobId}: rendering the intermediate at ${renderWidth}x${renderHeight}.`)
+    log.info(
+      `[ExportManager] Cloud job ${cloudJob.jobId}: rendering the intermediate at ${renderWidth}x${renderHeight}.`,
+    )
   }
 
   if (appState.renderWorker) {

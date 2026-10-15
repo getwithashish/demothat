@@ -141,7 +141,11 @@ export async function preflightCloudUpscale(request: CloudPreflightRequest): Pro
         error: `Not enough credits for this upscale: it needs about ${credits} and the account has ${capabilities.credits}.`,
       }
     }
-    return { ok: false, code: cloudError.code ?? 'job_failed', error: `Could not start the cloud upscale: ${cloudError.message}` }
+    return {
+      ok: false,
+      code: cloudError.code ?? 'job_failed',
+      error: `Could not start the cloud upscale: ${cloudError.message}`,
+    }
   }
 }
 

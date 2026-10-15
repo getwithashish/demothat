@@ -12,10 +12,14 @@ import { getFFmpegPath, calculateExportDimensions } from '../lib/utils'
 import { VITE_DEV_SERVER_URL, RENDERER_DIST, PRELOAD_SCRIPT } from '../lib/constants'
 import {
   buildExportArgs,
+  computeExportDuration,
   needsBuiltInClickSound,
   type ExportProjectState,
   type ExportSettingsInput,
 } from './build-export-args'
+import { getEncoderCapabilities } from './encoder-capabilities'
+import { isFormatAllowed, selectExportCodec } from '../../../shared/export-codec'
+import { applyRenderCap } from '../../../shared/export-render-cap'
 
 const FFMPEG_PATH = getFFmpegPath()
 
@@ -63,6 +67,37 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
   const editorWindow = BrowserWindow.fromWebContents(event.sender)
   if (!editorWindow) return
 
+  const { resolution } = exportSettings
+  const { width: targetWidth, height: targetHeight } = calculateExportDimensions(resolution, projectState.aspectRatio)
+
+  // GIF is limited to 2K.
+  if (!isFormatAllowed(exportSettings.format, targetHeight)) {
+    editorWindow.webContents.send('export:complete', {
+      success: false,
+      error: 'GIF export is limited to 2K. Choose MP4 for larger resolutions.',
+    })
+    return
+  }
+
+  // Targets above 4K need HEVC. Never fall back to H.264 silently.
+  if (selectExportCodec(targetHeight) === 'hevc') {
+    const capabilities = await getEncoderCapabilities()
+    if (!capabilities.libx265) {
+      log.error('[ExportManager] HEVC requested but libx265 is unavailable in this FFmpeg build.')
+      editorWindow.webContents.send('export:complete', {
+        success: false,
+        error:
+          'This build cannot export above 4K: the bundled FFmpeg has no libx265 (HEVC) encoder. ' +
+          'Rebuild the FFmpeg binary with --enable-libx265.',
+      })
+      return
+    }
+  }
+
+  // The renderer draws at the capped size; FFmpeg scales to the exact target.
+  const { width: renderWidth, height: renderHeight } = applyRenderCap(targetWidth, targetHeight)
+  log.info(`[ExportManager] Target ${targetWidth}x${targetHeight}, rendering at ${renderWidth}x${renderHeight}.`)
+
   if (appState.renderWorker) {
     appState.renderWorker.close()
   }
@@ -86,9 +121,6 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
     log.info(`[ExportManager] Loading render worker file (Prod): ${renderPath}#renderer`)
   }
 
-  const { resolution } = exportSettings
-  const { width: outputWidth, height: outputHeight } = calculateExportDimensions(resolution, projectState.aspectRatio)
-
   // Materialise the built-in click WAV when click sounds are on and no custom
   // sound is set, so buildExportArgs can stay pure.
   const temporaryFiles: string[] = []
@@ -104,8 +136,10 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
     projectState,
     exportSettings,
     outputPath,
-    width: outputWidth,
-    height: outputHeight,
+    renderWidth,
+    renderHeight,
+    targetWidth,
+    targetHeight,
     clickSoundPath,
   })
 
@@ -119,6 +153,48 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
   let unblockPendingWrite: (() => void) | null = null
 
   ffmpeg.stderr.on('data', (data) => log.info(`[FFmpeg stderr]: ${data.toString()}`))
+
+  // --- Progress -----------------------------------------------------------------
+  // FFmpeg's own position is the authoritative progress: with backpressure the
+  // renderer cannot run ahead of the encoder, and unlike frames-sent it also
+  // covers the encode/flush tail after rendering has finished.
+  const exportDuration = computeExportDuration(projectState)
+  let frameProgress = 0
+  let encodeProgress = 0
+  let renderFinished = false
+
+  const emitProgress = () => {
+    if (!editorWindow || editorWindow.isDestroyed()) return
+    editorWindow.webContents.send('export:progress', {
+      progress: Math.min(100, Math.max(frameProgress, encodeProgress)),
+      stage: renderFinished ? 'Encoding' : 'Rendering',
+    })
+  }
+
+  let progressBuffer = ''
+  const handleProgressOutput = (chunk: Buffer) => {
+    progressBuffer += chunk.toString()
+    const lines = progressBuffer.split('\n')
+    progressBuffer = lines.pop() ?? ''
+
+    let changed = false
+    for (const line of lines) {
+      const [key, value] = line.trim().split('=')
+      if (key === 'out_time_us' || key === 'out_time_ms') {
+        // Both fields carry microseconds in FFmpeg's progress output.
+        const microseconds = Number(value)
+        if (exportDuration > 0 && Number.isFinite(microseconds) && microseconds >= 0) {
+          encodeProgress = Math.max(encodeProgress, (microseconds / 1_000_000 / exportDuration) * 100)
+          changed = true
+        }
+      } else if (key === 'progress' && value === 'end') {
+        encodeProgress = 100
+        changed = true
+      }
+    }
+    if (changed) emitProgress()
+  }
+  ffmpeg.stdout?.on('data', handleProgressOutput)
 
   const abortExport = (reason: string) => {
     if (exportAborted) return
@@ -171,9 +247,8 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
     { frame, progress }: { frame: Uint8Array; progress: number },
   ): Promise<FrameWriteResult> => {
     const result = await writeFrame(frame)
-    if (editorWindow && !editorWindow.isDestroyed()) {
-      editorWindow.webContents.send('export:progress', { progress, stage: 'Rendering...' })
-    }
+    frameProgress = Math.max(frameProgress, Number(progress) || 0)
+    emitProgress()
     return result
   }
 
@@ -194,6 +269,8 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
 
   const finishListener = () => {
     log.info('[ExportManager] Render finished. Closing FFmpeg stdin.')
+    renderFinished = true
+    emitProgress()
     if (!ffmpegClosed && ffmpeg.stdin?.writable) {
       ffmpeg.stdin.end()
     }

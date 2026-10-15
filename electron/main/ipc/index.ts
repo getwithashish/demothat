@@ -62,6 +62,7 @@ export function registerIpcHandlers() {
 
   // Export
   ipcMain.handle('export:start', exportHandlers.handleStartExport)
+  ipcMain.handle('export:capabilities', exportHandlers.handleGetExportCapabilities)
 
   // File System
   ipcMain.handle('fs:readFile', fsHandlers.handleReadFile)

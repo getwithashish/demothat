@@ -4,7 +4,7 @@ import log from 'electron-log/main'
 import { app } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs/promises'
-import { RESOLUTIONS, type ResolutionKey } from '../../../shared/export-resolutions'
+import { exportDimensions, type ResolutionKey } from '../../../shared/export-resolutions'
 
 export function getBinaryPath(name: string): string {
   const platform = process.platform === 'win32' ? 'windows' : process.platform === 'darwin' ? 'darwin' : 'linux'
@@ -60,9 +60,5 @@ export function calculateExportDimensions(
   resolutionKey: ResolutionKey,
   aspectRatio: string,
 ): { width: number; height: number } {
-  const baseHeight = RESOLUTIONS[resolutionKey].height
-  const [ratioW, ratioH] = aspectRatio.split(':').map(Number)
-  const width = Math.round(baseHeight * (ratioW / ratioH))
-  const finalWidth = width % 2 === 0 ? width : width + 1
-  return { width: finalWidth, height: baseHeight }
+  return exportDimensions(resolutionKey, aspectRatio)
 }

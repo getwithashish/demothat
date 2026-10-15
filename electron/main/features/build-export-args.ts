@@ -5,7 +5,8 @@
 // unit tested and extended (see Phase 3: 8K render cap, HEVC).
 
 import type { ResolutionKey } from '../../../shared/export-resolutions'
-import { qualityToX264Args, type ExportQuality } from './export-video-args'
+import { selectExportCodec } from '../../../shared/export-codec'
+import { videoEncodeArgs, type ExportQuality } from './export-video-args'
 
 export interface ExportRegion {
   startTime: number
@@ -57,9 +58,12 @@ export interface BuildExportArgsOptions {
   projectState: ExportProjectState
   exportSettings: ExportSettingsInput
   outputPath: string
-  /** Render/output size the raw frames arrive at. */
-  width: number
-  height: number
+  /** Size the raw frames arrive at (already clamped to the render cap). */
+  renderWidth: number
+  renderHeight: number
+  /** Exact size of the encoded output; FFmpeg scales up when it differs. */
+  targetWidth: number
+  targetHeight: number
   /**
    * Resolved click-sound file path, or null when none applies. The caller is
    * responsible for materialising the built-in click WAV (see
@@ -128,9 +132,10 @@ export function needsBuiltInClickSound(projectState: ExportProjectState): boolea
 }
 
 export function buildExportArgs(options: BuildExportArgsOptions): string[] {
-  const { projectState, exportSettings, outputPath, width, height } = options
+  const { projectState, exportSettings, outputPath, renderWidth, renderHeight, targetWidth, targetHeight } = options
   const { fps, format, quality } = exportSettings
   const isMp4 = format === 'mp4'
+  const scaled = renderWidth !== targetWidth || renderHeight !== targetHeight
 
   const ffmpegArgs: string[] = [
     '-y',
@@ -141,7 +146,7 @@ export function buildExportArgs(options: BuildExportArgsOptions): string[] {
     '-pix_fmt',
     'rgba',
     '-s',
-    `${width}x${height}`,
+    `${renderWidth}x${renderHeight}`,
     '-r',
     fps.toString(),
     '-i',
@@ -219,8 +224,12 @@ export function buildExportArgs(options: BuildExportArgsOptions): string[] {
   }
 
   if (isMp4) {
-    const videoEncodeArgs = qualityToX264Args(quality)
+    const encodeArgs = videoEncodeArgs(selectExportCodec(targetHeight), quality)
     ffmpegArgs.push('-map', '0:v:0')
+    if (scaled) {
+      // The frame arrived at the capped render size; scale to the exact target.
+      ffmpegArgs.push('-vf', `scale=${targetWidth}:${targetHeight}:flags=lanczos`)
+    }
     if (audioLabels.length > 0) {
       const mixInputs = audioLabels.join('')
       audioFilterParts.push(
@@ -231,7 +240,7 @@ export function buildExportArgs(options: BuildExportArgsOptions): string[] {
         audioFilterParts.join(';'),
         '-map',
         '[aout]',
-        ...videoEncodeArgs,
+        ...encodeArgs,
         '-c:a',
         'aac',
         '-b:a',
@@ -240,12 +249,15 @@ export function buildExportArgs(options: BuildExportArgsOptions): string[] {
         exportDuration.toString(),
       )
     } else {
-      ffmpegArgs.push(...videoEncodeArgs, '-t', exportDuration.toString())
+      ffmpegArgs.push(...encodeArgs, '-t', exportDuration.toString())
     }
   } else {
+    // GIF is limited to 2K (enforced by the caller), which is always inside the
+    // render cap, so no scaling is needed here.
     ffmpegArgs.push('-vf', 'split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse')
   }
 
+  ffmpegArgs.push('-progress', 'pipe:1', '-nostats')
   ffmpegArgs.push(outputPath)
   return ffmpegArgs
 }

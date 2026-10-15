@@ -3,7 +3,8 @@ import { useEffect, useRef } from 'react'
 import { useEditorStore } from '../store/editorStore'
 import { EditorState, EditorActions, CursorTheme, CursorFrame, CursorImageBitmap } from '../types'
 import { ExportSettings } from '../components/editor/ExportModal'
-import { RESOLUTIONS } from '../../shared/export-resolutions'
+import { exportDimensions } from '../../shared/export-resolutions'
+import { applyRenderCap } from '../../shared/export-render-cap'
 import { drawScene, getClipSourceTime, type VideoClipLayer } from '../lib/renderer'
 import { prepareCursorBitmaps, mapExportTimeToSourceTime } from '../lib/utils'
 import type { VideoClip } from '../types'
@@ -121,11 +122,10 @@ export function RendererPage() {
 
         // --- 1. SETUP CANVAS AND CONTEXT ---
         const { resolution, fps } = exportSettings
-        const [ratioW, ratioH] = projectState.aspectRatio.split(':').map(Number)
-        const baseHeight = RESOLUTIONS[resolution as keyof typeof RESOLUTIONS].height
-        let outputWidth = Math.round(baseHeight * (ratioW / ratioH))
-        outputWidth = outputWidth % 2 === 0 ? outputWidth : outputWidth + 1
-        const outputHeight = baseHeight
+        // Never allocate a canvas at the full target size (an 8K RGBA frame is
+        // ~132 MB). Draw at the render cap; FFmpeg scales up to the target.
+        const target = exportDimensions(resolution, projectState.aspectRatio)
+        const { width: outputWidth, height: outputHeight } = applyRenderCap(target.width, target.height)
 
         canvas.width = outputWidth
         canvas.height = outputHeight

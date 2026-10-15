@@ -9,7 +9,8 @@ import { Input } from '../ui/input'
 import { Section } from '../ui/section'
 import { useEditorStore } from '../../store/editorStore'
 import { formatTime } from '../../lib/utils'
-import { RESOLUTION_OPTIONS, type ResolutionKey } from '../../../shared/export-resolutions'
+import { RESOLUTIONS, RESOLUTION_OPTIONS, type ResolutionKey } from '../../../shared/export-resolutions'
+import { GIF_MAX_HEIGHT } from '../../../shared/export-codec'
 import { PanelHeader } from './PanelHeader'
 
 export type ExportSettings = {
@@ -51,6 +52,7 @@ const SettingsView = ({
     quality: 'medium',
   })
   const [outputPath, setOutputPath] = useState('')
+  const [encoderCapabilities, setEncoderCapabilities] = useState<{ libx265: boolean } | null>(null)
   const { duration, cutRegions, speedRegions } = useEditorStore(
     useShallow((state) => ({
       duration: state.duration,
@@ -58,6 +60,26 @@ const SettingsView = ({
       speedRegions: state.speedRegions,
     })),
   )
+
+  // Which encoders the bundled FFmpeg has; a missing libx265 disables 8K.
+  // Until the answer arrives, assume available so the option does not flicker
+  // (the main process still refuses an impossible export).
+  useEffect(() => {
+    window.electronAPI
+      .getExportCapabilities()
+      .then(setEncoderCapabilities)
+      .catch(() => setEncoderCapabilities(null))
+  }, [])
+
+  const resolutionDisabledReason = (key: ResolutionKey): string | null => {
+    if (key === '8k' && encoderCapabilities && !encoderCapabilities.libx265) {
+      return 'needs HEVC (libx265), which this build lacks'
+    }
+    if (settings.format === 'gif' && RESOLUTIONS[key].height > GIF_MAX_HEIGHT) {
+      return 'GIF is limited to 2K'
+    }
+    return null
+  }
 
   const estimatedDuration = useMemo(() => {
     if (duration === 0) return 0
@@ -82,6 +104,16 @@ const SettingsView = ({
 
   const handleValueChange = (key: keyof ExportSettings, value: string) => {
     setSettings((prev) => ({ ...prev, [key]: value }))
+  }
+
+  const handleFormatChange = (value: string) => {
+    setSettings((prev) => {
+      const format = value as ExportSettings['format']
+      // GIF cannot go above 2K, so fall back rather than leaving an invalid pair.
+      const resolution =
+        format === 'gif' && RESOLUTIONS[prev.resolution].height > GIF_MAX_HEIGHT ? '1080p' : prev.resolution
+      return { ...prev, format, resolution }
+    })
   }
 
   const handleFpsChange = (value: string) => {
@@ -125,7 +157,7 @@ const SettingsView = ({
       <div className="min-h-0 flex-1 overflow-y-auto stable-scrollbar">
         <Section first>
           <div className="space-y-3.5">
-            <Select value={settings.format} onValueChange={(value) => handleValueChange('format', value)}>
+            <Select value={settings.format} onValueChange={handleFormatChange}>
               <SelectTrigger label="Format" aria-label="Format">
                 <SelectValue />
               </SelectTrigger>
@@ -140,11 +172,19 @@ const SettingsView = ({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {RESOLUTION_OPTIONS.map((option) => (
-                  <SelectItem key={option.key} value={option.key}>
-                    {option.label}
-                  </SelectItem>
-                ))}
+                {RESOLUTION_OPTIONS.map((option) => {
+                  const reason = resolutionDisabledReason(option.key)
+                  return (
+                    <SelectItem
+                      key={option.key}
+                      value={option.key}
+                      disabled={reason !== null}
+                      title={reason ?? undefined}
+                    >
+                      {reason ? `${option.label} — ${reason}` : option.label}
+                    </SelectItem>
+                  )
+                })}
               </SelectContent>
             </Select>
 

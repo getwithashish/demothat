@@ -62,8 +62,10 @@ function build(projectState: ExportProjectState, exportSettings = mp4(), extra: 
     projectState,
     exportSettings,
     outputPath: '/out.mp4',
-    width: 1920,
-    height: 1080,
+    renderWidth: 1920,
+    renderHeight: 1080,
+    targetWidth: 1920,
+    targetHeight: 1080,
     clickSoundPath: null,
     ...extra,
   })
@@ -149,6 +151,56 @@ describe('buildExportArgs', () => {
     )
     // 10s - 2s cut (=> 8s) then a 2s region at 2x (-2s + 1s) = 7s
     expect(argValue(args, '-t')).toBe('7')
+  })
+
+  it('renders at the cap and scales to the exact 8K target with HEVC', () => {
+    const args = build(state(), mp4({ resolution: '8k' }), {
+      renderWidth: 3840,
+      renderHeight: 2160,
+      targetWidth: 7680,
+      targetHeight: 4320,
+    })
+
+    // Raw frames arrive at the capped render size, not the target.
+    expect(argValue(args, '-s')).toBe('3840x2160')
+    expect(lastArgValue(args, '-vf')).toBe('scale=7680:4320:flags=lanczos')
+    expect(lastArgValue(args, '-c:v')).toBe('libx265')
+    expect(lastArgValue(args, '-tag:v')).toBe('hvc1')
+    expect(lastArgValue(args, '-pix_fmt')).toBe('yuv420p')
+  })
+
+  it('keeps H.264 with no scaling for targets inside the cap', () => {
+    const args = build(state(), mp4({ resolution: '4k' }), {
+      renderWidth: 3840,
+      renderHeight: 2160,
+      targetWidth: 3840,
+      targetHeight: 2160,
+    })
+
+    expect(argValue(args, '-s')).toBe('3840x2160')
+    expect(lastArgValue(args, '-c:v')).toBe('libx264')
+    expect(args).not.toContain('-vf')
+    expect(args).not.toContain('hvc1')
+  })
+
+  it('keeps the audio filter graph and the scale filter together at 8K', () => {
+    const args = build(state({ audioClips: [musicClip] }), mp4({ resolution: '8k' }), {
+      renderWidth: 3840,
+      renderHeight: 2160,
+      targetWidth: 7680,
+      targetHeight: 4320,
+    })
+
+    expect(lastArgValue(args, '-vf')).toBe('scale=7680:4320:flags=lanczos')
+    expect(args).toContain('-filter_complex')
+    expect(args).toContain('[aout]')
+    expect(lastArgValue(args, '-c:v')).toBe('libx265')
+  })
+
+  it('asks FFmpeg to report its own progress on stdout', () => {
+    const args = build(state())
+    expect(argValue(args, '-progress')).toBe('pipe:1')
+    expect(args).toContain('-nostats')
   })
 })
 

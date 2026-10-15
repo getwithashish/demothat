@@ -219,6 +219,9 @@ export const electronAPI = {
   // --- Export ---
   startExport: (payload: ExportPayload): Promise<void> => ipcRenderer.invoke('export:start', payload),
   cancelExport: (): void => ipcRenderer.send('export:cancel'),
+  /** Encoders the bundled FFmpeg has (a missing libx265 disables the 8K option). */
+  getExportCapabilities: (): Promise<{ libx265: boolean; hevcEncoders: string[] }> =>
+    ipcRenderer.invoke('export:capabilities'),
 
   onExportProgress: (callback: (payload: ProgressPayload) => void) => {
     const listener = (_event: IpcRendererEvent, payload: ProgressPayload) => callback(payload)

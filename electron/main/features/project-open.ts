@@ -10,6 +10,7 @@ import { PROJECT_FILE_FILTERS, openProject, type OpenedProject } from './project
 import { readProjectManifest } from '../lib/project-file-core'
 import { createEditorWindowForProject } from '../windows/editor-window'
 import { checkForUpdates } from './update-checker'
+import { confirmReplaceSession } from './session-guard'
 
 let appReady = false
 let pendingOpenPath: string | null = null
@@ -76,18 +77,9 @@ async function performOpen(srcPath: string): Promise<void> {
     return
   }
 
-  const editor = appState.editorWin
-  if (appState.editorProjectDirty && editor && !editor.isDestroyed()) {
-    const { response } = await dialog.showMessageBox(editor, {
-      type: 'warning',
-      buttons: ['Open Without Saving', 'Cancel'],
-      defaultId: 1,
-      cancelId: 1,
-      title: 'Unsaved Changes',
-      message: 'The current project has unsaved changes.',
-      detail: 'Opening another project will discard them.',
-    })
-    if (response !== 0) return
+  if (!(await confirmReplaceSession('open'))) {
+    log.info('[ProjectOpen] The session guard declined to replace the current project.')
+    return
   }
 
   let opened: OpenedProject

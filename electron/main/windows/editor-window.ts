@@ -12,6 +12,7 @@ import { cleanupOrphanedRecordings } from '../features/recording-manager'
 import { checkForUpdates } from '../features/update-checker'
 import { VITE_DEV_SERVER_URL, RENDERER_DIST, PRELOAD_SCRIPT } from '../lib/constants'
 import { createEditorMenu, clearMenu } from '../features/app-menu'
+import { confirmReplaceSession, isQuitApproved } from '../features/session-guard'
 import { RecordingGeometry } from '../state'
 
 const store = new Store() // Can be configured with schema if needed
@@ -92,7 +93,21 @@ function setupEditorWindow(): BrowserWindow {
   }
   win.on('resize', debouncedSaveBounds)
   win.on('move', debouncedSaveBounds)
-  win.on('close', saveBounds)
+
+  // Closing is a data-loss point: let the session guard flush a save (or ask)
+  // before the window — and its temp recording files — go away.
+  let isCloseApproved = false
+  win.on('close', (event) => {
+    saveBounds()
+    // The quit guard has already asked for this window; do not ask twice.
+    if (isCloseApproved || isQuitApproved()) return
+    event.preventDefault()
+    void confirmReplaceSession('close').then((proceed) => {
+      if (!proceed || win.isDestroyed()) return
+      isCloseApproved = true
+      win.close()
+    })
+  })
 
   win.on('closed', () => {
     // Clear the application menu when the editor window is closed

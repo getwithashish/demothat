@@ -18,6 +18,7 @@ import { ICON_SIZE, ICON_STROKE } from '../components/ui/icons'
 import { cn, formatTime } from '../lib/utils'
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
 import { useAutoSave } from '../hooks/useAutoSave'
+import { useSessionGuard } from '../hooks/useSessionGuard'
 import { useExportProcess } from '../hooks/useExportProcess'
 import { Button } from '../components/ui/button'
 import { useShallow } from 'zustand/react/shallow'
@@ -71,6 +72,8 @@ export function EditorPage() {
 
   // Saves in the background while the project has unsaved changes.
   useAutoSave()
+  // Answers the main process before a session is replaced (open / close / quit).
+  useSessionGuard()
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const [isExportMinimized, setExportMinimized] = useState(false)

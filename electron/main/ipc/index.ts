@@ -61,6 +61,8 @@ export function registerIpcHandlers() {
   ipcMain.handle('project:rename', projectHandlers.handleProjectRename)
   ipcMain.handle('project:load', projectHandlers.handleProjectLoad)
   ipcMain.on('project:set-dirty', projectHandlers.handleProjectSetDirty)
+  ipcMain.on('project:before-replace-result', projectHandlers.handleBeforeReplaceResult)
+  ipcMain.on('project:perform-save-result', projectHandlers.handlePerformSaveResult)
   ipcMain.handle('project:prompt-open', projectHandlers.handleProjectPromptOpen)
 
   // Export

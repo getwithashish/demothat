@@ -23,6 +23,7 @@ import { onAppQuit, startRecording, loadVideoFromFile } from './features/recordi
 import { registerRecordingShortcuts, unregisterRecordingShortcuts } from './features/shortcuts'
 import { findProjectArg, markAppReadyForProjects, promptOpenProject, requestOpenProject } from './features/project-open'
 import { initializeMouseTrackerDependencies } from './features/mouse-tracker'
+import { confirmReplaceSession, isQuitApproved, markQuitApproved } from './features/session-guard'
 import { appState } from './state'
 
 // --- Initialization ---
@@ -75,6 +76,21 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', onAppQuit)
+
+// Quitting is the other data-loss point. The guard runs once per quit; the
+// window's own close handler then lets the window go without asking again.
+app.on('before-quit', (event) => {
+  if (isQuitApproved()) return
+  const editor = appState.editorWin
+  if (!editor || editor.isDestroyed()) return
+
+  event.preventDefault()
+  void confirmReplaceSession('quit').then((proceed) => {
+    if (!proceed) return
+    markQuitApproved()
+    app.quit()
+  })
+})
 
 app.on('will-quit', () => {
   // Release the global recording shortcuts before the process goes away.

@@ -15,6 +15,7 @@ import {
 } from '../../features/project-file'
 import { resolveSaveDestination } from '../../lib/project-file-core'
 import { promptOpenProject } from '../../features/project-open'
+import { confirmReplaceSession, settleGuardRequest, type SessionVerdict } from '../../features/session-guard'
 
 interface SaveRequest {
   project: SaveProjectPayload
@@ -160,6 +161,11 @@ export async function handleProjectRename(_event: IpcMainInvokeEvent, request: R
 
 export async function handleProjectLoad(_event: IpcMainInvokeEvent, options?: LoadRequest) {
   const quiet = !!options?.quiet
+
+  // One guard for every way a session gets replaced, so a renderer-initiated
+  // open cannot skip the check the OS-initiated one performs.
+  if (!(await confirmReplaceSession('open'))) return { canceled: true }
+
   let srcPath = options?.path
   if (!srcPath) {
     const parent = parentWindow()
@@ -212,6 +218,22 @@ export async function handleProjectLoad(_event: IpcMainInvokeEvent, options?: Lo
 /** The renderer reports whether the open editor has unsaved changes. */
 export function handleProjectSetDirty(_event: Electron.IpcMainEvent, dirty: boolean): void {
   appState.editorProjectDirty = !!dirty
+}
+
+/** The renderer's answer to the session guard's "may I replace this session?". */
+export function handleBeforeReplaceResult(
+  _event: Electron.IpcMainEvent,
+  payload: { requestId: string; verdict: SessionVerdict },
+): void {
+  settleGuardRequest(payload?.requestId, payload?.verdict)
+}
+
+/** The renderer's answer to the guard's "please save now". */
+export function handlePerformSaveResult(
+  _event: Electron.IpcMainEvent,
+  payload: { requestId: string; ok: boolean },
+): void {
+  settleGuardRequest(payload?.requestId, { ok: !!payload?.ok })
 }
 
 /** Opens the file picker and loads the chosen project (used by the recorder). */

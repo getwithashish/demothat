@@ -215,6 +215,25 @@ export const electronAPI = {
     missing?: boolean
   }> => ipcRenderer.invoke('project:load', options),
   setProjectDirty: (dirty: boolean): void => ipcRenderer.send('project:set-dirty', dirty),
+  // --- Session guard: main asks whether the current project may be replaced ---
+  onBeforeReplace: (
+    callback: (payload: { requestId: string; reason: 'open' | 'close' | 'quit' }) => void,
+  ): (() => void) => {
+    const listener = (_event: IpcRendererEvent, payload: { requestId: string; reason: 'open' | 'close' | 'quit' }) =>
+      callback(payload)
+    ipcRenderer.on('project:before-replace', listener)
+    return () => ipcRenderer.removeListener('project:before-replace', listener)
+  },
+  settleBeforeReplace: (payload: { requestId: string; verdict: unknown }): void =>
+    ipcRenderer.send('project:before-replace-result', payload),
+  /** Main asks the renderer to run a save it cannot perform itself. */
+  onPerformSave: (callback: (payload: { requestId: string }) => void): (() => void) => {
+    const listener = (_event: IpcRendererEvent, payload: { requestId: string }) => callback(payload)
+    ipcRenderer.on('project:perform-save', listener)
+    return () => ipcRenderer.removeListener('project:perform-save', listener)
+  },
+  settlePerformSave: (payload: { requestId: string; ok: boolean }): void =>
+    ipcRenderer.send('project:perform-save-result', payload),
   /** Opens the project file picker (used by the recorder window). */
   promptOpenProject: (): Promise<{ opened: boolean }> => ipcRenderer.invoke('project:prompt-open'),
   // Fired when a project opened from the OS (file association / CLI) is ready.

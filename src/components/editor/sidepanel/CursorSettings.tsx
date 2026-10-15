@@ -174,7 +174,9 @@ export function CursorSettings() {
 
         <Section
           label="Theme"
-          labelRight={isCustomizationSupported ? <ResetButton onClick={handleResetTheme} label="cursor theme" /> : undefined}
+          labelRight={
+            isCustomizationSupported ? <ResetButton onClick={handleResetTheme} label="cursor theme" /> : undefined
+          }
         >
           <Select
             value={isCustomizationSupported ? cursorThemeName : DEFAULTS.CURSOR.THEME.defaultValue}
@@ -197,7 +199,9 @@ export function CursorSettings() {
 
         <Section
           label="Size"
-          labelRight={isCustomizationSupported ? <ResetButton onClick={handleResetSize} label="cursor size" /> : undefined}
+          labelRight={
+            isCustomizationSupported ? <ResetButton onClick={handleResetSize} label="cursor size" /> : undefined
+          }
         >
           <SegmentedControl
             aria-label="Cursor size"
@@ -214,7 +218,10 @@ export function CursorSettings() {
           )}
         </Section>
 
-        <Section label="Click ripple" labelRight={<ResetButton onClick={handleResetClickEffects} label="click effects" />}>
+        <Section
+          label="Click ripple"
+          labelRight={<ResetButton onClick={handleResetClickEffects} label="click effects" />}
+        >
           <div className="space-y-3.5">
             <ToggleRow
               label="Visible"
@@ -244,12 +251,7 @@ export function CursorSettings() {
             />
             <div className="grid grid-cols-2 gap-3">
               <div className="pt-0.5">
-                <ColorField
-                  label="Color"
-                  value={rippleHex}
-                  onChange={handleRippleColorChange}
-                  disabled={rippleOff}
-                />
+                <ColorField label="Color" value={rippleHex} onChange={handleRippleColorChange} disabled={rippleOff} />
               </div>
               <Slider
                 label="Opacity"
@@ -265,7 +267,10 @@ export function CursorSettings() {
           </div>
         </Section>
 
-        <Section label="Click scale" labelRight={<ResetButton onClick={handleResetClickEffects} label="click effects" />}>
+        <Section
+          label="Click scale"
+          labelRight={<ResetButton onClick={handleResetClickEffects} label="click effects" />}
+        >
           <div className="space-y-3.5">
             <ToggleRow
               label="Visible"

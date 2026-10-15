@@ -30,24 +30,66 @@ export function AudioSettings() {
   const [silenceSuggestions, setSilenceSuggestions] = useState<{ start: number; end: number; duration: number }[]>([])
   const [dismissedSilences, setDismissedSilences] = useState<number[]>([])
   const {
-    volume, isMuted, setVolume, setIsMuted, hasAudioTrack, duration, currentTime, videoPath,
-    audioClips, selectedRegionId, addAudioClip, updateAudioClip, deleteAudioClip, addCutRegion,
-    mouseClickSoundsEnabled, setMouseClickSoundsEnabled, mouseClickSoundPath, mouseClickSoundName,
-    setMouseClickSound, mouseClickSoundVolume, setMouseClickSoundVolume,
-  } = useEditorStore(useShallow((state) => ({
-    volume: state.volume, isMuted: state.isMuted, setVolume: state.setVolume, setIsMuted: state.setIsMuted,
-    hasAudioTrack: state.hasAudioTrack, duration: state.duration, currentTime: state.currentTime, videoPath: state.videoPath,
-    audioClips: state.audioClips, selectedRegionId: state.selectedRegionId, addAudioClip: state.addAudioClip,
-    updateAudioClip: state.updateAudioClip, deleteAudioClip: state.deleteAudioClip, addCutRegion: state.addCutRegion,
-    mouseClickSoundsEnabled: state.mouseClickSoundsEnabled, setMouseClickSoundsEnabled: state.setMouseClickSoundsEnabled,
-    mouseClickSoundPath: state.mouseClickSoundPath, mouseClickSoundName: state.mouseClickSoundName,
-    setMouseClickSound: state.setMouseClickSound, mouseClickSoundVolume: state.mouseClickSoundVolume, setMouseClickSoundVolume: state.setMouseClickSoundVolume,
-  })))
-  const selectedClip = useMemo(() => audioClips.find((clip) => clip.id === selectedRegionId && clip.kind !== 'click') ?? null, [audioClips, selectedRegionId])
-  const selectedClickClip = useMemo(() => audioClips.find((clip) => clip.id === selectedRegionId && clip.kind === 'click') ?? null, [audioClips, selectedRegionId])
+    volume,
+    isMuted,
+    setVolume,
+    setIsMuted,
+    hasAudioTrack,
+    duration,
+    currentTime,
+    videoPath,
+    audioClips,
+    selectedRegionId,
+    addAudioClip,
+    updateAudioClip,
+    deleteAudioClip,
+    addCutRegion,
+    mouseClickSoundsEnabled,
+    setMouseClickSoundsEnabled,
+    mouseClickSoundPath,
+    mouseClickSoundName,
+    setMouseClickSound,
+    mouseClickSoundVolume,
+    setMouseClickSoundVolume,
+  } = useEditorStore(
+    useShallow((state) => ({
+      volume: state.volume,
+      isMuted: state.isMuted,
+      setVolume: state.setVolume,
+      setIsMuted: state.setIsMuted,
+      hasAudioTrack: state.hasAudioTrack,
+      duration: state.duration,
+      currentTime: state.currentTime,
+      videoPath: state.videoPath,
+      audioClips: state.audioClips,
+      selectedRegionId: state.selectedRegionId,
+      addAudioClip: state.addAudioClip,
+      updateAudioClip: state.updateAudioClip,
+      deleteAudioClip: state.deleteAudioClip,
+      addCutRegion: state.addCutRegion,
+      mouseClickSoundsEnabled: state.mouseClickSoundsEnabled,
+      setMouseClickSoundsEnabled: state.setMouseClickSoundsEnabled,
+      mouseClickSoundPath: state.mouseClickSoundPath,
+      mouseClickSoundName: state.mouseClickSoundName,
+      setMouseClickSound: state.setMouseClickSound,
+      mouseClickSoundVolume: state.mouseClickSoundVolume,
+      setMouseClickSoundVolume: state.setMouseClickSoundVolume,
+    })),
+  )
+  const selectedClip = useMemo(
+    () => audioClips.find((clip) => clip.id === selectedRegionId && clip.kind !== 'click') ?? null,
+    [audioClips, selectedRegionId],
+  )
+  const selectedClickClip = useMemo(
+    () => audioClips.find((clip) => clip.id === selectedRegionId && clip.kind === 'click') ?? null,
+    [audioClips, selectedRegionId],
+  )
   const musicClips = useMemo(() => audioClips.filter((clip) => clip.kind !== 'click'), [audioClips])
   const clickClips = useMemo(() => audioClips.filter((clip) => clip.kind === 'click'), [audioClips])
-  const visibleSilences = useMemo(() => silenceSuggestions.filter((item) => !dismissedSilences.includes(item.start)), [silenceSuggestions, dismissedSilences])
+  const visibleSilences = useMemo(
+    () => silenceSuggestions.filter((item) => !dismissedSilences.includes(item.start)),
+    [silenceSuggestions, dismissedSilences],
+  )
 
   const analyzeSilence = async () => {
     if (!videoPath) return
@@ -56,9 +98,18 @@ export function AudioSettings() {
       const results = await window.electronAPI.detectSilence(videoPath)
       setSilenceSuggestions(results)
       setDismissedSilences([])
-      if (results.length === 0) window.electronAPI.showMessageBox({ type: 'info', title: 'Silence review', message: 'No pauses longer than 0.45 seconds were detected at the current threshold.' })
+      if (results.length === 0)
+        window.electronAPI.showMessageBox({
+          type: 'info',
+          title: 'Silence review',
+          message: 'No pauses longer than 0.45 seconds were detected at the current threshold.',
+        })
     } catch (error) {
-      window.electronAPI.showMessageBox({ type: 'error', title: 'Silence analysis failed', message: error instanceof Error ? error.message : 'Could not analyze the recording audio.' })
+      window.electronAPI.showMessageBox({
+        type: 'error',
+        title: 'Silence analysis failed',
+        message: error instanceof Error ? error.message : 'Could not analyze the recording audio.',
+      })
     } finally {
       setIsAnalyzingSilence(false)
     }
@@ -82,12 +133,26 @@ export function AudioSettings() {
       const startTime = Math.min(currentTime, Math.max(0, duration - 0.1))
       const clipDuration = Math.max(0.1, Math.min(fileDuration, duration > 0 ? duration - startTime : fileDuration))
       addAudioClip({
-        name: result.fileName || path.split(/[\\/]/).pop() || 'Audio track', filePath: path, startTime, duration: clipDuration,
-        sourceStart: 0, sourceDuration: fileDuration, volume: 1, fadeIn: 0, fadeOut: 0, loop: false, kind: 'music', speed: 1,
+        name: result.fileName || path.split(/[\\/]/).pop() || 'Audio track',
+        filePath: path,
+        startTime,
+        duration: clipDuration,
+        sourceStart: 0,
+        sourceDuration: fileDuration,
+        volume: 1,
+        fadeIn: 0,
+        fadeOut: 0,
+        loop: false,
+        kind: 'music',
+        speed: 1,
       })
     } catch (error) {
       console.error('Failed to import audio:', error)
-      window.electronAPI.showMessageBox({ type: 'error', title: 'Audio import failed', message: error instanceof Error ? error.message : 'Could not import audio.' })
+      window.electronAPI.showMessageBox({
+        type: 'error',
+        title: 'Audio import failed',
+        message: error instanceof Error ? error.message : 'Could not import audio.',
+      })
     } finally {
       setIsImporting(false)
     }
@@ -95,10 +160,17 @@ export function AudioSettings() {
 
   const importClickSound = async () => {
     const result = await window.electronAPI.openAudioFile()
-    if (!result.canceled && result.filePath) setMouseClickSound(result.filePath, result.fileName || result.filePath.split(/[\\/]/).pop() || 'Custom click sound')
+    if (!result.canceled && result.filePath)
+      setMouseClickSound(
+        result.filePath,
+        result.fileName || result.filePath.split(/[\\/]/).pop() || 'Custom click sound',
+      )
   }
 
-  const handleResetVolume = () => { setVolume(DEFAULTS.AUDIO.VOLUME.defaultValue); setIsMuted(DEFAULTS.AUDIO.MUTED.defaultValue) }
+  const handleResetVolume = () => {
+    setVolume(DEFAULTS.AUDIO.VOLUME.defaultValue)
+    setIsMuted(DEFAULTS.AUDIO.MUTED.defaultValue)
+  }
   const handleResetClipMix = () => {
     if (selectedClip) updateAudioClip(selectedClip.id, { volume: 1, fadeIn: 0, fadeOut: 0, loop: false })
   }
@@ -123,14 +195,20 @@ export function AudioSettings() {
             )}
           </Button>
           {!selectedClip && !selectedClickClip && (
-            <HelperText>Select a music clip on the timeline to edit its volume, trim, speed, loop and fades.</HelperText>
+            <HelperText>
+              Select a music clip on the timeline to edit its volume, trim, speed, loop and fades.
+            </HelperText>
           )}
         </Section>
 
         {selectedClickClip && (
           <Section
             label="Selected click sound"
-            labelRight={<span className="font-mono text-sm tabular-nums text-muted">{formatTime(selectedClickClip.startTime)}</span>}
+            labelRight={
+              <span className="font-mono text-sm tabular-nums text-muted">
+                {formatTime(selectedClickClip.startTime)}
+              </span>
+            }
           >
             <div className="space-y-3.5">
               <HelperText className="mt-0">
@@ -161,7 +239,9 @@ export function AudioSettings() {
             labelRight={<ResetButton onClick={handleResetClipMix} label="music clip mix" />}
           >
             <div className="space-y-3.5">
-              <div className="truncate text-sm text-fg" title={selectedClip.name}>{selectedClip.name}</div>
+              <div className="truncate text-sm text-fg" title={selectedClip.name}>
+                {selectedClip.name}
+              </div>
               <HelperText className="mt-0">
                 Move or trim the clip directly in the timeline. These controls adjust its mix and playback.
               </HelperText>
@@ -180,7 +260,18 @@ export function AudioSettings() {
                 max={2}
                 step={0.05}
                 value={selectedClip.speed ?? 1}
-                onChange={(value) => updateAudioClip(selectedClip.id, { speed: value, duration: Math.max(0.1, Math.min(duration - selectedClip.startTime, selectedClip.duration * (selectedClip.speed ?? 1) / value)) })}
+                onChange={(value) =>
+                  updateAudioClip(selectedClip.id, {
+                    speed: value,
+                    duration: Math.max(
+                      0.1,
+                      Math.min(
+                        duration - selectedClip.startTime,
+                        (selectedClip.duration * (selectedClip.speed ?? 1)) / value,
+                      ),
+                    ),
+                  })
+                }
                 formatValue={(value) => `${value.toFixed(2)}\u00d7`}
               />
               <Slider
@@ -330,13 +421,20 @@ export function AudioSettings() {
                       size="sm"
                       className="flex-1"
                       onClick={() => {
-                        addCutRegion({ startTime: item.start, duration: Math.min(item.duration, Math.max(0.1, duration - item.start)) })
+                        addCutRegion({
+                          startTime: item.start,
+                          duration: Math.min(item.duration, Math.max(0.1, duration - item.start)),
+                        })
                         setDismissedSilences((old) => [...old, item.start])
                       }}
                     >
                       Add cut
                     </Button>
-                    <Button size="sm" variant="secondary" onClick={() => setDismissedSilences((old) => [...old, item.start])}>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => setDismissedSilences((old) => [...old, item.start])}
+                    >
                       Dismiss
                     </Button>
                   </div>

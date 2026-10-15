@@ -36,10 +36,16 @@ export function AudioTimelinePreview() {
         const speed = Math.max(0.5, Math.min(2, Number(clip.speed) || 1))
         const playableSourceDuration = Math.max(0, clip.sourceDuration - clip.sourceStart)
         const sourceElapsed = elapsed * speed
-        const active = state.isPlaying && elapsed >= 0 && elapsed < clip.duration && (clip.loop || sourceElapsed < playableSourceDuration)
+        const active =
+          state.isPlaying &&
+          elapsed >= 0 &&
+          elapsed < clip.duration &&
+          (clip.loop || sourceElapsed < playableSourceDuration)
         if (active) {
           const loopSourceDuration = Math.min(playableSourceDuration, clip.duration * speed)
-          const sourceTime = clip.sourceStart + (clip.loop && loopSourceDuration > 0 ? sourceElapsed % loopSourceDuration : sourceElapsed)
+          const sourceTime =
+            clip.sourceStart +
+            (clip.loop && loopSourceDuration > 0 ? sourceElapsed % loopSourceDuration : sourceElapsed)
           if (Math.abs(audio.currentTime - sourceTime) > 0.35) audio.currentTime = sourceTime
           audio.playbackRate = speed
           const fadeInGain = clip.fadeIn > 0 ? Math.min(1, elapsed / clip.fadeIn) : 1
@@ -51,7 +57,12 @@ export function AudioTimelinePreview() {
         }
       }
 
-      if (state.mouseClickSoundsEnabled && state.isPlaying && state.currentTime >= previousTime && state.currentTime - previousTime <= 0.5) {
+      if (
+        state.mouseClickSoundsEnabled &&
+        state.isPlaying &&
+        state.currentTime >= previousTime &&
+        state.currentTime - previousTime <= 0.5
+      ) {
         const clicks = clickClips.filter((clip) => clip.startTime > previousTime && clip.startTime <= state.currentTime)
         for (const click of clicks) {
           const clickVolume = Math.max(0, Math.min(1, state.mouseClickSoundVolume * click.volume))
@@ -60,7 +71,10 @@ export function AudioTimelinePreview() {
             clickAudio.volume = clickVolume
             clickAudio.currentTime = 0
             void clickAudio.play().catch(() => undefined)
-            window.setTimeout(() => { clickAudio.pause(); clickAudio.removeAttribute('src') }, 500)
+            window.setTimeout(() => {
+              clickAudio.pause()
+              clickAudio.removeAttribute('src')
+            }, 500)
           } else if (clickVolume > 0) {
             clickContext ??= new AudioContext()
             const oscillator = clickContext.createOscillator()

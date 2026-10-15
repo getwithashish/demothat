@@ -392,7 +392,10 @@ export function RecorderPage() {
         source,
         displayId: source === 'fullscreen' ? Number(selectedDisplayId) : undefined,
         webcam: webcam ? { deviceId: webcam.id, deviceLabel: webcam.id, index: webcams.indexOf(webcam) } : undefined,
-        mic: mic && !micCapturedInRenderer ? { deviceId: mic.id, deviceLabel: mic.id, index: mics.indexOf(mic) } : undefined,
+        mic:
+          mic && !micCapturedInRenderer
+            ? { deviceId: mic.id, deviceLabel: mic.id, index: mics.indexOf(mic) }
+            : undefined,
         systemAudio: systemAudioReady,
         cleanDemo: cleanDemoEnabled,
       })
@@ -618,13 +621,15 @@ export function RecorderPage() {
                   }
                   className={cn(
                     'flex h-7 items-center gap-1.5 rounded-ctl border px-2.5 text-ui transition-colors',
-                    systemAudioEnabled
-                      ? 'border-accent bg-ctl text-fg'
-                      : 'border-line bg-ctl text-muted hover:text-fg',
+                    systemAudioEnabled ? 'border-accent bg-ctl text-fg' : 'border-line bg-ctl text-muted hover:text-fg',
                     (isRecording || isBusy) && 'cursor-not-allowed opacity-45',
                   )}
                 >
-                  {systemAudioEnabled ? <Volume size={ICON_SIZE} strokeWidth={ICON_STROKE} /> : <VolumeOff size={ICON_SIZE} strokeWidth={ICON_STROKE} />}
+                  {systemAudioEnabled ? (
+                    <Volume size={ICON_SIZE} strokeWidth={ICON_STROKE} />
+                  ) : (
+                    <VolumeOff size={ICON_SIZE} strokeWidth={ICON_STROKE} />
+                  )}
                   <span className="truncate">System audio</span>
                 </button>
               )}
@@ -643,13 +648,15 @@ export function RecorderPage() {
                 }
                 className={cn(
                   'flex h-7 items-center gap-1.5 rounded-ctl border px-2.5 text-ui transition-colors',
-                  cleanDemoEnabled
-                    ? 'border-accent bg-ctl text-fg'
-                    : 'border-line bg-ctl text-muted hover:text-fg',
+                  cleanDemoEnabled ? 'border-accent bg-ctl text-fg' : 'border-line bg-ctl text-muted hover:text-fg',
                   (isRecording || isBusy) && 'cursor-not-allowed opacity-45',
                 )}
               >
-                {cleanDemoEnabled ? <Presentation size={ICON_SIZE} strokeWidth={ICON_STROKE} /> : <PresentationOff size={ICON_SIZE} strokeWidth={ICON_STROKE} />}
+                {cleanDemoEnabled ? (
+                  <Presentation size={ICON_SIZE} strokeWidth={ICON_STROKE} />
+                ) : (
+                  <PresentationOff size={ICON_SIZE} strokeWidth={ICON_STROKE} />
+                )}
                 <span className="truncate">Clean demo</span>
               </button>
             </div>
@@ -661,7 +668,11 @@ export function RecorderPage() {
               <>
                 <div className="flex items-center gap-1.5" style={{ WebkitAppRegion: 'no-drag' }}>
                   <Pointer size={ICON_SIZE} strokeWidth={ICON_STROKE} className="text-muted" />
-                  <Select value={String(cursorScale)} onValueChange={handleCursorScaleChange} disabled={isRecording || isBusy}>
+                  <Select
+                    value={String(cursorScale)}
+                    onValueChange={handleCursorScaleChange}
+                    disabled={isRecording || isBusy}
+                  >
                     <SelectTrigger variant="minimal" className="w-16" aria-label="Select cursor scale">
                       <SelectValue />
                     </SelectTrigger>
@@ -682,21 +693,11 @@ export function RecorderPage() {
             <div className="flex items-center" style={{ WebkitAppRegion: 'no-drag' }}>
               <div className="flex items-center gap-2">
                 {isRecording ? (
-                  <Button
-                    onClick={handleStop}
-                    title="Stop Recording"
-                    variant="destructive"
-                    size="icon"
-                  >
+                  <Button onClick={handleStop} title="Stop Recording" variant="destructive" size="icon">
                     <Square size={ICON_SIZE} strokeWidth={ICON_STROKE} fill="currentColor" />
                   </Button>
                 ) : (
-                  <Button
-                    onClick={handleStart}
-                    title="Record"
-                    disabled={isInitializing || isBusy}
-                    size="icon"
-                  >
+                  <Button onClick={handleStart} title="Record" disabled={isInitializing || isBusy} size="icon">
                     <Video size={ICON_SIZE} strokeWidth={ICON_STROKE} />
                   </Button>
                 )}
@@ -749,9 +750,7 @@ const SourceButton = ({
     className={cn(
       'flex h-7 w-8 items-center justify-center rounded-[5px] text-ui outline-none transition-colors',
       'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
-      isActive
-        ? 'bg-panel text-fg shadow-[0_0_0_1px_var(--sa-line)]'
-        : 'text-muted hover:text-fg',
+      isActive ? 'bg-panel text-fg shadow-[0_0_0_1px_var(--sa-line)]' : 'text-muted hover:text-fg',
     )}
     title={tooltip}
     {...props}

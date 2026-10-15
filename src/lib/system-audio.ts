@@ -61,15 +61,15 @@ export async function startSystemAudioCapture(opts: StartOptions = {}): Promise<
         video: false,
       })
     } else {
-    // Toggle the loopback flag so the next getDisplayMedia() returns a
-    // system-audio track. We disable the flag immediately after the call so
-    // unrelated screen-share requests later don't accidentally pick it up.
-    await api.enableLoopbackAudio()
-    try {
-      stream = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true })
-    } finally {
-      await api.disableLoopbackAudio()
-    }
+      // Toggle the loopback flag so the next getDisplayMedia() returns a
+      // system-audio track. We disable the flag immediately after the call so
+      // unrelated screen-share requests later don't accidentally pick it up.
+      await api.enableLoopbackAudio()
+      try {
+        stream = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true })
+      } finally {
+        await api.disableLoopbackAudio()
+      }
     }
   } finally {
     releaseLoopbackLock()

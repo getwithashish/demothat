@@ -7,14 +7,18 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
-const css = readFileSync(fileURLToPath(new URL('./tokens.css', import.meta.url)), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+const css = readFileSync(fileURLToPath(new URL('./tokens.css', import.meta.url)), 'utf8').replace(
+  /\/\*[\s\S]*?\*\//g,
+  '',
+)
 
 function themeTokens(marker: string): Record<string, string> {
   const out: Record<string, string> = {}
   for (const chunk of css.split('}')) {
     const brace = chunk.indexOf('{')
     if (brace < 0 || !chunk.slice(0, brace).includes(marker)) continue
-    for (const m of chunk.slice(brace + 1).matchAll(/(--sa-[a-z-]+):\s*([^;]+);/g)) out[m[1].replace('--sa-', '')] = m[2].trim()
+    for (const m of chunk.slice(brace + 1).matchAll(/(--sa-[a-z-]+):\s*([^;]+);/g))
+      out[m[1].replace('--sa-', '')] = m[2].trim()
   }
   return out
 }
@@ -56,7 +60,10 @@ describe('contrast (WCAG AA, 4.5:1 minimum)', () => {
       for (const [fg, bg] of pairs) {
         it(`${fg} on ${bg}`, () => {
           const ratio = contrastRatio(themes[theme][fg], themes[theme][bg])
-          expect(Number(ratio.toFixed(2)), `${fg} ${themes[theme][fg]} on ${bg} ${themes[theme][bg]}`).toBeGreaterThanOrEqual(4.5)
+          expect(
+            Number(ratio.toFixed(2)),
+            `${fg} ${themes[theme][fg]} on ${bg} ${themes[theme][bg]}`,
+          ).toBeGreaterThanOrEqual(4.5)
         })
       }
     })

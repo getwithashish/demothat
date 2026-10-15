@@ -81,7 +81,10 @@ describe('primitives', () => {
     const seen: string[] = []
     const el = render(
       <SegmentedControl
-        options={[{ value: 'wallpaper', label: 'Wallpaper' }, { value: 'color', label: 'Colour' }]}
+        options={[
+          { value: 'wallpaper', label: 'Wallpaper' },
+          { value: 'color', label: 'Colour' },
+        ]}
         value="wallpaper"
         onChange={(v) => seen.push(v)}
       />,
@@ -122,7 +125,10 @@ describe('primitives', () => {
     const chosen: string[] = []
     const el = render(
       <SwatchGrid
-        items={[{ id: 'a', label: 'Wallpaper 1', color: '#123456' }, { id: 'b', label: 'Wallpaper 2', color: '#654321' }]}
+        items={[
+          { id: 'a', label: 'Wallpaper 1', color: '#123456' },
+          { id: 'b', label: 'Wallpaper 2', color: '#654321' },
+        ]}
         selectedId="a"
         onSelect={(id) => chosen.push(id)}
       />,

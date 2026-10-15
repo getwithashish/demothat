@@ -32,7 +32,12 @@ function sourceFiles(dir: string, acc: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
     const full = join(dir, entry)
     if (statSync(full).isDirectory()) sourceFiles(full, acc)
-    else if (['.ts', '.tsx', '.css'].includes(extname(entry)) && !entry.endsWith('.test.ts') && !entry.endsWith('.test.tsx')) acc.push(full)
+    else if (
+      ['.ts', '.tsx', '.css'].includes(extname(entry)) &&
+      !entry.endsWith('.test.ts') &&
+      !entry.endsWith('.test.tsx')
+    )
+      acc.push(full)
   }
   return acc
 }

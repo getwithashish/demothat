@@ -56,9 +56,7 @@ export const createUISlice: Slice<UIState, UIActions> = (set, get) => ({
       // Default to the OS colour scheme (Electron's nativeTheme drives the
       // renderer's `prefers-color-scheme`); a persisted override wins.
       const preferred: 'light' | 'dark' =
-        typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)').matches
-          ? 'dark'
-          : 'light'
+        typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
       const finalMode: 'light' | 'dark' = appearance?.mode ?? preferred
 
       set((state) => {

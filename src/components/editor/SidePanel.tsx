@@ -111,10 +111,21 @@ export function SidePanel() {
   }
 
   // Optimize region lookup using useMemo
-  const selectedCameraMotion = useMemo(() => cameraMotions.find((motion) => motion.id === selectedRegionId) ?? null, [cameraMotions, selectedRegionId])
-  const selectedCompositionLayout = useMemo(() => compositionLayouts.find((range) => range.id === selectedRegionId) ?? null, [compositionLayouts, selectedRegionId])
-  const selectedAudioClip = useMemo(() => audioClips.find((clip) => clip.id === selectedRegionId) ?? null, [audioClips, selectedRegionId])
-  const selectedVisualEffect = useEditorStore((state) => state.visualEffects.some((effect) => effect.id === selectedRegionId))
+  const selectedCameraMotion = useMemo(
+    () => cameraMotions.find((motion) => motion.id === selectedRegionId) ?? null,
+    [cameraMotions, selectedRegionId],
+  )
+  const selectedCompositionLayout = useMemo(
+    () => compositionLayouts.find((range) => range.id === selectedRegionId) ?? null,
+    [compositionLayouts, selectedRegionId],
+  )
+  const selectedAudioClip = useMemo(
+    () => audioClips.find((clip) => clip.id === selectedRegionId) ?? null,
+    [audioClips, selectedRegionId],
+  )
+  const selectedVisualEffect = useEditorStore((state) =>
+    state.visualEffects.some((effect) => effect.id === selectedRegionId),
+  )
 
   const selectedRegion = useMemo(() => {
     if (!selectedRegionId) return null
@@ -128,7 +139,14 @@ export function SidePanel() {
     } else if (selectedRegion || selectedCameraMotion || selectedCompositionLayout || selectedVisualEffect) {
       setActiveSidePanelTab('general')
     }
-  }, [selectedRegion, selectedCameraMotion, selectedCompositionLayout, selectedAudioClip, selectedVisualEffect, setActiveSidePanelTab])
+  }, [
+    selectedRegion,
+    selectedCameraMotion,
+    selectedCompositionLayout,
+    selectedAudioClip,
+    selectedVisualEffect,
+    setActiveSidePanelTab,
+  ])
 
   // Handle Escape key to clear selection
   useEffect(() => {
@@ -160,12 +178,25 @@ export function SidePanel() {
     }
     window.addEventListener('keydown', handleKeyDown, true)
     return () => window.removeEventListener('keydown', handleKeyDown, true)
-  }, [selectedRegionId, cameraMotions, compositionLayouts, audioClips, deleteAudioClip, deleteCameraMotion, deleteCompositionLayout, setSelectedRegionId])
+  }, [
+    selectedRegionId,
+    cameraMotions,
+    compositionLayouts,
+    audioClips,
+    deleteAudioClip,
+    deleteCameraMotion,
+    deleteCompositionLayout,
+    setSelectedRegionId,
+  ])
 
   return (
     <div className="flex h-full flex-col bg-panel">
       {/* Tab strip (replaces the 64px icon rail) */}
-      <div role="tablist" aria-label="Inspector sections" className="flex shrink-0 items-stretch border-b border-line px-2.5">
+      <div
+        role="tablist"
+        aria-label="Inspector sections"
+        className="flex shrink-0 items-stretch border-b border-line px-2.5"
+      >
         {TABS.map((tab, index) => {
           const disabled = isTabDisabled(tab.id)
           const active = activeSidePanelTab === tab.id
@@ -209,7 +240,15 @@ export function SidePanel() {
           className="h-full"
           hidden={activeSidePanelTab !== 'general'}
         >
-          {selectedCompositionLayout ? <CompositionLayoutSettings /> : selectedCameraMotion ? <CameraMotionSettings /> : selectedRegion ? <RegionSettingsPanel region={selectedRegion} /> : <FrameSettingsPanel />}
+          {selectedCompositionLayout ? (
+            <CompositionLayoutSettings />
+          ) : selectedCameraMotion ? (
+            <CameraMotionSettings />
+          ) : selectedRegion ? (
+            <RegionSettingsPanel region={selectedRegion} />
+          ) : (
+            <FrameSettingsPanel />
+          )}
         </div>
         <div
           role="tabpanel"

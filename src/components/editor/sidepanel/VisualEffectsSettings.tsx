@@ -101,42 +101,109 @@ function EffectEditor({ effect }: { effect: VisualEffectRegion }) {
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <NumberField label="Start (s)" value={effect.startTime} min={0} max={999999} onChange={(startTime) => change({ startTime })} />
-        <NumberField label="Duration (s)" value={effect.duration} min={0.1} max={999999} onChange={(duration) => change({ duration })} />
+        <NumberField
+          label="Start (s)"
+          value={effect.startTime}
+          min={0}
+          max={999999}
+          onChange={(startTime) => change({ startTime })}
+        />
+        <NumberField
+          label="Duration (s)"
+          value={effect.duration}
+          min={0.1}
+          max={999999}
+          onChange={(duration) => change({ duration })}
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-3">
         <NumberField label="X (0–1)" value={effect.x} min={0} max={1} onChange={(x) => change({ x })} />
         <NumberField label="Y (0–1)" value={effect.y} min={0} max={1} onChange={(y) => change({ y })} />
         <NumberField label="Width" value={effect.width} min={0.01} max={1} onChange={(width) => change({ width })} />
-        <NumberField label="Height" value={effect.height} min={0.01} max={1} onChange={(height) => change({ height })} />
+        <NumberField
+          label="Height"
+          value={effect.height}
+          min={0.01}
+          max={1}
+          onChange={(height) => change({ height })}
+        />
       </div>
 
       {effect.kind === 'blur' && (
-        <NumberField label="Blur strength (px)" value={effect.blur} min={0} max={80} step={1} onChange={(blur) => change({ blur })} />
+        <NumberField
+          label="Blur strength (px)"
+          value={effect.blur}
+          min={0}
+          max={80}
+          step={1}
+          onChange={(blur) => change({ blur })}
+        />
       )}
       {effect.kind === 'focus' && (
         <div className="grid grid-cols-2 gap-3">
-          <NumberField label="Magnification" value={effect.scale} min={1} max={4} step={0.1} onChange={(scale) => change({ scale })} />
-          <NumberField label="Outside dim (0–0.9)" value={effect.dimOutside} min={0} max={0.9} onChange={(dimOutside) => change({ dimOutside })} />
+          <NumberField
+            label="Magnification"
+            value={effect.scale}
+            min={1}
+            max={4}
+            step={0.1}
+            onChange={(scale) => change({ scale })}
+          />
+          <NumberField
+            label="Outside dim (0–0.9)"
+            value={effect.dimOutside}
+            min={0}
+            max={0.9}
+            onChange={(dimOutside) => change({ dimOutside })}
+          />
         </div>
       )}
       {(effect.kind === 'border' || effect.kind === 'focus') && (
-        <NumberField label="Border width" value={effect.borderWidth} min={1} max={40} step={1} onChange={(borderWidth) => change({ borderWidth })} />
+        <NumberField
+          label="Border width"
+          value={effect.borderWidth}
+          min={1}
+          max={40}
+          step={1}
+          onChange={(borderWidth) => change({ borderWidth })}
+        />
       )}
 
       <div className="grid grid-cols-2 gap-3">
-        <NumberField label="Enter (s)" value={effect.enterDuration} min={0} max={10} onChange={(enterDuration) => change({ enterDuration })} />
-        <NumberField label="Exit (s)" value={effect.exitDuration} min={0} max={10} onChange={(exitDuration) => change({ exitDuration })} />
+        <NumberField
+          label="Enter (s)"
+          value={effect.enterDuration}
+          min={0}
+          max={10}
+          onChange={(enterDuration) => change({ enterDuration })}
+        />
+        <NumberField
+          label="Exit (s)"
+          value={effect.exitDuration}
+          min={0}
+          max={10}
+          onChange={(exitDuration) => change({ exitDuration })}
+        />
       </div>
 
       <div className="flex flex-wrap gap-4 text-sm text-muted">
         <label className="flex items-center gap-2">
-          <input className="accent-accent" type="checkbox" checked={effect.animated} onChange={(e) => change({ animated: e.target.checked })} />
+          <input
+            className="accent-accent"
+            type="checkbox"
+            checked={effect.animated}
+            onChange={(e) => change({ animated: e.target.checked })}
+          />
           Animate
         </label>
         <label className="flex items-center gap-2">
-          <input className="accent-accent" type="checkbox" checked={effect.loop} onChange={(e) => change({ loop: e.target.checked })} />
+          <input
+            className="accent-accent"
+            type="checkbox"
+            checked={effect.loop}
+            onChange={(e) => change({ loop: e.target.checked })}
+          />
           Loop
         </label>
       </div>

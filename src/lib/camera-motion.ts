@@ -5,9 +5,7 @@ const DEFAULT_POSE: CameraPose = { x: 0, y: 0, scale: 1, rotationX: 0, rotationY
 
 /** Resolve the camera pose at a media timestamp. The function is pure so preview and export render identically. */
 export function getCameraPoseAtTime(tracks: CameraMotionTrack[] | undefined, time: number): CameraPose | null {
-  const active = (tracks ?? [])
-    .filter((track) => time >= track.startTime)
-    .sort((a, b) => b.startTime - a.startTime)[0]
+  const active = (tracks ?? []).filter((track) => time >= track.startTime).sort((a, b) => b.startTime - a.startTime)[0]
   if (!active) return null
 
   const duration = Math.max(0.001, active.endTime - active.startTime)

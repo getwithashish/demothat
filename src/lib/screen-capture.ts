@@ -73,8 +73,7 @@ export async function startScreenCapture(opts: StartScreenCaptureOptions): Promi
       throw new Error('No screen sources available — Screen Recording permission may be denied.')
     }
     const targetSource =
-      (opts.displayId !== undefined && sources.find((s) => s.display_id === String(opts.displayId))) ||
-      sources[0]
+      (opts.displayId !== undefined && sources.find((s) => s.display_id === String(opts.displayId))) || sources[0]
 
     // 2. Capture screen video. The cast is required because Chromium's
     //    legacy chromeMediaSource constraint is not in lib.dom.d.ts.

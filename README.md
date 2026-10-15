@@ -200,12 +200,12 @@ A huge thank you to everyone who has contributed to making DemoThat better!
 
 Commits follow the [Conventional Commits](https://www.conventionalcommits.org/) format, because releases are fully automated from them. Every push to `main` is analysed and, when it contains releasable changes, a new [semantic version](https://semver.org/) is published:
 
-| Commit | Release |
-| ------ | ------- |
-| `fix: ...`, `perf: ...` | Patch (`1.0.0` → `1.0.1`) |
-| `feat: ...` | Minor (`1.0.0` → `1.1.0`) |
-| `feat!: ...`, or a `BREAKING CHANGE:` footer | Major (`1.0.0` → `2.0.0`) |
-| `docs:`, `chore:`, `refactor:`, `test:`, `ci:`, `style:` | No release |
+| Commit                                                   | Release                   |
+| -------------------------------------------------------- | ------------------------- |
+| `fix: ...`, `perf: ...`                                  | Patch (`1.0.0` → `1.0.1`) |
+| `feat: ...`                                              | Minor (`1.0.0` → `1.1.0`) |
+| `feat!: ...`, or a `BREAKING CHANGE:` footer             | Major (`1.0.0` → `2.0.0`) |
+| `docs:`, `chore:`, `refactor:`, `test:`, `ci:`, `style:` | No release                |
 
 <a href="https://github.com/getwithashish/DemoThat/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=getwithashish/DemoThat" />

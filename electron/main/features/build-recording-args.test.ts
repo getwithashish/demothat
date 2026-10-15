@@ -3,12 +3,7 @@ import { buildFfmpegArgs } from './build-recording-args'
 
 describe('buildFfmpegArgs', () => {
   test('overwrites stale recording outputs without prompting', () => {
-    const args = buildFfmpegArgs(
-      ['-f', 'gdigrab', '-i', 'desktop'],
-      false,
-      false,
-      'DemoThat-recording-screen.mp4',
-    )
+    const args = buildFfmpegArgs(['-f', 'gdigrab', '-i', 'desktop'], false, false, 'DemoThat-recording-screen.mp4')
 
     expect(args[0]).toBe('-y')
     expect(args).toContain('DemoThat-recording-screen.mp4')
@@ -30,13 +25,7 @@ describe('buildFfmpegArgs', () => {
   })
 
   test('keeps webcam output separate while recording microphone audio', () => {
-    const args = buildFfmpegArgs(
-      ['mic-input', 'webcam-input', 'screen-input'],
-      true,
-      true,
-      'screen.mp4',
-      'webcam.mp4',
-    )
+    const args = buildFfmpegArgs(['mic-input', 'webcam-input', 'screen-input'], true, true, 'screen.mp4', 'webcam.mp4')
 
     expect(args.filter((arg) => arg === 'screen.mp4')).toHaveLength(1)
     expect(args.filter((arg) => arg === 'webcam.mp4')).toHaveLength(1)

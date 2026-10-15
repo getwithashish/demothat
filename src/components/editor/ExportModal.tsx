@@ -217,9 +217,7 @@ const ProgressView = ({ progress, onCancel }: { progress: number; onCancel: () =
     <div className="mt-6 h-1.5 w-full overflow-hidden rounded-full bg-ctl">
       <div className="h-full bg-accent" style={{ width: `${progress}%` }} />
     </div>
-    <p className="mt-3 font-mono text-sm tabular-nums text-muted">
-      {progress < 0.1 ? '< 1' : Math.round(progress)}%
-    </p>
+    <p className="mt-3 font-mono text-sm tabular-nums text-muted">{progress < 0.1 ? '< 1' : Math.round(progress)}%</p>
     <Button variant="secondary" onClick={onCancel} className="mt-6 w-full">
       Cancel
     </Button>
@@ -308,7 +306,10 @@ export function ExportModal({
 
   return (
     <div className="modal-backdrop flex items-center justify-center">
-      <div className="card-clean pointer-events-auto m-4 flex w-full max-w-2xl flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="card-clean pointer-events-auto m-4 flex w-full max-w-2xl flex-col overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
         {isExporting && onMinimize && (
           <div className="flex justify-end px-4 pt-3">
             <Button variant="ghost" size="sm" onClick={onMinimize}>

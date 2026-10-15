@@ -27,7 +27,12 @@ export const dialog = {
 }
 export const screen = {
   getAllDisplays: () => [],
-  getPrimaryDisplay: () => ({ id: 0, bounds: { x: 0, y: 0, width: 0, height: 0 }, scaleFactor: 1, size: { width: 0, height: 0 } }),
+  getPrimaryDisplay: () => ({
+    id: 0,
+    bounds: { x: 0, y: 0, width: 0, height: 0 },
+    scaleFactor: 1,
+    size: { width: 0, height: 0 },
+  }),
 }
 export const systemPreferences = {
   getMediaAccessStatus: () => 'granted',

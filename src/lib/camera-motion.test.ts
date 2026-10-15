@@ -3,7 +3,12 @@ import { getCameraPoseAtTime } from './camera-motion'
 import type { CameraMotionTrack } from '../types'
 
 const track: CameraMotionTrack = {
-  id: 'camera-test', name: 'Dolly in', kind: 'dolly-in', startTime: 2, endTime: 4, easing: 'Balanced',
+  id: 'camera-test',
+  name: 'Dolly in',
+  kind: 'dolly-in',
+  startTime: 2,
+  endTime: 4,
+  easing: 'Balanced',
   from: { x: 0, y: 0, scale: 1, rotationX: 0, rotationY: 0, rotationZ: 0, perspective: 50 },
   to: { x: 0, y: 0, scale: 1.2, rotationX: 0, rotationY: -8, rotationZ: 0, perspective: 60 },
 }

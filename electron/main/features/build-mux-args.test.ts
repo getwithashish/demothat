@@ -18,15 +18,22 @@ describe('buildMuxArgs', () => {
 
     expect(args).toEqual([
       '-y',
-      '-i', SCREEN,
-      '-i', SYS,
+      '-i',
+      SCREEN,
+      '-i',
+      SYS,
       '-filter_complex',
       '[0:a][1:a]amix=inputs=2:duration=first:dropout_transition=0,aresample=async=1[a]',
-      '-map', '0:v',
-      '-map', '[a]',
-      '-c:v', 'copy',
-      '-c:a', 'aac',
-      '-b:a', '192k',
+      '-map',
+      '0:v',
+      '-map',
+      '[a]',
+      '-c:v',
+      'copy',
+      '-c:a',
+      'aac',
+      '-b:a',
+      '192k',
       '-shortest',
       OUT,
     ])
@@ -42,15 +49,22 @@ describe('buildMuxArgs', () => {
 
     expect(args).toEqual([
       '-y',
-      '-i', SCREEN,
-      '-i', SYS,
+      '-i',
+      SCREEN,
+      '-i',
+      SYS,
       '-filter_complex',
       '[1:a]aresample=async=1[a]',
-      '-map', '0:v',
-      '-map', '[a]',
-      '-c:v', 'copy',
-      '-c:a', 'aac',
-      '-b:a', '192k',
+      '-map',
+      '0:v',
+      '-map',
+      '[a]',
+      '-c:v',
+      'copy',
+      '-c:a',
+      'aac',
+      '-b:a',
+      '192k',
       '-shortest',
       OUT,
     ])
@@ -64,12 +78,7 @@ describe('buildMuxArgs', () => {
       hasMicAudio: true,
     })
 
-    expect(args).toEqual([
-      '-y',
-      '-i', SCREEN,
-      '-c', 'copy',
-      OUT,
-    ])
+    expect(args).toEqual(['-y', '-i', SCREEN, '-c', 'copy', OUT])
   })
 
   test('no audio at all: copies streams without filter graph', () => {
@@ -80,12 +89,7 @@ describe('buildMuxArgs', () => {
       hasMicAudio: false,
     })
 
-    expect(args).toEqual([
-      '-y',
-      '-i', SCREEN,
-      '-c', 'copy',
-      OUT,
-    ])
+    expect(args).toEqual(['-y', '-i', SCREEN, '-c', 'copy', OUT])
   })
 
   test('paths with spaces are not pre-quoted (spawn handles them)', () => {
@@ -115,17 +119,26 @@ describe('buildMacMuxArgs', () => {
 
     expect(args).toEqual([
       '-y',
-      '-i', WEBM,
-      '-i', MIC,
+      '-i',
+      WEBM,
+      '-i',
+      MIC,
       '-filter_complex',
       '[0:a][1:a]amix=inputs=2:duration=first:dropout_transition=0,aresample=async=1[a]',
-      '-map', '0:v',
-      '-map', '[a]',
-      '-c:v', 'libx264',
-      '-preset', 'ultrafast',
-      '-pix_fmt', 'yuv420p',
-      '-c:a', 'aac',
-      '-b:a', '192k',
+      '-map',
+      '0:v',
+      '-map',
+      '[a]',
+      '-c:v',
+      'libx264',
+      '-preset',
+      'ultrafast',
+      '-pix_fmt',
+      'yuv420p',
+      '-c:a',
+      'aac',
+      '-b:a',
+      '192k',
       '-shortest',
       OUT,
     ])
@@ -141,16 +154,24 @@ describe('buildMacMuxArgs', () => {
 
     expect(args).toEqual([
       '-y',
-      '-i', WEBM,
+      '-i',
+      WEBM,
       '-filter_complex',
       '[0:a]aresample=async=1[a]',
-      '-map', '0:v',
-      '-map', '[a]',
-      '-c:v', 'libx264',
-      '-preset', 'ultrafast',
-      '-pix_fmt', 'yuv420p',
-      '-c:a', 'aac',
-      '-b:a', '192k',
+      '-map',
+      '0:v',
+      '-map',
+      '[a]',
+      '-c:v',
+      'libx264',
+      '-preset',
+      'ultrafast',
+      '-pix_fmt',
+      'yuv420p',
+      '-c:a',
+      'aac',
+      '-b:a',
+      '192k',
       '-shortest',
       OUT,
     ])
@@ -166,14 +187,22 @@ describe('buildMacMuxArgs', () => {
 
     expect(args).toEqual([
       '-y',
-      '-i', WEBM,
-      '-i', MIC,
-      '-map', '0:v',
-      '-map', '1:a',
-      '-c:v', 'libx264',
-      '-preset', 'ultrafast',
-      '-pix_fmt', 'yuv420p',
-      '-c:a', 'copy',
+      '-i',
+      WEBM,
+      '-i',
+      MIC,
+      '-map',
+      '0:v',
+      '-map',
+      '1:a',
+      '-c:v',
+      'libx264',
+      '-preset',
+      'ultrafast',
+      '-pix_fmt',
+      'yuv420p',
+      '-c:a',
+      'copy',
       '-shortest',
       OUT,
     ])
@@ -189,11 +218,16 @@ describe('buildMacMuxArgs', () => {
 
     expect(args).toEqual([
       '-y',
-      '-i', WEBM,
-      '-map', '0:v',
-      '-c:v', 'libx264',
-      '-preset', 'ultrafast',
-      '-pix_fmt', 'yuv420p',
+      '-i',
+      WEBM,
+      '-map',
+      '0:v',
+      '-c:v',
+      'libx264',
+      '-preset',
+      'ultrafast',
+      '-pix_fmt',
+      'yuv420p',
       '-an',
       OUT,
     ])

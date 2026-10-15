@@ -14,7 +14,6 @@ import { VITE_DEV_SERVER_URL, RENDERER_DIST, PRELOAD_SCRIPT } from '../lib/const
 
 const FFMPEG_PATH = getFFmpegPath()
 
-
 function createBuiltInClickWav(): Buffer {
   const sampleRate = 44100
   const samples = Math.floor(sampleRate * 0.055)
@@ -103,7 +102,10 @@ function mapSourceTimeToExportTime(sourceTime: number, projectState: ExportProje
   return Math.max(0, exportTime)
 }
 
-export async function startExport(event: IpcMainInvokeEvent, { projectState, exportSettings, outputPath }: ExportRequest) {
+export async function startExport(
+  event: IpcMainInvokeEvent,
+  { projectState, exportSettings, outputPath }: ExportRequest,
+) {
   log.info('[ExportManager] Starting export process...')
   const editorWindow = BrowserWindow.fromWebContents(event.sender)
   if (!editorWindow) return
@@ -136,18 +138,25 @@ export async function startExport(event: IpcMainInvokeEvent, { projectState, exp
 
   const ffmpegArgs = [
     '-y',
-    '-f', 'rawvideo',
-    '-vcodec', 'rawvideo',
-    '-pix_fmt', 'rgba',
-    '-s', `${outputWidth}x${outputHeight}`,
-    '-r', fps.toString(),
-    '-i', '-',
+    '-f',
+    'rawvideo',
+    '-vcodec',
+    'rawvideo',
+    '-pix_fmt',
+    'rgba',
+    '-s',
+    `${outputWidth}x${outputHeight}`,
+    '-r',
+    fps.toString(),
+    '-i',
+    '-',
   ]
   const temporaryFiles: string[] = []
   const audioFilterParts: string[] = []
   const audioLabels: string[] = []
   let exportDuration = Math.max(0, Number(projectState.duration) || 0)
-  for (const region of Object.values(projectState.cutRegions ?? {}) as ExportRegion[]) exportDuration -= Number(region.duration) || 0
+  for (const region of Object.values(projectState.cutRegions ?? {}) as ExportRegion[])
+    exportDuration -= Number(region.duration) || 0
   for (const region of Object.values(projectState.speedRegions ?? {}) as ExportSpeedRegion[]) {
     exportDuration -= Number(region.duration) || 0
     exportDuration += (Number(region.duration) || 0) / Math.max(0.01, Number(region.speed) || 1)
@@ -157,15 +166,29 @@ export async function startExport(event: IpcMainInvokeEvent, { projectState, exp
 
   if (isMp4) {
     let inputIndex = 1
-    if (projectState.hasAudioTrack && projectState.videoPath && !projectState.isMuted && Number(projectState.volume) > 0) {
+    if (
+      projectState.hasAudioTrack &&
+      projectState.videoPath &&
+      !projectState.isMuted &&
+      Number(projectState.volume) > 0
+    ) {
       ffmpegArgs.push('-i', projectState.videoPath)
       const originalVolume = Math.max(0, Math.min(1, Number(projectState.volume) || 0))
-      audioFilterParts.push(`[${inputIndex}:a]atrim=duration=${exportDuration},asetpts=PTS-STARTPTS,volume=${originalVolume}[original]`)
+      audioFilterParts.push(
+        `[${inputIndex}:a]atrim=duration=${exportDuration},asetpts=PTS-STARTPTS,volume=${originalVolume}[original]`,
+      )
       audioLabels.push('[original]')
       inputIndex++
     }
 
-    const clips = (projectState.audioClips ?? []).filter((clip: ExportAudioClip) => clip.kind !== 'click' && clip.filePath && clip.duration > 0 && clip.volume > 0 && Number(clip.startTime) < Number(projectState.duration))
+    const clips = (projectState.audioClips ?? []).filter(
+      (clip: ExportAudioClip) =>
+        clip.kind !== 'click' &&
+        clip.filePath &&
+        clip.duration > 0 &&
+        clip.volume > 0 &&
+        Number(clip.startTime) < Number(projectState.duration),
+    )
     clips.forEach((clip: ExportAudioClip, index: number) => {
       const start = mapSourceTimeToExportTime(Math.max(0, Number(clip.startTime) || 0), projectState)
       if (start >= exportDuration) return
@@ -192,9 +215,23 @@ export async function startExport(event: IpcMainInvokeEvent, { projectState, exp
     const cuts = Object.values(projectState.cutRegions ?? {}) as ExportRegion[]
     // Each click sound is its own timeline clip, so deleting one removes only that event from export.
     const clicks = projectState.mouseClickSoundsEnabled
-      ? (projectState.audioClips ?? []).filter((clip: ExportAudioClip) => clip.kind === 'click' && clip.startTime >= 0 && clip.startTime < projectState.duration && clip.volume > 0 && !cuts.some((region) => clip.startTime >= region.startTime && clip.startTime < region.startTime + region.duration))
+      ? (projectState.audioClips ?? []).filter(
+          (clip: ExportAudioClip) =>
+            clip.kind === 'click' &&
+            clip.startTime >= 0 &&
+            clip.startTime < projectState.duration &&
+            clip.volume > 0 &&
+            !cuts.some(
+              (region) => clip.startTime >= region.startTime && clip.startTime < region.startTime + region.duration,
+            ),
+        )
       : []
-    const mappedClicks = clicks.map((click) => ({ start: mapSourceTimeToExportTime(Number(click.startTime) || 0, projectState), clipVolume: Math.max(0, Math.min(1, Number(click.volume) || 0)) })).filter((click) => click.start < exportDuration)
+    const mappedClicks = clicks
+      .map((click) => ({
+        start: mapSourceTimeToExportTime(Number(click.startTime) || 0, projectState),
+        clipVolume: Math.max(0, Math.min(1, Number(click.volume) || 0)),
+      }))
+      .filter((click) => click.start < exportDuration)
     if (mappedClicks.length > 0) {
       let clickPath: string | null = projectState.mouseClickSoundPath ?? null
       if (!clickPath) {
@@ -211,7 +248,9 @@ export async function startExport(event: IpcMainInvokeEvent, { projectState, exp
       mappedClicks.forEach((click, index: number) => {
         const label = `click${index}`
         const delay = Math.round(click.start * 1000)
-        audioFilterParts.push(`[clicksrc${index}]atrim=duration=0.25,asetpts=PTS-STARTPTS,volume=${volume * click.clipVolume},adelay=${delay}|${delay}[${label}]`)
+        audioFilterParts.push(
+          `[clicksrc${index}]atrim=duration=0.25,asetpts=PTS-STARTPTS,volume=${volume * click.clipVolume},adelay=${delay}|${delay}[${label}]`,
+        )
         audioLabels.push(`[${label}]`)
       })
       inputIndex++
@@ -222,8 +261,27 @@ export async function startExport(event: IpcMainInvokeEvent, { projectState, exp
     ffmpegArgs.push('-map', '0:v:0')
     if (audioLabels.length > 0) {
       const mixInputs = audioLabels.join('')
-      audioFilterParts.push(`${mixInputs}amix=inputs=${audioLabels.length}:duration=longest:dropout_transition=0:normalize=0,alimiter=limit=0.95,atrim=duration=${exportDuration}[aout]`)
-      ffmpegArgs.push('-filter_complex', audioFilterParts.join(';'), '-map', '[aout]', '-c:v', 'libx264', '-preset', 'medium', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-t', exportDuration.toString())
+      audioFilterParts.push(
+        `${mixInputs}amix=inputs=${audioLabels.length}:duration=longest:dropout_transition=0:normalize=0,alimiter=limit=0.95,atrim=duration=${exportDuration}[aout]`,
+      )
+      ffmpegArgs.push(
+        '-filter_complex',
+        audioFilterParts.join(';'),
+        '-map',
+        '[aout]',
+        '-c:v',
+        'libx264',
+        '-preset',
+        'medium',
+        '-pix_fmt',
+        'yuv420p',
+        '-c:a',
+        'aac',
+        '-b:a',
+        '192k',
+        '-t',
+        exportDuration.toString(),
+      )
     } else {
       ffmpegArgs.push('-c:v', 'libx264', '-preset', 'medium', '-pix_fmt', 'yuv420p', '-t', exportDuration.toString())
     }

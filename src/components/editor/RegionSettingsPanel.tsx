@@ -33,15 +33,29 @@ function ZoomSettings({ region }: { region: ZoomRegion }) {
         <SegmentedControl
           aria-label="Zoom type"
           options={[
-            { value: 'auto', label: <><Pointer size={ICON_SIZE} strokeWidth={ICON_STROKE} />Auto</> },
-            { value: 'fixed', label: <><Video size={ICON_SIZE} strokeWidth={ICON_STROKE} />Fixed</> },
+            {
+              value: 'auto',
+              label: (
+                <>
+                  <Pointer size={ICON_SIZE} strokeWidth={ICON_STROKE} />
+                  Auto
+                </>
+              ),
+            },
+            {
+              value: 'fixed',
+              label: (
+                <>
+                  <Video size={ICON_SIZE} strokeWidth={ICON_STROKE} />
+                  Fixed
+                </>
+              ),
+            },
           ]}
           value={activeTab}
           onChange={handleModeChange}
         />
-        {activeTab === 'auto' && (
-          <HelperText>Zoom will automatically follow the mouse cursor in this area.</HelperText>
-        )}
+        {activeTab === 'auto' && <HelperText>Zoom will automatically follow the mouse cursor in this area.</HelperText>}
       </Section>
 
       {activeTab === 'fixed' && (

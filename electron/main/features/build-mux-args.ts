@@ -30,14 +30,22 @@ export function buildMuxArgs(opts: BuildMuxArgsOptions): string[] {
 
   return [
     '-y',
-    '-i', screenInput,
-    '-i', systemAudioInput,
-    '-filter_complex', filterGraph,
-    '-map', '0:v',
-    '-map', '[a]',
-    '-c:v', 'copy',
-    '-c:a', 'aac',
-    '-b:a', '192k',
+    '-i',
+    screenInput,
+    '-i',
+    systemAudioInput,
+    '-filter_complex',
+    filterGraph,
+    '-map',
+    '0:v',
+    '-map',
+    '[a]',
+    '-c:v',
+    'copy',
+    '-c:a',
+    'aac',
+    '-b:a',
+    '192k',
     '-shortest',
     output,
   ]
@@ -73,11 +81,7 @@ export function buildMacMuxArgs(opts: BuildMacMuxArgsOptions): string[] {
   }
 
   // Common video encode settings — match the existing screen-capture profile.
-  const videoEncode = [
-    '-c:v', 'libx264',
-    '-preset', 'ultrafast',
-    '-pix_fmt', 'yuv420p',
-  ]
+  const videoEncode = ['-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p']
 
   if (webmHasSystemAudio && micAudioInput) {
     // Mix the two audio sources. duration=first keeps the output as long as
@@ -85,11 +89,15 @@ export function buildMacMuxArgs(opts: BuildMacMuxArgsOptions): string[] {
     args.push(
       '-filter_complex',
       '[0:a][1:a]amix=inputs=2:duration=first:dropout_transition=0,aresample=async=1[a]',
-      '-map', '0:v',
-      '-map', '[a]',
+      '-map',
+      '0:v',
+      '-map',
+      '[a]',
       ...videoEncode,
-      '-c:a', 'aac',
-      '-b:a', '192k',
+      '-c:a',
+      'aac',
+      '-b:a',
+      '192k',
       '-shortest',
       output,
     )
@@ -100,11 +108,15 @@ export function buildMacMuxArgs(opts: BuildMacMuxArgsOptions): string[] {
     args.push(
       '-filter_complex',
       '[0:a]aresample=async=1[a]',
-      '-map', '0:v',
-      '-map', '[a]',
+      '-map',
+      '0:v',
+      '-map',
+      '[a]',
       ...videoEncode,
-      '-c:a', 'aac',
-      '-b:a', '192k',
+      '-c:a',
+      'aac',
+      '-b:a',
+      '192k',
       '-shortest',
       output,
     )
@@ -113,14 +125,7 @@ export function buildMacMuxArgs(opts: BuildMacMuxArgsOptions): string[] {
 
   if (micAudioInput) {
     // Mic file is already AAC — copy through to avoid double-encoding.
-    args.push(
-      '-map', '0:v',
-      '-map', '1:a',
-      ...videoEncode,
-      '-c:a', 'copy',
-      '-shortest',
-      output,
-    )
+    args.push('-map', '0:v', '-map', '1:a', ...videoEncode, '-c:a', 'copy', '-shortest', output)
     return args
   }
 

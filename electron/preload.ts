@@ -186,9 +186,12 @@ export const electronAPI = {
     return () => ipcRenderer.removeListener('export:complete', listener)
   },
 
-  openAudioFile: (): Promise<{ canceled: boolean; filePath?: string; fileName?: string }> => ipcRenderer.invoke('dialog:openAudioFile'),
-  openVideoFiles: (): Promise<{ canceled: boolean; files?: { filePath: string; fileName: string }[] }> => ipcRenderer.invoke('dialog:openVideoFiles'),
-  detectSilence: (videoPath: string): Promise<{ start: number; end: number; duration: number }[]> => ipcRenderer.invoke('video:detectSilence', videoPath),
+  openAudioFile: (): Promise<{ canceled: boolean; filePath?: string; fileName?: string }> =>
+    ipcRenderer.invoke('dialog:openAudioFile'),
+  openVideoFiles: (): Promise<{ canceled: boolean; files?: { filePath: string; fileName: string }[] }> =>
+    ipcRenderer.invoke('dialog:openVideoFiles'),
+  detectSilence: (videoPath: string): Promise<{ start: number; end: number; duration: number }[]> =>
+    ipcRenderer.invoke('video:detectSilence', videoPath),
 
   showSaveDialog: (options: Electron.SaveDialogOptions): Promise<Electron.SaveDialogReturnValue> => {
     return ipcRenderer.invoke('dialog:showSaveDialog', options)

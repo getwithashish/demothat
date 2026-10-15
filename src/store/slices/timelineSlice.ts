@@ -114,25 +114,28 @@ export const createTimelineSlice: Slice<TimelineState, TimelineActions> = (set, 
       state.selectedRegionId = id
     })
   },
-  updateVideoClip: (id, updates) => set((state) => {
-    const clip = state.videoClips.find((item) => item.id === id)
-    if (!clip) return
-    Object.assign(clip, updates)
-    clip.startTime = Math.max(0, clip.startTime)
-    clip.duration = Math.max(0.1, clip.duration)
-    clip.sourceStart = Math.max(0, Math.min(Math.max(0, clip.sourceDuration - 0.1), clip.sourceStart))
-  }),
-  deleteVideoClip: (id) => set((state) => {
-    state.videoClips = state.videoClips.filter((clip) => clip.id !== id)
-    if (state.selectedRegionId === id) state.selectedRegionId = null
-  }),
-  setVideoClipOrder: (orderedIds) => set((state) => {
-    // Index 0 is the bottom-most layer; the last id is the topmost.
-    orderedIds.forEach((id, index) => {
+  updateVideoClip: (id, updates) =>
+    set((state) => {
       const clip = state.videoClips.find((item) => item.id === id)
-      if (clip) clip.order = index
-    })
-  }),
+      if (!clip) return
+      Object.assign(clip, updates)
+      clip.startTime = Math.max(0, clip.startTime)
+      clip.duration = Math.max(0.1, clip.duration)
+      clip.sourceStart = Math.max(0, Math.min(Math.max(0, clip.sourceDuration - 0.1), clip.sourceStart))
+    }),
+  deleteVideoClip: (id) =>
+    set((state) => {
+      state.videoClips = state.videoClips.filter((clip) => clip.id !== id)
+      if (state.selectedRegionId === id) state.selectedRegionId = null
+    }),
+  setVideoClipOrder: (orderedIds) =>
+    set((state) => {
+      // Index 0 is the bottom-most layer; the last id is the topmost.
+      orderedIds.forEach((id, index) => {
+        const clip = state.videoClips.find((item) => item.id === id)
+        if (clip) clip.order = index
+      })
+    }),
   addSpeedRegion: () => {
     const { currentTime, duration } = get()
     if (duration === 0) return

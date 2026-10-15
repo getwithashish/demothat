@@ -166,7 +166,10 @@ export function RendererPage() {
           })
 
         const loadPromises: Promise<void>[] = [loadVideo(video, 'Main video', projectStateWithCursorBitmaps.videoPath!)]
-        const hasWebcam = Boolean(projectStateWithCursorBitmaps.webcamVideoPath && typeof projectStateWithCursorBitmaps.webcamVideoPath === 'string')
+        const hasWebcam = Boolean(
+          projectStateWithCursorBitmaps.webcamVideoPath &&
+          typeof projectStateWithCursorBitmaps.webcamVideoPath === 'string',
+        )
         if (hasWebcam && webcamVideo) {
           loadPromises.push(loadVideo(webcamVideo, 'Webcam video', projectStateWithCursorBitmaps.webcamVideoPath!))
         }
@@ -187,9 +190,20 @@ export function RendererPage() {
               element.removeEventListener('loadedmetadata', onLoaded)
               element.removeEventListener('error', onError)
             }
-            const onLoaded = () => { cleanup(); resolve() }
-            const onError = () => { cleanup(); log.error(`[RendererPage] Failed to load ${label}`); resolve() }
-            const timeout = setTimeout(() => { cleanup(); log.warn(`[RendererPage] Timed out loading ${label}`); resolve() }, 8000)
+            const onLoaded = () => {
+              cleanup()
+              resolve()
+            }
+            const onError = () => {
+              cleanup()
+              log.error(`[RendererPage] Failed to load ${label}`)
+              resolve()
+            }
+            const timeout = setTimeout(() => {
+              cleanup()
+              log.warn(`[RendererPage] Timed out loading ${label}`)
+              resolve()
+            }, 8000)
             element.addEventListener('loadedmetadata', onLoaded)
             element.addEventListener('error', onError)
           })
@@ -249,7 +263,7 @@ export function RendererPage() {
 
           // Create seek promises for both videos
           const mainSeek = seekPromise(video)
-          const webcamSeek = (hasWebcam && webcamVideo) ? seekPromise(webcamVideo) : Promise.resolve()
+          const webcamSeek = hasWebcam && webcamVideo ? seekPromise(webcamVideo) : Promise.resolve()
 
           // Imported clips only contribute frames while the playhead is inside
           // their range; each one is seeked to its own source time.

@@ -5,7 +5,18 @@ import log from 'electron-log/main'
 import { spawn } from 'node:child_process'
 import path from 'node:path'
 import fsPromises from 'node:fs/promises'
-import { app, Menu, Tray, nativeImage, screen, ipcMain, dialog, systemPreferences, desktopCapturer, shell } from 'electron'
+import {
+  app,
+  Menu,
+  Tray,
+  nativeImage,
+  screen,
+  ipcMain,
+  dialog,
+  systemPreferences,
+  desktopCapturer,
+  shell,
+} from 'electron'
 import { appState } from '../state'
 import { getFFmpegPath, ensureDirectoryExists } from '../lib/utils'
 import { VITE_PUBLIC } from '../lib/constants'
@@ -28,18 +39,14 @@ const SCREEN_CAPTURE_STOP_TIMEOUT_MS = 5000
 // live outside appState because they're helpers, not session data.
 const systemAudioWriter = new SystemAudioWriter()
 const screenVideoWriter = new ScreenVideoWriter()
-let pendingSystemAudioStop:
-  | {
-      promise: Promise<void>
-      resolve: () => void
-    }
-  | null = null
-let pendingScreenCaptureStop:
-  | {
-      promise: Promise<void>
-      resolve: () => void
-    }
-  | null = null
+let pendingSystemAudioStop: {
+  promise: Promise<void>
+  resolve: () => void
+} | null = null
+let pendingScreenCaptureStop: {
+  promise: Promise<void>
+  resolve: () => void
+} | null = null
 
 export function getSystemAudioWriter(): SystemAudioWriter {
   return systemAudioWriter
@@ -238,16 +245,11 @@ async function startActualRecording(
   // audio) directly into one .webm file. On other platforms FFmpeg captures
   // the screen as before, and the renderer only delivers a separate
   // system-audio webm when the user enabled it.
-  const screenWebmPath = useRendererScreenCapture
-    ? path.join(recordingDir, `${baseName}-screen.webm`)
-    : undefined
+  const screenWebmPath = useRendererScreenCapture ? path.join(recordingDir, `${baseName}-screen.webm`) : undefined
   const webmHasSystemAudio = useRendererScreenCapture && hasSystemAudio
   const systemAudioPath =
-    !useRendererScreenCapture && hasSystemAudio
-      ? path.join(recordingDir, `${baseName}-system.webm`)
-      : undefined
-  const micAudioPath =
-    useRendererScreenCapture && hasMic ? path.join(recordingDir, `${baseName}-mic.m4a`) : undefined
+    !useRendererScreenCapture && hasSystemAudio ? path.join(recordingDir, `${baseName}-system.webm`) : undefined
+  const micAudioPath = useRendererScreenCapture && hasMic ? path.join(recordingDir, `${baseName}-mic.m4a`) : undefined
 
   log.info('[RecordingManager] Resolved file paths for session:', {
     baseName,
@@ -506,7 +508,9 @@ export async function startRecording(options: any) {
     // CoreAudio Tap permission (macOS 14.4+) is a separate prompt from Screen
     // Recording — it requires NSAudioCaptureUsageDescription in Info.plist.
     if (wantsSystemAudio) {
-      log.info('[RecordingManager] System audio capture requested — Chromium will prompt for permission on first getDisplayMedia.')
+      log.info(
+        '[RecordingManager] System audio capture requested — Chromium will prompt for permission on first getDisplayMedia.',
+      )
     }
   }
 
@@ -888,10 +892,7 @@ async function muxMacScreenWebm(session: RecordingSession): Promise<void> {
   try {
     webmStat = await fsPromises.stat(session.screenWebmPath)
   } catch (err) {
-    log.error(
-      '[MacMux] Screen webm missing — renderer never produced output. Cannot proceed.',
-      err,
-    )
+    log.error('[MacMux] Screen webm missing — renderer never produced output. Cannot proceed.', err)
     throw new Error('Screen recording produced no output (renderer did not write any chunks).')
   }
   if (webmStat.size === 0) {
@@ -1131,7 +1132,8 @@ export async function cleanupOrphanedRecordings() {
 
   try {
     const allFiles = await fsPromises.readdir(recordingDir)
-    const filePattern = /^DemoThat-recording-\d+(-screen\.mp4|-screen\.muxed\.mp4|-screen\.webm|-webcam\.mp4|-system\.webm|-mic\.m4a|\.json)$/
+    const filePattern =
+      /^DemoThat-recording-\d+(-screen\.mp4|-screen\.muxed\.mp4|-screen\.webm|-webcam\.mp4|-system\.webm|-mic\.m4a|\.json)$/
     const filesToDelete = allFiles
       .filter((file) => filePattern.test(file))
       .map((file) => path.join(recordingDir, file))

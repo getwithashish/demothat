@@ -1,5 +1,16 @@
 import { useState } from 'react'
-import { Scissors, ZoomIn, ZoomOut, Trash, ArrowBackUp, ArrowForwardUp, PlayerTrackNext, Camera, LayoutBoard, ChevronDown } from 'tabler-icons-react'
+import {
+  Scissors,
+  ZoomIn,
+  ZoomOut,
+  Trash,
+  ArrowBackUp,
+  ArrowForwardUp,
+  PlayerTrackNext,
+  Camera,
+  LayoutBoard,
+  ChevronDown,
+} from 'tabler-icons-react'
 import { useEditorStore } from '../../store/editorStore'
 import type { AspectRatio, CompositionLayout } from '../../types'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
@@ -54,7 +65,8 @@ export function PreviewControls() {
   const handleDelete = () => {
     if (selectedRegionId) {
       if (cameraMotions.some((motion) => motion.id === selectedRegionId)) deleteCameraMotion(selectedRegionId)
-      else if (compositionLayouts.some((range) => range.id === selectedRegionId)) deleteCompositionLayout(selectedRegionId)
+      else if (compositionLayouts.some((range) => range.id === selectedRegionId))
+        deleteCompositionLayout(selectedRegionId)
       else deleteRegion(selectedRegionId)
       setSelectedRegionId(null)
     }
@@ -65,7 +77,12 @@ export function PreviewControls() {
   return (
     <div className="flex flex-wrap items-center justify-between gap-y-1.5 border-b border-line bg-panel px-3 py-2.5">
       <div className="flex items-center gap-1">
-        <ToolbarButton icon={<ZoomIn {...iconProps} />} title="Add Zoom Region" onClick={() => addZoomRegion()} disabled={!!selectedRegionId}>
+        <ToolbarButton
+          icon={<ZoomIn {...iconProps} />}
+          title="Add Zoom Region"
+          onClick={() => addZoomRegion()}
+          disabled={!!selectedRegionId}
+        >
           Zoom
         </ToolbarButton>
         <ToolbarButton
@@ -106,10 +123,20 @@ export function PreviewControls() {
           />
         </div>
 
-        <ToolbarButton icon={<Scissors {...iconProps} />} title="Add Cut Region" onClick={() => addCutRegion()} disabled={!!selectedRegionId}>
+        <ToolbarButton
+          icon={<Scissors {...iconProps} />}
+          title="Add Cut Region"
+          onClick={() => addCutRegion()}
+          disabled={!!selectedRegionId}
+        >
           Trim
         </ToolbarButton>
-        <ToolbarButton icon={<PlayerTrackNext {...iconProps} />} title="Add Speed Region" onClick={() => addSpeedRegion()} disabled={!!selectedRegionId}>
+        <ToolbarButton
+          icon={<PlayerTrackNext {...iconProps} />}
+          title="Add Speed Region"
+          onClick={() => addSpeedRegion()}
+          disabled={!!selectedRegionId}
+        >
           Speed
         </ToolbarButton>
         <Button
@@ -125,8 +152,22 @@ export function PreviewControls() {
 
         <div className="mx-0.5 h-5 w-px bg-line" />
 
-        <ToolbarButton iconOnly icon={<ArrowBackUp {...iconProps} />} title="Undo (Ctrl+Z)" aria-label="Undo" onClick={() => undo()} disabled={pastStates.length === 0} />
-        <ToolbarButton iconOnly icon={<ArrowForwardUp {...iconProps} />} title="Redo (Ctrl+Y)" aria-label="Redo" onClick={() => redo()} disabled={futureStates.length === 0} />
+        <ToolbarButton
+          iconOnly
+          icon={<ArrowBackUp {...iconProps} />}
+          title="Undo (Ctrl+Z)"
+          aria-label="Undo"
+          onClick={() => undo()}
+          disabled={pastStates.length === 0}
+        />
+        <ToolbarButton
+          iconOnly
+          icon={<ArrowForwardUp {...iconProps} />}
+          title="Redo (Ctrl+Y)"
+          aria-label="Redo"
+          onClick={() => redo()}
+          disabled={futureStates.length === 0}
+        />
 
         <div className="mx-0.5 h-5 w-px bg-line" />
 
@@ -141,7 +182,13 @@ export function PreviewControls() {
 
         <div className="flex items-center gap-1" title="Interface zoom (Cmd/Ctrl +, −, 0)">
           <span className="mr-1 text-sm font-medium text-muted">UI</span>
-          <ToolbarButton iconOnly icon={<ZoomOut {...iconProps} />} title="Zoom out interface (Cmd/Ctrl −)" aria-label="Zoom out interface" onClick={() => void zoomOut()} />
+          <ToolbarButton
+            iconOnly
+            icon={<ZoomOut {...iconProps} />}
+            title="Zoom out interface (Cmd/Ctrl −)"
+            aria-label="Zoom out interface"
+            onClick={() => void zoomOut()}
+          />
           <button
             type="button"
             onClick={() => void resetZoom()}
@@ -151,7 +198,13 @@ export function PreviewControls() {
           >
             {Math.round(zoomFactor * 100)}%
           </button>
-          <ToolbarButton iconOnly icon={<ZoomIn {...iconProps} />} title="Zoom in interface (Cmd/Ctrl +)" aria-label="Zoom in interface" onClick={() => void zoomIn()} />
+          <ToolbarButton
+            iconOnly
+            icon={<ZoomIn {...iconProps} />}
+            title="Zoom in interface (Cmd/Ctrl +)"
+            aria-label="Zoom in interface"
+            onClick={() => void zoomIn()}
+          />
         </div>
       </div>
 

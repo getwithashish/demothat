@@ -443,8 +443,21 @@ export const drawScene = async (
   await drawBackground(ctx, outputWidth, outputHeight, state.frameStyles.background, preloadedBgImage)
 
   // --- 2. Calculate Frame and Content Dimensions ---
-  const camera = getCameraPoseAtTime(state.cameraMotions, currentTime) ?? { x: 0, y: 0, scale: 1, rotationX: 0, rotationY: 0, rotationZ: 0, perspective: 50 }
-  const frameStyles = { ...state.frameStyles, tiltX: camera.rotationX, tiltY: camera.rotationY, perspective: camera.perspective }
+  const camera = getCameraPoseAtTime(state.cameraMotions, currentTime) ?? {
+    x: 0,
+    y: 0,
+    scale: 1,
+    rotationX: 0,
+    rotationY: 0,
+    rotationZ: 0,
+    perspective: 50,
+  }
+  const frameStyles = {
+    ...state.frameStyles,
+    tiltX: camera.rotationX,
+    tiltY: camera.rotationY,
+    perspective: camera.perspective,
+  }
   const { videoDimensions } = state
   const paddingPercent = frameStyles.padding / 100
   const availableWidth = outputWidth * (1 - 2 * paddingPercent)
@@ -477,7 +490,13 @@ export const drawScene = async (
     if (Math.abs(camera.rotationZ) > 0.001) target.restore()
   }
 
-  if (isTiltActive(frameStyles) || Math.abs(camera.rotationZ) > 0.001 || Math.abs(camera.x) > 0.001 || Math.abs(camera.y) > 0.001 || Math.abs(camera.scale - 1) > 0.001) {
+  if (
+    isTiltActive(frameStyles) ||
+    Math.abs(camera.rotationZ) > 0.001 ||
+    Math.abs(camera.x) > 0.001 ||
+    Math.abs(camera.y) > 0.001 ||
+    Math.abs(camera.scale - 1) > 0.001
+  ) {
     // Render the frame flat into an offscreen layer, then project it with perspective.
     drawTiltedLayer(ctx, drawFrame, frameStyles, outputWidth, outputHeight)
   } else {
@@ -492,7 +511,9 @@ export const drawScene = async (
 
   // --- 6. Draw Webcam ---
   const { webcamPosition, webcamStyles, isWebcamVisible } = state
-  const activeLayoutRange = (state.compositionLayouts || []).filter((range) => currentTime >= range.startTime && currentTime < range.startTime + range.duration).sort((a, b) => b.startTime - a.startTime)[0]
+  const activeLayoutRange = (state.compositionLayouts || [])
+    .filter((range) => currentTime >= range.startTime && currentTime < range.startTime + range.duration)
+    .sort((a, b) => b.startTime - a.startTime)[0]
   if (isWebcamVisible && webcamVideoElement && webcamVideoElement.videoWidth > 0 && state.recordingGeometry) {
     let finalWebcamScale = 1
     if (webcamStyles.scaleOnZoom) {
@@ -665,17 +686,29 @@ export const drawScene = async (
         ctx.fill(shadowPath)
         ctx.restore()
       }
-      if (webcamStyles.isFlipped) { ctx.translate(outputWidth, 0); ctx.scale(-1, 1) }
+      if (webcamStyles.isFlipped) {
+        ctx.translate(outputWidth, 0)
+        ctx.scale(-1, 1)
+      }
       const drawX = webcamStyles.isFlipped ? outputWidth - rect.x - rect.width : rect.x
       ctx.beginPath()
-      if (radius > 0) ctx.roundRect(drawX, rect.y, rect.width, rect.height, Math.min(radius, rect.width / 2, rect.height / 2))
+      if (radius > 0)
+        ctx.roundRect(drawX, rect.y, rect.width, rect.height, Math.min(radius, rect.width / 2, rect.height / 2))
       else ctx.rect(drawX, rect.y, rect.width, rect.height)
       ctx.clip()
       const sourceAspect = webcamVideo.videoWidth / webcamVideo.videoHeight
       const targetAspect = rect.width / rect.height
-      let cropX = 0, cropY = 0, cropWidth = webcamVideo.videoWidth, cropHeight = webcamVideo.videoHeight
-      if (sourceAspect > targetAspect) { cropWidth = webcamVideo.videoHeight * targetAspect; cropX = (webcamVideo.videoWidth - cropWidth) / 2 }
-      else { cropHeight = webcamVideo.videoWidth / targetAspect; cropY = (webcamVideo.videoHeight - cropHeight) / 2 }
+      let cropX = 0,
+        cropY = 0,
+        cropWidth = webcamVideo.videoWidth,
+        cropHeight = webcamVideo.videoHeight
+      if (sourceAspect > targetAspect) {
+        cropWidth = webcamVideo.videoHeight * targetAspect
+        cropX = (webcamVideo.videoWidth - cropWidth) / 2
+      } else {
+        cropHeight = webcamVideo.videoWidth / targetAspect
+        cropY = (webcamVideo.videoHeight - cropHeight) / 2
+      }
       ctx.drawImage(webcamVideo, cropX, cropY, cropWidth, cropHeight, drawX, rect.y, rect.width, rect.height)
       ctx.restore()
     }
@@ -704,17 +737,32 @@ export const drawScene = async (
     let largeX = baseRect.x
     let largeY = baseRect.y
     if (originalPos.includes('right')) largeX += baseRect.width - largeWidth
-    else if (originalPos === 'top-center' || originalPos === 'bottom-center') largeX += (baseRect.width - largeWidth) / 2
+    else if (originalPos === 'top-center' || originalPos === 'bottom-center')
+      largeX += (baseRect.width - largeWidth) / 2
     if (originalPos.includes('bottom')) largeY += baseRect.height - largeHeight
-    else if (originalPos === 'left-center' || originalPos === 'right-center') largeY += (baseRect.height - largeHeight) / 2
+    else if (originalPos === 'left-center' || originalPos === 'right-center')
+      largeY += (baseRect.height - largeHeight) / 2
     const largeRect: Rect = { x: largeX, y: largeY, width: largeWidth, height: largeHeight }
-    const largeRadius = webcamStyles.shape === 'circle'
-      ? Math.min(largeWidth, largeHeight) / 2
-      : Math.min(largeWidth, largeHeight) * (webcamStyles.borderRadius / 50)
+    const largeRadius =
+      webcamStyles.shape === 'circle'
+        ? Math.min(largeWidth, largeHeight) / 2
+        : Math.min(largeWidth, largeHeight) * (webcamStyles.borderRadius / 50)
 
-    type CompositionState = { screenRect: Rect; screenAlpha: number; presenterRect: Rect; presenterAlpha: number; presenterRadius: number }
+    type CompositionState = {
+      screenRect: Rect
+      screenAlpha: number
+      presenterRect: Rect
+      presenterAlpha: number
+      presenterRadius: number
+    }
     const getCompositionState = (layout: string): CompositionState => {
-      const composition: CompositionState = { screenRect: fullRect, screenAlpha: 1, presenterRect: baseRect, presenterAlpha: 1, presenterRadius: webcamRadius }
+      const composition: CompositionState = {
+        screenRect: fullRect,
+        screenAlpha: 1,
+        presenterRect: baseRect,
+        presenterAlpha: 1,
+        presenterRadius: webcamRadius,
+      }
       switch (layout) {
         case 'large-picture-in-picture':
           composition.presenterRect = largeRect
@@ -761,16 +809,25 @@ export const drawScene = async (
       const activeIndex = ranges.findIndex((range) => range.id === activeRange.id)
       const previousRange = activeIndex > 0 ? ranges[activeIndex - 1] : undefined
       const nextRange = activeIndex >= 0 ? ranges[activeIndex + 1] : undefined
-      const startsAfterPrevious = !!previousRange && Math.abs(previousRange.startTime + previousRange.duration - activeRange.startTime) < 0.03
-      const endsBeforeNext = !!nextRange && Math.abs(activeRange.startTime + activeRange.duration - nextRange.startTime) < 0.03
+      const startsAfterPrevious =
+        !!previousRange && Math.abs(previousRange.startTime + previousRange.duration - activeRange.startTime) < 0.03
+      const endsBeforeNext =
+        !!nextRange && Math.abs(activeRange.startTime + activeRange.duration - nextRange.startTime) < 0.03
       const fadeDuration = Math.min(Math.max(0, activeRange.transitionDuration || 0), activeRange.duration / 2)
       if (fadeDuration > 0 && currentTime < activeRange.startTime + fadeDuration) {
         fromLayout = startsAfterPrevious ? previousRange!.layout : 'picture-in-picture'
         layoutProgress = Math.max(0, Math.min(1, (currentTime - activeRange.startTime) / fadeDuration))
-      } else if (fadeDuration > 0 && !endsBeforeNext && currentTime >= activeRange.startTime + activeRange.duration - fadeDuration) {
+      } else if (
+        fadeDuration > 0 &&
+        !endsBeforeNext &&
+        currentTime >= activeRange.startTime + activeRange.duration - fadeDuration
+      ) {
         fromLayout = 'picture-in-picture'
         toLayout = activeRange.layout
-        layoutProgress = Math.max(0, Math.min(1, (activeRange.startTime + activeRange.duration - currentTime) / fadeDuration))
+        layoutProgress = Math.max(
+          0,
+          Math.min(1, (activeRange.startTime + activeRange.duration - currentTime) / fadeDuration),
+        )
       }
     }
     const eased = layoutProgress * layoutProgress * (3 - 2 * layoutProgress)
@@ -791,19 +848,36 @@ export const drawScene = async (
   // so they are present in both preview and the exported frames.
   for (const effect of state.visualEffects || []) {
     if (currentTime < effect.startTime || currentTime >= effect.startTime + effect.duration) continue
-    const x = Math.max(0, effect.x * outputWidth), y = Math.max(0, effect.y * outputHeight)
-    const w = Math.min(outputWidth - x, effect.width * outputWidth), h = Math.min(outputHeight - y, effect.height * outputHeight)
+    const x = Math.max(0, effect.x * outputWidth),
+      y = Math.max(0, effect.y * outputHeight)
+    const w = Math.min(outputWidth - x, effect.width * outputWidth),
+      h = Math.min(outputHeight - y, effect.height * outputHeight)
     if (w <= 0 || h <= 0) continue
     const activeProgress = Math.min(1, (currentTime - effect.startTime) / Math.max(0.01, effect.enterDuration))
-    const remaining = Math.min(1, (effect.startTime + effect.duration - currentTime) / Math.max(0.01, effect.exitDuration))
+    const remaining = Math.min(
+      1,
+      (effect.startTime + effect.duration - currentTime) / Math.max(0.01, effect.exitDuration),
+    )
     const alpha = Math.max(0, Math.min(activeProgress, remaining))
     ctx.save()
     ctx.globalAlpha = effect.animated ? alpha : 1
     const makeEffectPath = () => {
       const shapePath = new Path2D()
-      if (effect.shape === 'circle') shapePath.ellipse(x + w/2, y + h/2, w/2, h/2, 0, 0, Math.PI*2)
-      else if (effect.shape === 'freeform') { effect.points.forEach((point, index) => index === 0 ? shapePath.moveTo(x + point.x*w, y + point.y*h) : shapePath.lineTo(x + point.x*w, y + point.y*h)); shapePath.closePath() }
-      else shapePath.rect(x, y, effect.shape === 'square' ? Math.min(w,h) : w, effect.shape === 'square' ? Math.min(w,h) : h)
+      if (effect.shape === 'circle') shapePath.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2)
+      else if (effect.shape === 'freeform') {
+        effect.points.forEach((point, index) =>
+          index === 0
+            ? shapePath.moveTo(x + point.x * w, y + point.y * h)
+            : shapePath.lineTo(x + point.x * w, y + point.y * h),
+        )
+        shapePath.closePath()
+      } else
+        shapePath.rect(
+          x,
+          y,
+          effect.shape === 'square' ? Math.min(w, h) : w,
+          effect.shape === 'square' ? Math.min(w, h) : h,
+        )
       return shapePath
     }
     const path = makeEffectPath()
@@ -811,24 +885,56 @@ export const drawScene = async (
       ctx.fillStyle = effect.color
       ctx.fill(path)
     } else if (effect.kind === 'blur') {
-      const patch = document.createElement('canvas'); patch.width = Math.max(1, Math.ceil(w)); patch.height = Math.max(1, Math.ceil(h))
+      const patch = document.createElement('canvas')
+      patch.width = Math.max(1, Math.ceil(w))
+      patch.height = Math.max(1, Math.ceil(h))
       const patchCtx = patch.getContext('2d')
-      if (patchCtx) { patchCtx.filter = `blur(${Math.max(0, effect.blur)}px)`; patchCtx.drawImage(ctx.canvas, x, y, w, h, 0, 0, patch.width, patch.height); ctx.save(); ctx.beginPath(); ctx.clip(path); ctx.drawImage(patch, x, y, w, h); ctx.restore() }
+      if (patchCtx) {
+        patchCtx.filter = `blur(${Math.max(0, effect.blur)}px)`
+        patchCtx.drawImage(ctx.canvas, x, y, w, h, 0, 0, patch.width, patch.height)
+        ctx.save()
+        ctx.beginPath()
+        ctx.clip(path)
+        ctx.drawImage(patch, x, y, w, h)
+        ctx.restore()
+      }
     } else if (effect.kind === 'focus') {
       // Fill only the area outside the focus shape (evenodd preserves the video in the hole).
-      const dimPath = new Path2D(); dimPath.rect(0, 0, outputWidth, outputHeight)
+      const dimPath = new Path2D()
+      dimPath.rect(0, 0, outputWidth, outputHeight)
       dimPath.addPath(path)
-      ctx.fillStyle = `rgba(0,0,0,${Math.max(0, Math.min(.9, effect.dimOutside))})`
+      ctx.fillStyle = `rgba(0,0,0,${Math.max(0, Math.min(0.9, effect.dimOutside))})`
       ctx.fill(dimPath, 'evenodd')
       if (effect.scale > 1) {
-        const snapshot = document.createElement('canvas'); snapshot.width = outputWidth; snapshot.height = outputHeight
-        const snapshotCtx = snapshot.getContext('2d'); if (snapshotCtx) { snapshotCtx.drawImage(ctx.canvas, 0, 0); const cropW = w / effect.scale, cropH = h / effect.scale; ctx.save(); ctx.beginPath(); ctx.clip(path); ctx.drawImage(snapshot, x + w/2-cropW/2, y+h/2-cropH/2, cropW, cropH, x, y, w, h); ctx.restore() }
+        const snapshot = document.createElement('canvas')
+        snapshot.width = outputWidth
+        snapshot.height = outputHeight
+        const snapshotCtx = snapshot.getContext('2d')
+        if (snapshotCtx) {
+          snapshotCtx.drawImage(ctx.canvas, 0, 0)
+          const cropW = w / effect.scale,
+            cropH = h / effect.scale
+          ctx.save()
+          ctx.beginPath()
+          ctx.clip(path)
+          ctx.drawImage(snapshot, x + w / 2 - cropW / 2, y + h / 2 - cropH / 2, cropW, cropH, x, y, w, h)
+          ctx.restore()
+        }
       }
-      ctx.strokeStyle = effect.color; ctx.lineWidth = Math.max(1, effect.borderWidth); ctx.stroke(path)
+      ctx.strokeStyle = effect.color
+      ctx.lineWidth = Math.max(1, effect.borderWidth)
+      ctx.stroke(path)
     } else if (effect.kind === 'border') {
-      ctx.strokeStyle = effect.color; ctx.lineWidth = Math.max(1, effect.borderWidth)
-      if (effect.animated) ctx.setLineDash([Math.max(4, effect.borderWidth*2), Math.max(3, effect.borderWidth*1.5)])
-      ctx.lineDashOffset = effect.animated ? (effect.loop ? currentTime * 35 : ((currentTime-effect.startTime) / Math.max(.01,effect.duration)) * 80 * (effect.direction === 'out' ? 1 : -1)) : 0
+      ctx.strokeStyle = effect.color
+      ctx.lineWidth = Math.max(1, effect.borderWidth)
+      if (effect.animated) ctx.setLineDash([Math.max(4, effect.borderWidth * 2), Math.max(3, effect.borderWidth * 1.5)])
+      ctx.lineDashOffset = effect.animated
+        ? effect.loop
+          ? currentTime * 35
+          : ((currentTime - effect.startTime) / Math.max(0.01, effect.duration)) *
+            80 *
+            (effect.direction === 'out' ? 1 : -1)
+        : 0
       ctx.stroke(path)
     }
     ctx.restore()

@@ -33,13 +33,7 @@ if (process.platform !== 'darwin') {
   process.exit(0)
 }
 
-const electronAppPath = path.join(
-  process.cwd(),
-  'node_modules',
-  'electron',
-  'dist',
-  'Electron.app',
-)
+const electronAppPath = path.join(process.cwd(), 'node_modules', 'electron', 'dist', 'Electron.app')
 const plistPath = path.join(electronAppPath, 'Contents', 'Info.plist')
 
 if (!existsSync(plistPath)) {
@@ -53,14 +47,10 @@ log(`Patching ${plistPath}`)
 // production build's `extendInfo` in package.json so the dev and packaged
 // builds behave identically.
 const usageStrings = {
-  NSScreenCaptureUsageDescription:
-    "DemoThat needs to record your computer's screen to capture video.",
-  NSAudioCaptureUsageDescription:
-    'DemoThat captures system audio so you can include it in your screen recordings.',
-  NSMicrophoneUsageDescription:
-    'DemoThat records from the microphone when you enable it during a recording.',
-  NSCameraUsageDescription:
-    'DemoThat accesses the camera when you enable webcam capture during a recording.',
+  NSScreenCaptureUsageDescription: "DemoThat needs to record your computer's screen to capture video.",
+  NSAudioCaptureUsageDescription: 'DemoThat captures system audio so you can include it in your screen recordings.',
+  NSMicrophoneUsageDescription: 'DemoThat records from the microphone when you enable it during a recording.',
+  NSCameraUsageDescription: 'DemoThat accesses the camera when you enable webcam capture during a recording.',
 }
 
 // Identity overrides. Out of the box the dev Electron binary identifies

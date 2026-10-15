@@ -194,10 +194,7 @@ async function restoreWindows(): Promise<void> {
 }
 
 /** GNOME 42+ ships desktop icons as the `ding` shell extension. */
-const GNOME_DESKTOP_ICON_SCHEMAS = [
-  'org.gnome.shell.extensions.ding',
-  'org.gnome.shell.extensions.desktop-icons',
-]
+const GNOME_DESKTOP_ICON_SCHEMAS = ['org.gnome.shell.extensions.ding', 'org.gnome.shell.extensions.desktop-icons']
 
 async function applyLinux(): Promise<void> {
   const hasGsettings = (await run('/usr/bin/which', ['gsettings'])) !== ''

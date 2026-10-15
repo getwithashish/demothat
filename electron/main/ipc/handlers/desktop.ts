@@ -78,7 +78,9 @@ export function showMessageBox(_event: IpcMainInvokeEvent, options: Electron.Mes
   return dialog.showMessageBox(options)
 }
 
-export async function checkScreenRecordingPermission(_event: IpcMainInvokeEvent): Promise<'granted' | 'denied' | 'not-determined'> {
+export async function checkScreenRecordingPermission(
+  _event: IpcMainInvokeEvent,
+): Promise<'granted' | 'denied' | 'not-determined'> {
   if (process.platform !== 'darwin') return 'granted'
 
   // getMediaAccessStatus('screen') is unreliable on macOS 14+ (always returns
@@ -87,7 +89,12 @@ export async function checkScreenRecordingPermission(_event: IpcMainInvokeEvent)
   let hasPermission = false
   try {
     const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 } })
-    log.info('[Permission] desktopCapturer returned', sources.length, 'sources:', sources.map(s => s.name))
+    log.info(
+      '[Permission] desktopCapturer returned',
+      sources.length,
+      'sources:',
+      sources.map((s) => s.name),
+    )
     hasPermission = sources.length > 0
   } catch (e) {
     log.warn('[Permission] desktopCapturer.getSources threw:', e)
@@ -100,7 +107,8 @@ export async function checkScreenRecordingPermission(_event: IpcMainInvokeEvent)
       type: 'warning',
       title: 'Screen Recording Permission Required',
       message: 'DemoThat needs Screen Recording permission to capture system audio.',
-      detail: 'Click "Open Settings" to go to System Settings → Privacy & Security → Screen Recording and enable "Electron". Then restart the app and try again.',
+      detail:
+        'Click "Open Settings" to go to System Settings → Privacy & Security → Screen Recording and enable "Electron". Then restart the app and try again.',
       buttons: ['Open Settings', 'Cancel'],
       defaultId: 0,
     })
@@ -249,8 +257,9 @@ export function handleMapCursorNameToIDC(_event: IpcMainInvokeEvent, name: strin
   return mapCursorNameToIDC(name)
 }
 
-
-export async function handleOpenAudioFile(event: IpcMainInvokeEvent): Promise<{ canceled: boolean; filePath?: string; fileName?: string }> {
+export async function handleOpenAudioFile(
+  event: IpcMainInvokeEvent,
+): Promise<{ canceled: boolean; filePath?: string; fileName?: string }> {
   // showOpenDialog takes either (window, options) or (options): pick the overload that
   // matches whether the invoking window still exists.
   const parent = BrowserWindow.fromWebContents(event.sender)
@@ -269,11 +278,13 @@ export async function handleOpenAudioFile(event: IpcMainInvokeEvent): Promise<{ 
   return { canceled: false, filePath: importedPath, fileName: path.basename(sourcePath) }
 }
 
-
-export async function handleOpenVideoFiles(event: IpcMainInvokeEvent): Promise<{ canceled: boolean; files?: { filePath: string; fileName: string }[] }> {
+export async function handleOpenVideoFiles(
+  event: IpcMainInvokeEvent,
+): Promise<{ canceled: boolean; files?: { filePath: string; fileName: string }[] }> {
   const parent = BrowserWindow.fromWebContents(event.sender)
   const options: Electron.OpenDialogOptions = {
-    title: 'Import video clips', properties: ['openFile', 'multiSelections'],
+    title: 'Import video clips',
+    properties: ['openFile', 'multiSelections'],
     filters: [{ name: 'Video', extensions: ['mp4', 'mov', 'mkv', 'webm', 'avi', 'm4v'] }],
   }
   const result = await (parent ? dialog.showOpenDialog(parent, options) : dialog.showOpenDialog(options))
@@ -282,23 +293,42 @@ export async function handleOpenVideoFiles(event: IpcMainInvokeEvent): Promise<{
   await fs.mkdir(assetDirectory, { recursive: true })
   const files: { filePath: string; fileName: string }[] = []
   for (const sourcePath of result.filePaths) {
-    const importedPath = path.join(assetDirectory, `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${path.basename(sourcePath)}`)
+    const importedPath = path.join(
+      assetDirectory,
+      `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${path.basename(sourcePath)}`,
+    )
     await fs.copyFile(sourcePath, importedPath)
     files.push({ filePath: importedPath, fileName: path.basename(sourcePath) })
   }
   return { canceled: false, files }
 }
 
-export async function handleDetectSilence(_event: IpcMainInvokeEvent, videoPath: string): Promise<{ start: number; end: number; duration: number }[]> {
+export async function handleDetectSilence(
+  _event: IpcMainInvokeEvent,
+  videoPath: string,
+): Promise<{ start: number; end: number; duration: number }[]> {
   const ffmpegPath = getFFmpegPath()
   return new Promise((resolve, reject) => {
-    const child = spawn(ffmpegPath, ['-hide_banner', '-i', videoPath, '-vn', '-af', 'silencedetect=noise=-35dB:d=0.45', '-f', 'null', '-'])
+    const child = spawn(ffmpegPath, [
+      '-hide_banner',
+      '-i',
+      videoPath,
+      '-vn',
+      '-af',
+      'silencedetect=noise=-35dB:d=0.45',
+      '-f',
+      'null',
+      '-',
+    ])
     let stderr = ''
     child.stderr.setEncoding('utf8')
-    child.stderr.on('data', (chunk: string) => { stderr += chunk })
+    child.stderr.on('data', (chunk: string) => {
+      stderr += chunk
+    })
     child.on('error', reject)
     child.on('close', (code) => {
-      if (code !== 0 && !stderr.includes('silence_end')) return reject(new Error('FFmpeg could not analyze this video audio track.'))
+      if (code !== 0 && !stderr.includes('silence_end'))
+        return reject(new Error('FFmpeg could not analyze this video audio track.'))
       const silences: { start: number; end: number; duration: number }[] = []
       let pendingStart: number | null = null
       for (const line of stderr.split(/\r?\n/)) {
@@ -306,7 +336,9 @@ export async function handleDetectSilence(_event: IpcMainInvokeEvent, videoPath:
         if (startMatch) pendingStart = Math.max(0, Number(startMatch[1]))
         const endMatch = line.match(/silence_end:\s*([\d.]+).*silence_duration:\s*([\d.]+)/)
         if (endMatch) {
-          const end = Number(endMatch[1]); const duration = Number(endMatch[2]); const start = pendingStart ?? Math.max(0, end - duration)
+          const end = Number(endMatch[1])
+          const duration = Number(endMatch[2])
+          const start = pendingStart ?? Math.max(0, end - duration)
           if (duration >= 0.45) silences.push({ start, end, duration })
           pendingStart = null
         }

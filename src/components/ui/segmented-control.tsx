@@ -43,9 +43,7 @@ export function SegmentedControl<T extends string = string>({
             className={cn(
               'flex-1 rounded-[5px] text-center font-normal transition-colors',
               size === 'md' ? 'px-2 py-[5px] text-ui' : 'px-1.5 py-1 text-sm',
-              active
-                ? 'bg-panel text-fg shadow-[0_0_0_1px_var(--sa-line)]'
-                : 'text-muted hover:text-fg',
+              active ? 'bg-panel text-fg shadow-[0_0_0_1px_var(--sa-line)]' : 'text-muted hover:text-fg',
               'disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:text-muted',
             )}
           >

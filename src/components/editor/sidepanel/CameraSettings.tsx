@@ -97,11 +97,23 @@ export function CameraSettings() {
         const sourceDuration = Number.isFinite(video.duration) ? video.duration : 0
         if (sourceDuration <= 0) continue
         const startTime = Math.max(0, Math.min(currentTime, Math.max(0, duration - 0.1)))
-        addVideoClip({ name: file.fileName, filePath: file.filePath, startTime, duration: Math.min(sourceDuration, Math.max(0.1, duration - startTime)), sourceDuration })
+        addVideoClip({
+          name: file.fileName,
+          filePath: file.filePath,
+          startTime,
+          duration: Math.min(sourceDuration, Math.max(0.1, duration - startTime)),
+          sourceDuration,
+        })
       }
     } catch (error) {
-      window.electronAPI.showMessageBox({ type: 'error', title: 'Video import failed', message: error instanceof Error ? error.message : 'Could not import video clips.' })
-    } finally { setIsImportingVideos(false) }
+      window.electronAPI.showMessageBox({
+        type: 'error',
+        title: 'Video import failed',
+        message: error instanceof Error ? error.message : 'Could not import video clips.',
+      })
+    } finally {
+      setIsImportingVideos(false)
+    }
   }
 
   const { hex: shadowHex, alpha: shadowAlpha } = useMemo(
@@ -194,7 +206,9 @@ export function CameraSettings() {
                 <div key={clip.id} className="space-y-2 py-3">
                   <div className="flex items-center gap-2">
                     <Video size={ICON_SIZE} strokeWidth={ICON_STROKE} className="shrink-0 text-muted" />
-                    <span className="min-w-0 flex-1 truncate text-ui text-fg" title={clip.name}>{clip.name}</span>
+                    <span className="min-w-0 flex-1 truncate text-ui text-fg" title={clip.name}>
+                      {clip.name}
+                    </span>
                     <Button
                       variant="danger"
                       size="icon"
@@ -213,7 +227,11 @@ export function CameraSettings() {
                         max={Math.max(0, duration - 0.1)}
                         step="0.1"
                         value={Number(clip.startTime.toFixed(2))}
-                        onChange={(e) => updateVideoClip(clip.id, { startTime: Math.max(0, Math.min(duration - clip.duration, Number(e.target.value) || 0)) })}
+                        onChange={(e) =>
+                          updateVideoClip(clip.id, {
+                            startTime: Math.max(0, Math.min(duration - clip.duration, Number(e.target.value) || 0)),
+                          })
+                        }
                         className="mt-1 w-full rounded-ctl border border-line bg-ctl px-2 py-1.5 font-mono text-sm text-fg outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
                       />
                     </label>
@@ -225,13 +243,18 @@ export function CameraSettings() {
                         max={Math.max(0.1, duration - clip.startTime)}
                         step="0.1"
                         value={Number(clip.duration.toFixed(2))}
-                        onChange={(e) => updateVideoClip(clip.id, { duration: Math.max(0.1, Math.min(duration - clip.startTime, Number(e.target.value) || 0.1)) })}
+                        onChange={(e) =>
+                          updateVideoClip(clip.id, {
+                            duration: Math.max(0.1, Math.min(duration - clip.startTime, Number(e.target.value) || 0.1)),
+                          })
+                        }
                         className="mt-1 w-full rounded-ctl border border-line bg-ctl px-2 py-1.5 font-mono text-sm text-fg outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
                       />
                     </label>
                   </div>
                   <p className="text-sm text-muted">
-                    {formatTime(clip.startTime)} – {formatTime(clip.startTime + clip.duration)} · source {formatTime(clip.sourceDuration)}
+                    {formatTime(clip.startTime)} – {formatTime(clip.startTime + clip.duration)} · source{' '}
+                    {formatTime(clip.sourceDuration)}
                   </p>
                 </div>
               ))}
@@ -277,7 +300,10 @@ export function CameraSettings() {
               </div>
             </Section>
 
-            <Section label="Placement" labelRight={<ResetButton onClick={handleResetPlacement} label="camera placement" />}>
+            <Section
+              label="Placement"
+              labelRight={<ResetButton onClick={handleResetPlacement} label="camera placement" />}
+            >
               <div className="space-y-3.5">
                 <Slider
                   label="Size"

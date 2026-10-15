@@ -99,9 +99,15 @@ export function PresetModal({ isOpen, onClose }: PresetModalProps) {
     ? [
         { icon: <Rectangle size={ICON_SIZE} strokeWidth={ICON_STROKE} />, value: previewPreset.aspectRatio },
         { icon: <BoxPadding size={ICON_SIZE} strokeWidth={ICON_STROKE} />, value: `${previewPreset.styles.padding}%` },
-        { icon: <BorderRadius size={ICON_SIZE} strokeWidth={ICON_STROKE} />, value: `${previewPreset.styles.borderRadius}px` },
+        {
+          icon: <BorderRadius size={ICON_SIZE} strokeWidth={ICON_STROKE} />,
+          value: `${previewPreset.styles.borderRadius}px`,
+        },
         { icon: <Shadow size={ICON_SIZE} strokeWidth={ICON_STROKE} />, value: `${previewPreset.styles.shadowBlur}px` },
-        { icon: <BorderAll size={ICON_SIZE} strokeWidth={ICON_STROKE} />, value: `${previewPreset.styles.borderWidth}px` },
+        {
+          icon: <BorderAll size={ICON_SIZE} strokeWidth={ICON_STROKE} />,
+          value: `${previewPreset.styles.borderWidth}px`,
+        },
       ]
     : []
 
@@ -141,16 +147,18 @@ export function PresetModal({ isOpen, onClose }: PresetModalProps) {
                     className={cn(
                       'flex w-full items-center justify-between rounded-ctl border-l-2 px-3 py-2 text-left text-ui transition-colors',
                       'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
-                      previewId === p.id
-                        ? 'border-accent bg-ctl text-fg'
-                        : 'border-transparent text-fg hover:bg-ctl',
+                      previewId === p.id ? 'border-accent bg-ctl text-fg' : 'border-transparent text-fg hover:bg-ctl',
                     )}
                   >
                     <span className="flex items-center gap-2">
                       <span className="truncate">{p.name}</span>
-                      {p.isDefault && <Lock size={ICON_SIZE} strokeWidth={ICON_STROKE} className="shrink-0 text-muted" />}
+                      {p.isDefault && (
+                        <Lock size={ICON_SIZE} strokeWidth={ICON_STROKE} className="shrink-0 text-muted" />
+                      )}
                     </span>
-                    {activePresetId === p.id && <Check size={ICON_SIZE} strokeWidth={ICON_STROKE} className="shrink-0 text-accent" />}
+                    {activePresetId === p.id && (
+                      <Check size={ICON_SIZE} strokeWidth={ICON_STROKE} className="shrink-0 text-accent" />
+                    )}
                   </button>
                 ),
               )}
@@ -179,7 +187,9 @@ export function PresetModal({ isOpen, onClose }: PresetModalProps) {
                 <div className="mb-4 flex flex-shrink-0 items-center justify-between gap-3">
                   <h3 className="flex min-w-0 items-center gap-2 text-title font-semibold text-fg">
                     <span className="truncate">{previewPreset.name}</span>
-                    {previewPreset.isDefault && <Lock size={ICON_SIZE} strokeWidth={ICON_STROKE} className="shrink-0 text-muted" />}
+                    {previewPreset.isDefault && (
+                      <Lock size={ICON_SIZE} strokeWidth={ICON_STROKE} className="shrink-0 text-muted" />
+                    )}
                   </h3>
                   {!previewPreset.isDefault && (
                     <Button variant="danger" size="sm" onClick={() => handleDelete(previewPreset.id)}>

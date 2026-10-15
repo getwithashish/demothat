@@ -45,9 +45,7 @@ export function useApplyTheme() {
  */
 export function usePreferredTheme(): Theme {
   const [preferred, setPreferred] = useState<Theme>(() =>
-    typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)').matches
-      ? 'dark'
-      : 'light',
+    typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
   )
 
   useEffect(() => {

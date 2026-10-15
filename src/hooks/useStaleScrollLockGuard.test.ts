@@ -14,7 +14,9 @@ const applyLock = () => {
   document.body.setAttribute('data-scroll-locked', '1')
 }
 const isUnlocked = () =>
-  document.body.style.pointerEvents === '' && document.body.style.overflow === '' && !document.body.hasAttribute('data-scroll-locked')
+  document.body.style.pointerEvents === '' &&
+  document.body.style.overflow === '' &&
+  !document.body.hasAttribute('data-scroll-locked')
 
 beforeEach(() => {
   document.body.innerHTML = ''
@@ -28,7 +30,11 @@ describe('healStaleScrollLock', () => {
     expect(document.body.style.pointerEvents).toBe('')
   })
 
-  for (const markup of ['<div role="listbox"></div>', '<div role="menu"></div>', '<div data-radix-popper-content-wrapper=""></div>']) {
+  for (const markup of [
+    '<div role="listbox"></div>',
+    '<div role="menu"></div>',
+    '<div data-radix-popper-content-wrapper=""></div>',
+  ]) {
     it(`keeps a live lock while ${markup.slice(1, 20)}… is mounted`, () => {
       applyLock()
       document.body.innerHTML = markup

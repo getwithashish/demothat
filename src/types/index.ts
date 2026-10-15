@@ -214,7 +214,8 @@ export interface PlaybackActions {
   seekForward: (seconds: number) => void
 }
 
-export type CameraMoveKind = 'custom' | 'dolly-in' | 'dolly-out' | 'pan-left' | 'pan-right' | 'entrance' | 'orbit' | 'reset' | 'breathing'
+export type CameraMoveKind =
+  'custom' | 'dolly-in' | 'dolly-out' | 'pan-left' | 'pan-right' | 'entrance' | 'orbit' | 'reset' | 'breathing'
 
 export interface CameraPose {
   x: number // horizontal offset as a percentage of output width
@@ -261,7 +262,15 @@ export interface VisualEffectRegion {
   enterDuration: number
   exitDuration: number
 }
-export type CompositionLayout = 'picture-in-picture' | 'side-by-side' | 'presenter-focus' | 'screen-only' | 'presenter-top' | 'presenter-bottom' | 'split-vertical' | 'large-picture-in-picture'
+export type CompositionLayout =
+  | 'picture-in-picture'
+  | 'side-by-side'
+  | 'presenter-focus'
+  | 'screen-only'
+  | 'presenter-top'
+  | 'presenter-bottom'
+  | 'split-vertical'
+  | 'large-picture-in-picture'
 export interface CompositionLayoutRange {
   id: string
   layout: CompositionLayout

@@ -87,14 +87,14 @@ export const Preview = memo(
     const animationFrameId = useRef<number>()
     const [controlBarWidth, setControlBarWidth] = useState(0)
     const [effectOverlayBounds, setEffectOverlayBounds] = useState({ left: 0, top: 0, width: 0, height: 0 })
-    const visualEffects = useEditorStore(state => state.visualEffects)
+    const visualEffects = useEditorStore((state) => state.visualEffects)
     // Drives the "Mask" chip: true while an effect covers the playhead.
     const maskActive = visualEffects.some(
       (effect) => currentTime >= effect.startTime && currentTime < effect.startTime + effect.duration,
     )
-    const selectedRegionId = useEditorStore(state => state.selectedRegionId)
-    const setSelectedRegionId = useEditorStore(state => state.setSelectedRegionId)
-    const updateVisualEffect = useEditorStore(state => state.updateVisualEffect)
+    const selectedRegionId = useEditorStore((state) => state.selectedRegionId)
+    const setSelectedRegionId = useEditorStore((state) => state.setSelectedRegionId)
+    const updateVisualEffect = useEditorStore((state) => state.updateVisualEffect)
 
     // --- Start of Changes for Fullscreen Controls ---
     const [isControlBarVisible, setIsControlBarVisible] = useState(false)
@@ -252,26 +252,29 @@ export const Preview = memo(
     // Keep each imported clip's hidden <video> in sync with the playhead.
     // Playing clips run freely and are only re-seeked on noticeable drift;
     // while paused or scrubbing they are seeked exactly so frames are stable.
-    const syncClipVideos = useCallback((playing: boolean, time: number) => {
-      for (const clip of videoClips) {
-        const element = clipVideoRefs.current.get(clip.id)
-        if (!element) continue
-        const active = time >= clip.startTime && time < clip.startTime + clip.duration
-        if (!active) {
-          if (!element.paused) element.pause()
-          continue
+    const syncClipVideos = useCallback(
+      (playing: boolean, time: number) => {
+        for (const clip of videoClips) {
+          const element = clipVideoRefs.current.get(clip.id)
+          if (!element) continue
+          const active = time >= clip.startTime && time < clip.startTime + clip.duration
+          if (!active) {
+            if (!element.paused) element.pause()
+            continue
+          }
+          const sourceDuration = clip.sourceDuration || element.duration || 0
+          const sourceTime = getClipSourceTime(clip, time, sourceDuration)
+          if (playing) {
+            if (Math.abs(element.currentTime - sourceTime) > 0.3) element.currentTime = sourceTime
+            if (element.paused) void element.play().catch(() => undefined)
+          } else {
+            if (!element.paused) element.pause()
+            if (Math.abs(element.currentTime - sourceTime) > 0.02) element.currentTime = sourceTime
+          }
         }
-        const sourceDuration = clip.sourceDuration || element.duration || 0
-        const sourceTime = getClipSourceTime(clip, time, sourceDuration)
-        if (playing) {
-          if (Math.abs(element.currentTime - sourceTime) > 0.3) element.currentTime = sourceTime
-          if (element.paused) void element.play().catch(() => undefined)
-        } else {
-          if (!element.paused) element.pause()
-          if (Math.abs(element.currentTime - sourceTime) > 0.02) element.currentTime = sourceTime
-        }
-      }
-    }, [videoClips])
+      },
+      [videoClips],
+    )
 
     const renderCanvas = useCallback(async () => {
       const canvas = canvasRef.current
@@ -289,7 +292,17 @@ export const Preview = memo(
         const element = clipVideoRefs.current.get(clip.id)
         if (element && element.readyState >= 2) clipLayers.push({ clip, element })
       }
-      await drawScene(ctx, state, video, webcamVideo, video.currentTime, canvas.width, canvas.height, bgImage, clipLayers)
+      await drawScene(
+        ctx,
+        state,
+        video,
+        webcamVideo,
+        video.currentTime,
+        canvas.width,
+        canvas.height,
+        bgImage,
+        clipLayers,
+      )
       if (state.isPlaying) {
         animationFrameId.current = requestAnimationFrame(renderCanvas)
       }
@@ -485,26 +498,71 @@ export const Preview = memo(
         {videoUrl && effectOverlayBounds.width > 0 && effectOverlayBounds.height > 0 && (
           <div
             className="absolute z-20"
-            style={{ left: effectOverlayBounds.left, top: effectOverlayBounds.top, width: effectOverlayBounds.width, height: effectOverlayBounds.height, pointerEvents: 'none' }}
+            style={{
+              left: effectOverlayBounds.left,
+              top: effectOverlayBounds.top,
+              width: effectOverlayBounds.width,
+              height: effectOverlayBounds.height,
+              pointerEvents: 'none',
+            }}
             aria-label="Visual effects positioning overlay"
           >
-            {visualEffects.filter(effect => selectedRegionId === effect.id || (currentTime >= effect.startTime && currentTime < effect.startTime + effect.duration)).map((effect) => {
-              const selected = selectedRegionId === effect.id
-              const shapeStyle: React.CSSProperties = {
-                position: 'absolute',
-                left: `${effect.x * 100}%`, top: `${effect.y * 100}%`,
-                width: `${effect.width * 100}%`, height: `${effect.height * 100}%`,
-                border: `${selected ? 2 : 1}px ${selected ? 'solid' : 'dashed'} ${effect.color}`,
-                backgroundColor: selected ? `${effect.color}22` : `${effect.color}0c`,
-                borderRadius: effect.shape === 'circle' ? '9999px' : '2px',
-                clipPath: effect.shape === 'freeform' ? `polygon(${effect.points.map(point => `${point.x * 100}% ${point.y * 100}%`).join(',')})` : undefined,
-                boxSizing: 'border-box', pointerEvents: 'auto', cursor: 'move', touchAction: 'none',
-              }
-              return <div key={effect.id} role="button" tabIndex={selected ? 0 : -1} aria-label={`Move ${effect.kind} effect`} onMouseDown={event => beginEffectTransform(event, effect, 'move')} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') setSelectedRegionId(effect.id) }} style={shapeStyle} title={`${effect.kind} — drag to move${selected ? ', use corner handle to resize' : ''}`}>
-                <span className="absolute -left-px -top-5 rounded px-1.5 py-0.5 text-label font-semibold capitalize text-white shadow" style={{ backgroundColor: effect.color, maxWidth: 120, overflow: 'hidden', whiteSpace: 'nowrap' }}>{effect.kind}</span>
-                {selected && <span role="presentation" onMouseDown={event => beginEffectTransform(event, effect, 'resize')} className="absolute -bottom-1.5 -right-1.5 h-3.5 w-3.5 rounded-ctl border-2 border-white shadow-md" style={{ backgroundColor: effect.color, cursor: 'nwse-resize', pointerEvents: 'auto' }} />}
-              </div>
-            })}
+            {visualEffects
+              .filter(
+                (effect) =>
+                  selectedRegionId === effect.id ||
+                  (currentTime >= effect.startTime && currentTime < effect.startTime + effect.duration),
+              )
+              .map((effect) => {
+                const selected = selectedRegionId === effect.id
+                const shapeStyle: React.CSSProperties = {
+                  position: 'absolute',
+                  left: `${effect.x * 100}%`,
+                  top: `${effect.y * 100}%`,
+                  width: `${effect.width * 100}%`,
+                  height: `${effect.height * 100}%`,
+                  border: `${selected ? 2 : 1}px ${selected ? 'solid' : 'dashed'} ${effect.color}`,
+                  backgroundColor: selected ? `${effect.color}22` : `${effect.color}0c`,
+                  borderRadius: effect.shape === 'circle' ? '9999px' : '2px',
+                  clipPath:
+                    effect.shape === 'freeform'
+                      ? `polygon(${effect.points.map((point) => `${point.x * 100}% ${point.y * 100}%`).join(',')})`
+                      : undefined,
+                  boxSizing: 'border-box',
+                  pointerEvents: 'auto',
+                  cursor: 'move',
+                  touchAction: 'none',
+                }
+                return (
+                  <div
+                    key={effect.id}
+                    role="button"
+                    tabIndex={selected ? 0 : -1}
+                    aria-label={`Move ${effect.kind} effect`}
+                    onMouseDown={(event) => beginEffectTransform(event, effect, 'move')}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') setSelectedRegionId(effect.id)
+                    }}
+                    style={shapeStyle}
+                    title={`${effect.kind} — drag to move${selected ? ', use corner handle to resize' : ''}`}
+                  >
+                    <span
+                      className="absolute -left-px -top-5 rounded px-1.5 py-0.5 text-label font-semibold capitalize text-white shadow"
+                      style={{ backgroundColor: effect.color, maxWidth: 120, overflow: 'hidden', whiteSpace: 'nowrap' }}
+                    >
+                      {effect.kind}
+                    </span>
+                    {selected && (
+                      <span
+                        role="presentation"
+                        onMouseDown={(event) => beginEffectTransform(event, effect, 'resize')}
+                        className="absolute -bottom-1.5 -right-1.5 h-3.5 w-3.5 rounded-ctl border-2 border-white shadow-md"
+                        style={{ backgroundColor: effect.color, cursor: 'nwse-resize', pointerEvents: 'auto' }}
+                      />
+                    )}
+                  </div>
+                )
+              })}
           </div>
         )}
 
@@ -627,9 +685,7 @@ export const Preview = memo(
                 disabled={duration === 0}
                 className="min-w-0 flex-1"
               />
-              <span className="shrink-0 font-mono text-sm tabular-nums text-muted">
-                {formatTime(duration, true)}
-              </span>
+              <span className="shrink-0 font-mono text-sm tabular-nums text-muted">{formatTime(duration, true)}</span>
               <Button
                 variant="ghost"
                 size="icon"

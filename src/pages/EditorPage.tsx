@@ -62,8 +62,13 @@ export function EditorPage() {
   const [isSettingsModalOpen, setSettingsModalOpen] = useState(false)
   const [updateInfo, setUpdateInfo] = useState<{ version: string; url: string } | null>(null)
   const [platform, setPlatform] = useState<NodeJS.Platform | null>(null)
-  const openExportModal = () => { setExportMinimized(false); openExportModalBase() }
-  useEffect(() => { if (!isExporting) setExportMinimized(false) }, [isExporting])
+  const openExportModal = () => {
+    setExportMinimized(false)
+    openExportModalBase()
+  }
+  useEffect(() => {
+    if (!isExporting) setExportMinimized(false)
+  }, [isExporting])
 
   const handleDeleteSelectedRegion = useCallback(() => {
     const currentSelectedId = useEditorStore.getState().selectedRegionId
@@ -301,15 +306,39 @@ export function EditorPage() {
       </div>
 
       {isExporting && isExportMinimized && (
-        <button type="button" onClick={() => { setExportMinimized(false); openExportModal() }} title={`Export progress: ${Math.round(exportProgress)}% — click to expand`} className="fixed bottom-5 right-5 z-[60] flex h-12 w-12 items-center justify-center rounded-full border border-line bg-panel text-fg shadow-[var(--sa-popover-shadow)] outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
+        <button
+          type="button"
+          onClick={() => {
+            setExportMinimized(false)
+            openExportModal()
+          }}
+          title={`Export progress: ${Math.round(exportProgress)}% — click to expand`}
+          className="fixed bottom-5 right-5 z-[60] flex h-12 w-12 items-center justify-center rounded-full border border-line bg-panel text-fg shadow-[var(--sa-popover-shadow)] outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+        >
           {/* Accent progress stroke on a ctl track (DESIGN_SPEC §5). */}
-          <svg className="absolute inset-0 h-12 w-12 -rotate-90" viewBox="0 0 56 56" aria-hidden="true"><circle cx="28" cy="28" r="24" fill="none" stroke="var(--sa-ctl)" strokeWidth="4"/><circle cx="28" cy="28" r="24" fill="none" stroke="var(--sa-accent)" strokeWidth="4" strokeLinecap="round" strokeDasharray={2*Math.PI*24} strokeDashoffset={2*Math.PI*24*(1-exportProgress/100)}/></svg>
+          <svg className="absolute inset-0 h-12 w-12 -rotate-90" viewBox="0 0 56 56" aria-hidden="true">
+            <circle cx="28" cy="28" r="24" fill="none" stroke="var(--sa-ctl)" strokeWidth="4" />
+            <circle
+              cx="28"
+              cy="28"
+              r="24"
+              fill="none"
+              stroke="var(--sa-accent)"
+              strokeWidth="4"
+              strokeLinecap="round"
+              strokeDasharray={2 * Math.PI * 24}
+              strokeDashoffset={2 * Math.PI * 24 * (1 - exportProgress / 100)}
+            />
+          </svg>
           <span className="relative font-mono text-sm">{Math.round(exportProgress)}%</span>
         </button>
       )}
       <ExportModal
         isOpen={isExportModalOpen && !isExportMinimized}
-        onClose={() => { closeExportModal(); setExportMinimized(false) }}
+        onClose={() => {
+          closeExportModal()
+          setExportMinimized(false)
+        }}
         onMinimize={() => setExportMinimized(true)}
         onStartExport={startExport}
         onCancelExport={cancelExport}

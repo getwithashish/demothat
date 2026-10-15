@@ -46,7 +46,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         {/* Tabs */}
         <div className="flex w-44 flex-shrink-0 flex-col border-r border-line p-3">
           <h2 className="mb-2.5 px-2 text-title font-semibold text-fg">Settings</h2>
-          <div role="tablist" aria-label="Settings sections" aria-orientation="vertical" className="flex flex-col gap-0.5">
+          <div
+            role="tablist"
+            aria-label="Settings sections"
+            aria-orientation="vertical"
+            className="flex flex-col gap-0.5"
+          >
             {TABS.map((tab) => (
               <button
                 key={tab.id}

@@ -14,15 +14,7 @@ export interface ToggleRowProps {
 }
 
 /** Toggle row (DESIGN_SPEC §6): label (+ optional description) left, switch right. */
-export function ToggleRow({
-  label,
-  description,
-  checked,
-  onCheckedChange,
-  disabled,
-  id,
-  className,
-}: ToggleRowProps) {
+export function ToggleRow({ label, description, checked, onCheckedChange, disabled, id, className }: ToggleRowProps) {
   return (
     <div className={cn('flex items-center justify-between gap-3 py-0.5', className)}>
       <div className="min-w-0">

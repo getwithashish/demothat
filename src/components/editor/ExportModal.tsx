@@ -1,5 +1,5 @@
 // Modal for configuring export settings and showing export progress (DESIGN_SPEC §10).
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useRef, useState, useMemo } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { Button } from '../ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
@@ -9,8 +9,25 @@ import { Input } from '../ui/input'
 import { Section } from '../ui/section'
 import { useEditorStore } from '../../store/editorStore'
 import { formatTime } from '../../lib/utils'
-import { RESOLUTIONS, RESOLUTION_OPTIONS, type ResolutionKey } from '../../../shared/export-resolutions'
-import { GIF_MAX_HEIGHT } from '../../../shared/export-codec'
+import {
+  RESOLUTIONS,
+  RESOLUTION_OPTIONS,
+  exportDimensions,
+  type ResolutionKey,
+} from '../../../shared/export-resolutions'
+import { GIF_MAX_HEIGHT, selectExportCodec } from '../../../shared/export-codec'
+import { detectUpscale, maxCameraScale, maxZoomLevel } from '../../lib/upscale'
+import {
+  ASSUMED_BITRATE_MBPS,
+  type ExportPerfSample,
+  estimateCloudSeconds,
+  estimateFileMB,
+  estimateLocalSeconds,
+  estimateRemainingSeconds,
+  fasterMethod,
+  framesFor,
+  roughRange,
+} from '../../lib/export-estimate'
 import { PanelHeader } from './PanelHeader'
 
 export type ExportSettings = {
@@ -37,6 +54,53 @@ const generateFilename = (format: 'mp4' | 'gif') => {
   return `DemoThat-${timestamp}.${format}`
 }
 
+/** Config the cloud client will populate (Phase 5); absent means "not set up". */
+interface CloudConfig {
+  baseUrl: string
+  startupSeconds: number
+  upscaleFps: number
+  uplinkMbps: number
+  downlinkMbps: number
+}
+
+interface EntitlementInfo {
+  pro: boolean
+  credits: number
+  unlockUrl: string
+}
+
+/** Marks a resolution whose export would upscale the source. */
+const ProBadge = () => (
+  <span className="rounded-pv bg-ctl px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-accent">
+    Pro
+  </span>
+)
+
+const EstimateRow = ({
+  label,
+  value,
+  hint,
+  highlight,
+}: {
+  label: string
+  value: string
+  hint?: string
+  highlight?: string
+}) => (
+  <div className="flex items-start justify-between gap-3">
+    <span className="text-ui text-fg">
+      {label}
+      {highlight && (
+        <span className="ml-2 rounded-pv bg-ctl px-1.5 py-0.5 text-[11px] font-semibold text-accent">{highlight}</span>
+      )}
+    </span>
+    <span className="text-right font-mono text-sm tabular-nums text-muted">
+      {value}
+      {hint && <span className="block font-sans text-xs text-muted">{hint}</span>}
+    </span>
+  </div>
+)
+
 // --- Sub-components for different views ---
 const SettingsView = ({
   onStartExport,
@@ -53,13 +117,23 @@ const SettingsView = ({
   })
   const [outputPath, setOutputPath] = useState('')
   const [encoderCapabilities, setEncoderCapabilities] = useState<{ libx265: boolean } | null>(null)
-  const { duration, cutRegions, speedRegions } = useEditorStore(
-    useShallow((state) => ({
-      duration: state.duration,
-      cutRegions: state.cutRegions,
-      speedRegions: state.speedRegions,
-    })),
-  )
+  const [entitlement, setEntitlement] = useState<EntitlementInfo | null>(null)
+  const [perfSamples, setPerfSamples] = useState<ExportPerfSample[]>([])
+  const [cloud, setCloud] = useState<CloudConfig | null>(null)
+  const [upscaleMethod, setUpscaleMethod] = useState<'standard' | 'ai'>('standard')
+  const { duration, cutRegions, speedRegions, videoDimensions, frameStyles, aspectRatio, zoomRegions, cameraMotions } =
+    useEditorStore(
+      useShallow((state) => ({
+        duration: state.duration,
+        cutRegions: state.cutRegions,
+        speedRegions: state.speedRegions,
+        videoDimensions: state.videoDimensions,
+        frameStyles: state.frameStyles,
+        aspectRatio: state.aspectRatio,
+        zoomRegions: state.zoomRegions,
+        cameraMotions: state.cameraMotions,
+      })),
+    )
 
   // Which encoders the bundled FFmpeg has; a missing libx265 disables 8K.
   // Until the answer arrives, assume available so the option does not flicker
@@ -69,6 +143,45 @@ const SettingsView = ({
       .getExportCapabilities()
       .then(setEncoderCapabilities)
       .catch(() => setEncoderCapabilities(null))
+  }, [])
+
+  // Pro state, measured throughput and (when configured) the cloud client.
+  // The Pro gate is a soft, local convenience — see features/entitlement.ts.
+  useEffect(() => {
+    window.electronAPI
+      .getEntitlement()
+      .then(setEntitlement)
+      .catch(() => setEntitlement({ pro: false, credits: 0, unlockUrl: '' }))
+    window.electronAPI
+      .getExportPerfSamples()
+      .then((samples) => setPerfSamples(samples as ExportPerfSample[]))
+      .catch(() => setPerfSamples([]))
+
+    const loadCloud = async () => {
+      try {
+        const baseUrl = await window.electronAPI.getSetting<string>('cloud.baseUrl')
+        if (typeof baseUrl !== 'string' || !baseUrl.trim()) {
+          setCloud(null)
+          return
+        }
+        const capabilities = await window.electronAPI.getSetting<{
+          startupSeconds?: number
+          upscaleFps?: number
+        }>('cloud.capabilities')
+        const uplinkMbps = Number(await window.electronAPI.getSetting('cloud.uplinkMbps')) || 20
+        const downlinkMbps = Number(await window.electronAPI.getSetting('cloud.downlinkMbps')) || 100
+        setCloud({
+          baseUrl: baseUrl.trim(),
+          startupSeconds: Number(capabilities?.startupSeconds) || 0,
+          upscaleFps: Number(capabilities?.upscaleFps) || 0,
+          uplinkMbps,
+          downlinkMbps,
+        })
+      } catch {
+        setCloud(null)
+      }
+    }
+    loadCloud()
   }, [])
 
   const resolutionDisabledReason = (key: ResolutionKey): string | null => {
@@ -101,6 +214,74 @@ const SettingsView = ({
 
     return Math.max(0, finalDuration)
   }, [duration, cutRegions, speedRegions])
+
+  // --- Upscale detection, Pro gating and time estimates -------------------------
+  // Whether each resolution stretches the source is derived from the same maths
+  // the renderer draws with, so the badges match what actually happens.
+  const paddingPercent = typeof frameStyles?.padding === 'number' ? frameStyles.padding : 0
+  const maxZoomFactor = useMemo(() => maxZoomLevel(zoomRegions), [zoomRegions])
+  const cameraScaleFactor = useMemo(() => maxCameraScale(cameraMotions), [cameraMotions])
+
+  const upscaleByResolution = useMemo(() => {
+    const map = new Map<ResolutionKey, { requiredScale: number; isUpscale: boolean }>()
+    for (const option of RESOLUTION_OPTIONS) {
+      const target = exportDimensions(option.key, aspectRatio)
+      map.set(
+        option.key,
+        detectUpscale({
+          targetWidth: target.width,
+          targetHeight: target.height,
+          paddingPercent,
+          videoWidth: videoDimensions?.width ?? 0,
+          videoHeight: videoDimensions?.height ?? 0,
+          maxZoom: maxZoomFactor,
+          cameraScale: cameraScaleFactor,
+        }),
+      )
+    }
+    return map
+  }, [aspectRatio, paddingPercent, maxZoomFactor, cameraScaleFactor, videoDimensions])
+
+  const targetDimensions = exportDimensions(settings.resolution, aspectRatio)
+  const selectedUpscale = upscaleByResolution.get(settings.resolution)
+  const selectedIsUpscale = selectedUpscale?.isUpscale ?? false
+  // Optimistic while the answer is in flight, like the encoder probe above.
+  const isEntitled = entitlement?.pro ?? true
+  const proLocked = selectedIsUpscale && !isEntitled
+  const cloudReady = cloud !== null && cloud.upscaleFps > 0
+  const effectiveMethod = cloud ? upscaleMethod : 'standard'
+
+  const frames = framesFor(estimatedDuration, settings.fps)
+  const exportCodec = selectExportCodec(RESOLUTIONS[settings.resolution].height)
+  const localEstimate = estimateLocalSeconds({
+    frames,
+    targetWidth: targetDimensions.width,
+    targetHeight: targetDimensions.height,
+    resolution: settings.resolution,
+    codec: exportCodec,
+    settingFps: settings.fps,
+    samples: perfSamples,
+  })
+  const localRange = localEstimate.rough && localEstimate.seconds > 0 ? roughRange(localEstimate.seconds) : null
+
+  const cloudEstimate =
+    cloudReady && cloud && frames > 0
+      ? estimateCloudSeconds({
+          frames,
+          fileMB: estimateFileMB(estimatedDuration, ASSUMED_BITRATE_MBPS[settings.quality]),
+          outputMB: estimateFileMB(estimatedDuration, ASSUMED_BITRATE_MBPS[settings.quality] * 1.5),
+          uplinkMbps: cloud.uplinkMbps,
+          downlinkMbps: cloud.downlinkMbps,
+          startupSeconds: cloud.startupSeconds,
+          upscaleFps: cloud.upscaleFps,
+        })
+      : null
+  const faster = cloudEstimate ? fasterMethod(localEstimate.seconds, cloudEstimate.totalSeconds) : null
+
+  const handleUnlock = () => {
+    const url = entitlement?.unlockUrl
+    if (url) window.electronAPI.openExternal(url)
+  }
 
   const handleValueChange = (key: keyof ExportSettings, value: string) => {
     setSettings((prev) => ({ ...prev, [key]: value }))
@@ -174,6 +355,7 @@ const SettingsView = ({
               <SelectContent>
                 {RESOLUTION_OPTIONS.map((option) => {
                   const reason = resolutionDisabledReason(option.key)
+                  const isPro = upscaleByResolution.get(option.key)?.isUpscale ?? false
                   return (
                     <SelectItem
                       key={option.key}
@@ -181,12 +363,50 @@ const SettingsView = ({
                       disabled={reason !== null}
                       title={reason ?? undefined}
                     >
-                      {reason ? `${option.label} — ${reason}` : option.label}
+                      <span className="flex items-center gap-2">
+                        <span>{reason ? `${option.label} — ${reason}` : option.label}</span>
+                        {isPro && <ProBadge />}
+                      </span>
                     </SelectItem>
                   )
                 })}
               </SelectContent>
             </Select>
+
+            {selectedIsUpscale && (
+              <Select value={effectiveMethod} onValueChange={(value) => setUpscaleMethod(value as 'standard' | 'ai')}>
+                <SelectTrigger label="Upscale method" aria-label="Upscale method">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="standard">Standard (local, Lanczos)</SelectItem>
+                  <SelectItem
+                    value="ai"
+                    disabled={!cloudReady}
+                    title={cloudReady ? undefined : 'Set up cloud export to use this'}
+                  >
+                    {cloudReady ? 'AI (cloud)' : 'AI (cloud) — needs cloud setup'}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+
+            {proLocked && (
+              <div className="space-y-2 rounded-pv border border-line bg-ctl p-3">
+                <p className="text-sm text-fg">
+                  Upscaling to {RESOLUTIONS[settings.resolution].height}p is a Pro feature.
+                </p>
+                {selectedUpscale && videoDimensions && videoDimensions.width > 0 && (
+                  <p className="text-xs text-muted">
+                    Your {videoDimensions.width}×{videoDimensions.height} source would be drawn at{' '}
+                    {selectedUpscale.requiredScale.toFixed(2)}× its native pixels.
+                  </p>
+                )}
+                <Button variant="secondary" size="sm" onClick={handleUnlock}>
+                  Unlock Pro
+                </Button>
+              </div>
+            )}
 
             <Select value={settings.quality} onValueChange={(value) => handleValueChange('quality', value)}>
               <SelectTrigger label="Quality" aria-label="Quality">
@@ -232,9 +452,55 @@ const SettingsView = ({
         </Section>
 
         <Section>
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-ui text-fg">Estimated duration</span>
-            <span className="font-mono text-sm tabular-nums text-muted">{formatTime(estimatedDuration, true)}</span>
+          <div className="space-y-3.5">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-ui text-fg">Estimated duration</span>
+              <span className="font-mono text-sm tabular-nums text-muted">{formatTime(estimatedDuration, true)}</span>
+            </div>
+
+            {frames > 0 && <EstimateRow label="Frames to render" value={`${frames.toLocaleString()} frames`} />}
+
+            {frames > 0 && (
+              <EstimateRow
+                label="Estimated render time (Standard)"
+                value={
+                  localEstimate.seconds <= 0
+                    ? '—'
+                    : localRange
+                      ? `${formatTime(localRange.min, true)} – ${formatTime(localRange.max, true)}`
+                      : formatTime(localEstimate.seconds, true)
+                }
+                hint={
+                  localRange
+                    ? 'rough — nothing measured for this setting yet'
+                    : localEstimate.fromSample
+                      ? 'measured on this machine'
+                      : undefined
+                }
+                highlight={faster === 'local' ? 'faster' : undefined}
+              />
+            )}
+
+            {cloudEstimate && (
+              <EstimateRow
+                label="Estimated render time (AI, cloud)"
+                value={formatTime(cloudEstimate.totalSeconds, true)}
+                hint={`upload ${formatTime(cloudEstimate.uploadSeconds, true)} · startup ${formatTime(
+                  cloudEstimate.startupSeconds,
+                  true,
+                )} · upscale ${formatTime(cloudEstimate.computeSeconds, true)} · download ${formatTime(
+                  cloudEstimate.downloadSeconds,
+                  true,
+                )}`}
+                highlight={faster === 'cloud' ? 'faster' : undefined}
+              />
+            )}
+
+            {frames > 0 && cloud && !cloudReady && (
+              <p className="text-xs text-muted">
+                Cloud estimates appear once the cloud client reports its capabilities.
+              </p>
+            )}
           </div>
         </Section>
       </div>
@@ -243,7 +509,7 @@ const SettingsView = ({
         <Button variant="secondary" onClick={onClose}>
           Cancel
         </Button>
-        <Button onClick={() => onStartExport(settings, outputPath)} disabled={!outputPath}>
+        <Button onClick={() => onStartExport(settings, outputPath)} disabled={!outputPath || proLocked}>
           Start export
         </Button>
       </div>
@@ -251,20 +517,37 @@ const SettingsView = ({
   )
 }
 
-const ProgressView = ({ progress, onCancel }: { progress: number; onCancel: () => void }) => (
-  <div className="flex flex-col items-center p-8 text-center">
-    <Loader2 size={ICON_SIZE} strokeWidth={ICON_STROKE} className="mb-4 animate-spin text-muted" />
-    <h2 className="text-title font-semibold text-fg">Exporting…</h2>
-    <p className="mt-0.5 text-sm text-muted">Please wait while we process your video.</p>
-    <div className="mt-6 h-1.5 w-full overflow-hidden rounded-full bg-ctl">
-      <div className="h-full bg-accent" style={{ width: `${progress}%` }} />
+const ProgressView = ({ progress, onCancel }: { progress: number; onCancel: () => void }) => {
+  // Live ETA from the progress events: elapsed / progress.
+  const startedAt = useRef(Date.now())
+  const [now, setNow] = useState(() => Date.now())
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  const elapsedSeconds = (now - startedAt.current) / 1000
+  const remainingSeconds = estimateRemainingSeconds(elapsedSeconds, progress)
+
+  return (
+    <div className="flex flex-col items-center p-8 text-center">
+      <Loader2 size={ICON_SIZE} strokeWidth={ICON_STROKE} className="mb-4 animate-spin text-muted" />
+      <h2 className="text-title font-semibold text-fg">Exporting…</h2>
+      <p className="mt-0.5 text-sm text-muted">Please wait while we process your video.</p>
+      <div className="mt-6 h-1.5 w-full overflow-hidden rounded-full bg-ctl">
+        <div className="h-full bg-accent" style={{ width: `${progress}%` }} />
+      </div>
+      <p className="mt-3 font-mono text-sm tabular-nums text-muted">
+        {progress < 0.1 ? '< 1' : Math.round(progress)}%
+        {remainingSeconds !== null && ` · about ${formatTime(remainingSeconds, true)} left`}
+      </p>
+      <Button variant="secondary" onClick={onCancel} className="mt-6 w-full">
+        Cancel
+      </Button>
     </div>
-    <p className="mt-3 font-mono text-sm tabular-nums text-muted">{progress < 0.1 ? '< 1' : Math.round(progress)}%</p>
-    <Button variant="secondary" onClick={onCancel} className="mt-6 w-full">
-      Cancel
-    </Button>
-  </div>
-)
+  )
+}
 
 const ResultView = ({ result, onClose }: { result: NonNullable<ExportModalProps['result']>; onClose: () => void }) => {
   const isCancelled = !result.success && result.error === 'Export cancelled.'

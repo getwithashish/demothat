@@ -36,6 +36,10 @@ export interface ExportProjectState {
   aspectRatio: string
   duration: number
   videoPath?: string
+  videoDimensions?: { width: number; height: number }
+  frameStyles?: { padding?: number }
+  zoomRegions?: Record<string, { zoomLevel?: number }>
+  cameraMotions?: Array<{ from?: { scale?: number }; to?: { scale?: number } }>
   hasAudioTrack?: boolean
   isMuted?: boolean
   volume?: number

@@ -18,7 +18,10 @@ import {
   type ExportSettingsInput,
 } from './build-export-args'
 import { getEncoderCapabilities } from './encoder-capabilities'
+import { getEntitlement } from './entitlement'
+import { recordExportPerf } from './export-perf'
 import { isFormatAllowed, selectExportCodec } from '../../../shared/export-codec'
+import { maxCameraScale, maxZoomLevel, detectUpscale } from '../../../shared/export-upscale'
 import { applyRenderCap } from '../../../shared/export-render-cap'
 
 const FFMPEG_PATH = getFFmpegPath()
@@ -94,6 +97,32 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
     }
   }
 
+  // Upscaling is a Pro feature. This is a SOFT gate (see features/entitlement.ts):
+  // a rebuilt client can remove it, so it is defence in depth, not enforcement.
+  const videoDimensions = projectState.videoDimensions
+  if (videoDimensions && videoDimensions.width > 0 && videoDimensions.height > 0) {
+    const upscale = detectUpscale({
+      targetWidth,
+      targetHeight,
+      paddingPercent: Number(projectState.frameStyles?.padding) || 0,
+      videoWidth: videoDimensions.width,
+      videoHeight: videoDimensions.height,
+      maxZoom: maxZoomLevel(projectState.zoomRegions),
+      cameraScale: maxCameraScale(projectState.cameraMotions),
+    })
+    if (upscale.isUpscale) {
+      const entitlement = await getEntitlement()
+      if (!entitlement.pro) {
+        log.info('[ExportManager] Refusing an upscaling export without Pro entitlement.')
+        editorWindow.webContents.send('export:complete', {
+          success: false,
+          error: `This export would upscale the source by ${upscale.requiredScale.toFixed(1)}x, which is a Pro feature.`,
+        })
+        return
+      }
+    }
+  }
+
   // The renderer draws at the capped size; FFmpeg scales to the exact target.
   const { width: renderWidth, height: renderHeight } = applyRenderCap(targetWidth, targetHeight)
   log.info(`[ExportManager] Target ${targetWidth}x${targetHeight}, rendering at ${renderWidth}x${renderHeight}.`)
@@ -151,6 +180,11 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
   // Set while a frame write waits for `drain` so a cancel or an early FFmpeg
   // exit can unblock the renderer instead of leaving it hung.
   let unblockPendingWrite: (() => void) | null = null
+
+  // --- Measured throughput -------------------------------------------------------
+  // Recorded when the export completes so the modal can estimate render times.
+  const perfStartedAt = Date.now()
+  let framesWritten = 0
 
   ffmpeg.stderr.on('data', (data) => log.info(`[FFmpeg stderr]: ${data.toString()}`))
 
@@ -247,6 +281,7 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
     { frame, progress }: { frame: Uint8Array; progress: number },
   ): Promise<FrameWriteResult> => {
     const result = await writeFrame(frame)
+    if (!result.aborted) framesWritten += 1
     frameProgress = Math.max(frameProgress, Number(progress) || 0)
     emitProgress()
     return result
@@ -298,6 +333,18 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
         // Cancelled by SIGKILL
         editorWindow.webContents.send('export:complete', { success: false, error: 'Export cancelled.' })
       } else if (code === 0) {
+        // Remember how fast this configuration actually ran (render + encode).
+        if (framesWritten > 0) {
+          const elapsedSeconds = Math.max(0.001, (Date.now() - perfStartedAt) / 1000)
+          recordExportPerf({
+            resolution: exportSettings.resolution,
+            codec: selectExportCodec(targetHeight),
+            settingFps: exportSettings.fps,
+            width: targetWidth,
+            height: targetHeight,
+            throughput: framesWritten / elapsedSeconds,
+          })
+        }
         editorWindow.webContents.send('export:complete', { success: true, outputPath })
       } else {
         editorWindow.webContents.send('export:complete', { success: false, error: `FFmpeg exited with code ${code}` })

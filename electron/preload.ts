@@ -224,6 +224,20 @@ export const electronAPI = {
   /** Encoders the bundled FFmpeg has (a missing libx265 disables the 8K option). */
   getExportCapabilities: (): Promise<{ libx265: boolean; hevcEncoders: string[] }> =>
     ipcRenderer.invoke('export:capabilities'),
+  /** Local Pro state plus the URL the Unlock action should open. */
+  getEntitlement: (): Promise<{ pro: boolean; credits: number; unlockUrl: string }> =>
+    ipcRenderer.invoke('entitlement:get'),
+  /** Measured export throughput for the render-time estimates. */
+  getExportPerfSamples: (): Promise<
+    Array<{
+      resolution: string
+      codec: 'h264' | 'hevc'
+      settingFps: number
+      width: number
+      height: number
+      throughput: number
+    }>
+  > => ipcRenderer.invoke('export:perf'),
 
   onExportProgress: (callback: (payload: ProgressPayload) => void) => {
     const listener = (_event: IpcRendererEvent, payload: ProgressPayload) => callback(payload)

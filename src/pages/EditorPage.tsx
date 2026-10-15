@@ -9,6 +9,8 @@ import { ExportButton } from '../components/editor/ExportButton'
 import { ExportModal } from '../components/editor/ExportModal'
 import { WindowControls } from '../components/editor/WindowControls'
 import { SaveStatusIndicator } from '../components/editor/SaveStatusIndicator'
+import { ProjectMenu } from '../components/editor/ProjectMenu'
+import { ToastViewport } from '../components/ui/toast'
 import { PresetModal } from '../components/editor/PresetModal'
 import { SettingsModal } from '../components/settings/SettingsModal'
 import { Stack3, Loader2, Check, Settings } from 'tabler-icons-react'
@@ -26,6 +28,8 @@ export function EditorPage() {
     deleteRegion,
     initializePresets,
     initializeSettings,
+    initializeRecentProjects,
+    rememberRecentProject,
     applyOpenedProject,
     saveProject,
     togglePlay,
@@ -49,9 +53,6 @@ export function EditorPage() {
     duration > 0 && videoDimensions.width > 0
       ? `${formatTime(duration, true)} · ${videoDimensions.width}\u00d7${videoDimensions.height}`
       : null
-  const projectName = currentProjectPath
-    ? (currentProjectPath.split(/[\\/]/).pop() ?? '').replace(/\.dthat$/i, '')
-    : null
   const { undo, redo } = useEditorStore.temporal.getState()
   const {
     isModalOpen: isExportModalOpen,
@@ -116,20 +117,53 @@ export function EditorPage() {
     [seekForward, seekBackward],
   )
 
+  /** Opens a project, optionally one the user picked from Open recent. */
+  const openProject = useCallback(
+    async (path?: string) => {
+      const result = await window.electronAPI.openProjectFile(path ? { path } : undefined)
+      if (result.canceled || !result.project) return
+      await applyOpenedProject(result.project as Record<string, unknown>, result.projectPath ?? '')
+      useEditorStore.temporal.getState().clear()
+    },
+    [applyOpenedProject],
+  )
+
+  const handleSaveNow = useCallback(async () => {
+    await saveProject()
+  }, [saveProject])
+
+  /**
+   * Commands from the native File menu. Both the menu and the keyboard route
+   * through the same handlers as the project menu's items.
+   */
   const handleMenuCommand = useCallback(
     async (command: 'save' | 'save-as' | 'open') => {
       if (command === 'open') {
-        const result = await window.electronAPI.openProjectFile()
-        if (!result.canceled && result.project) {
-          await applyOpenedProject(result.project as Record<string, unknown>, result.projectPath ?? '')
-          useEditorStore.temporal.getState().clear()
-        }
+        await openProject()
         return
       }
-      await saveProject({ saveAs: command === 'save-as' })
+      if (command === 'save') {
+        await handleSaveNow()
+        return
+      }
+      await saveProject({ saveAs: true })
     },
-    [applyOpenedProject, saveProject],
+    [openProject, handleSaveNow, saveProject],
   )
+
+  const handleShowInFolder = useCallback(() => {
+    const path = useEditorStore.getState().currentProjectPath
+    if (path) window.electronAPI.showItemInFolder(path)
+  }, [])
+
+  const handleNewRecording = useCallback(() => {
+    window.electronAPI.showRecorderWindow()
+  }, [])
+
+  // Every project that gets a path (opened, saved, renamed) is remembered.
+  useEffect(() => {
+    if (currentProjectPath) rememberRecentProject(currentProjectPath)
+  }, [currentProjectPath, rememberRecentProject])
 
   useKeyboardShortcuts(
     {
@@ -186,13 +220,14 @@ export function EditorPage() {
   useEffect(() => {
     window.electronAPI.getPlatform().then(setPlatform)
     initializeSettings()
+    void initializeRecentProjects()
     const cleanup = window.electronAPI.onProjectOpen(async (payload) => {
       await initializePresets()
       await loadProject(payload)
       useEditorStore.temporal.getState().clear()
     })
     return () => cleanup()
-  }, [loadProject, initializePresets, initializeSettings])
+  }, [loadProject, initializePresets, initializeSettings, initializeRecentProjects])
 
   useEffect(() => {
     const cleanupMenu = window.electronAPI.onMenuCommand((command) => {
@@ -301,8 +336,13 @@ export function EditorPage() {
             </div>
           )}
           <div className="pointer-events-none flex min-w-0 items-center gap-2 pl-1">
-            <h1 className="truncate text-ui font-semibold tracking-tight text-fg">DemoThat</h1>
-            {projectName && <span className="truncate text-ui text-muted">{projectName}</span>}
+            <ProjectMenu
+              onOpenProject={() => void openProject()}
+              onOpenRecent={(path) => void openProject(path)}
+              onSave={() => void handleSaveNow()}
+              onShowInFolder={handleShowInFolder}
+              onNewRecording={handleNewRecording}
+            />
             {metaLabel && <span className="truncate font-mono text-sm text-muted">{metaLabel}</span>}
             <SaveStatusIndicator />
           </div>
@@ -395,6 +435,8 @@ export function EditorPage() {
       />
       <PresetModal isOpen={isPresetModalOpen} onClose={() => setPresetModalOpen(false)} />
       <SettingsModal isOpen={isSettingsModalOpen} onClose={() => setSettingsModalOpen(false)} />
+      {/* Kept clear of the minimised-export bubble in the same corner. */}
+      <ToastViewport className={isExporting && isExportMinimized ? 'bottom-20' : 'bottom-5'} />
     </main>
   )
 }

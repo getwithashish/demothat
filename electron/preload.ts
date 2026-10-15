@@ -96,6 +96,9 @@ export const electronAPI = {
   zoomReset: (): Promise<number> => ipcRenderer.invoke('window:zoom-reset'),
   getZoomFactor: (): Promise<number> => ipcRenderer.invoke('window:zoom-factor'),
 
+  /** Brings the recorder window to the front ("New recording"). */
+  showRecorderWindow: (): void => ipcRenderer.send('app:show-recorder'),
+
   getCursorScale: (): Promise<number> => ipcRenderer.invoke('desktop:get-cursor-scale'),
   setCursorScale: (scale: number): void => ipcRenderer.send('desktop:set-cursor-scale', scale),
 

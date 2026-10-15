@@ -63,6 +63,9 @@ export function createRecorderWindow() {
 
   // The renderer sizes the window to its dock content; keep it centred
   // horizontally and never wider than the work area.
+  // removeAllListeners first: the window can be recreated (see "New recording"),
+  // and ipcMain.on would otherwise stack a duplicate handler per creation.
+  ipcMain.removeAllListeners('recorder:set-size')
   ipcMain.on('recorder:set-size', (_event, { width, height }: { width: number; height: number }) => {
     const win = appState.recorderWin
     if (!win || win.isDestroyed()) return

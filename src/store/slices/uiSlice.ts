@@ -1,10 +1,23 @@
 import type { UIState, UIActions, Slice, CursorStyles, SidePanelTab } from '../../types'
 import { DEFAULTS } from '../../lib/constants'
+import {
+  addRecentProject,
+  parseRecentProjects,
+  projectNameFromPath,
+  removeRecentProject,
+} from '../../lib/recent-projects'
 
 /** Auto-save cadence when the user has not chosen one. */
 export const DEFAULT_AUTO_SAVE_INTERVAL_SEC = 30
 const AUTO_SAVE_ENABLED_KEY = 'editor.autoSaveEnabled'
 const AUTO_SAVE_INTERVAL_KEY = 'editor.autoSaveIntervalSec'
+const RECENT_PROJECTS_KEY = 'project.recentProjects'
+
+/** How many corner messages can stack up before the oldest is dropped. */
+const MAX_VISIBLE_TOASTS = 3
+
+/** Toast ids only need to be unique within a session. */
+let toastCounter = 0
 
 const initialCursorStyles: CursorStyles = {
   showCursor: DEFAULTS.CURSOR.SHOW_CURSOR.defaultValue,
@@ -30,6 +43,8 @@ export const initialUIState: UIState = {
   activeSidePanelTab: 'general',
   autoSaveEnabled: true,
   autoSaveIntervalSec: DEFAULT_AUTO_SAVE_INTERVAL_SEC,
+  recentProjects: [],
+  toasts: [],
 }
 
 const updateWindowsTitleBar = (mode: 'light' | 'dark', platform: NodeJS.Platform | null) => {
@@ -128,5 +143,51 @@ export const createUISlice: Slice<UIState, UIActions> = (set, get) => ({
       state.autoSaveIntervalSec = clamped
     })
     window.electronAPI.setSetting(AUTO_SAVE_INTERVAL_KEY, clamped)
+  },
+  initializeRecentProjects: async () => {
+    try {
+      const stored = await window.electronAPI.getSetting(RECENT_PROJECTS_KEY)
+      set((state) => {
+        state.recentProjects = parseRecentProjects(stored)
+      })
+    } catch (error) {
+      console.error('Could not load the recent project list:', error)
+    }
+  },
+  rememberRecentProject: (path: string) => {
+    if (!path) return
+    const next = addRecentProject(get().recentProjects, {
+      path,
+      name: projectNameFromPath(path),
+      openedAt: Date.now(),
+    })
+    set((state) => {
+      state.recentProjects = next
+    })
+    void window.electronAPI.setSetting(RECENT_PROJECTS_KEY, next)
+  },
+  forgetRecentProject: (path: string) => {
+    const next = removeRecentProject(get().recentProjects, path)
+    set((state) => {
+      state.recentProjects = next
+    })
+    void window.electronAPI.setSetting(RECENT_PROJECTS_KEY, next)
+  },
+  clearRecentProjects: () => {
+    set((state) => {
+      state.recentProjects = []
+    })
+    void window.electronAPI.setSetting(RECENT_PROJECTS_KEY, [])
+  },
+  pushToast: (toast) => {
+    const id = `toast-${++toastCounter}`
+    set((state) => {
+      state.toasts = [...state.toasts, { id, ...toast }].slice(-MAX_VISIBLE_TOASTS)
+    })
+  },
+  dismissToast: (id: string) => {
+    set((state) => {
+      state.toasts = state.toasts.filter((toast) => toast.id !== id)
+    })
   },
 })

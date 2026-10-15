@@ -205,6 +205,16 @@ export interface ProjectState {
 /** Save lifecycle shown in the header's save indicator. */
 export type SaveStatus = 'saved' | 'saving' | 'unsaved' | 'error' | 'untitled'
 
+/** A project the user opened or saved recently (most recent first). */
+export interface RecentProject {
+  /** Absolute path of the `.dthat` archive. */
+  path: string
+  /** Display name, without the extension. */
+  name: string
+  /** Epoch ms it was last opened or saved. */
+  openedAt: number
+}
+
 export interface ProjectActions {
   loadProject: (paths: { videoPath: string; metadataPath: string; webcamVideoPath?: string }) => Promise<void>
   setVideoDimensions: (dims: { width: number; height: number }) => void
@@ -389,6 +399,16 @@ export interface WebcamActions {
   updateWebcamStyle: (style: Partial<WebcamStyles>) => void
 }
 
+/** A short, dismissible message in the corner of the editor. */
+export interface Toast {
+  id: string
+  message: string
+  /** Optional button label, e.g. "Open". */
+  actionLabel?: string
+  /** Path revealed by the action button (the copy that was just written). */
+  revealPath?: string
+}
+
 export interface UIState {
   mode: 'light' | 'dark'
   isPreviewFullScreen: boolean
@@ -397,6 +417,10 @@ export interface UIState {
   activeSidePanelTab: SidePanelTab
   autoSaveEnabled: boolean
   autoSaveIntervalSec: number
+  /** Recently opened/saved projects, most recent first. */
+  recentProjects: RecentProject[]
+  /** Corner messages, oldest first. */
+  toasts: Toast[]
 }
 export interface UIActions {
   toggleMode: () => void
@@ -407,6 +431,16 @@ export interface UIActions {
   setActiveSidePanelTab: (tab: SidePanelTab) => void
   setAutoSaveEnabled: (enabled: boolean) => void
   setAutoSaveIntervalSec: (seconds: number) => void
+  /** Loads the remembered project list from the settings store. */
+  initializeRecentProjects: () => Promise<void>
+  /** Records a project as recently used (called after an open or a save). */
+  rememberRecentProject: (path: string) => void
+  /** Drops a project from the list (missing file, or the user clearing it). */
+  forgetRecentProject: (path: string) => void
+  clearRecentProjects: () => void
+  /** Shows a corner message; the newest few are kept. */
+  pushToast: (toast: { message: string; actionLabel?: string; revealPath?: string }) => void
+  dismissToast: (id: string) => void
 }
 
 export interface AudioClip {

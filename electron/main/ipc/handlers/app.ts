@@ -1,5 +1,6 @@
 import { app, BrowserWindow, IpcMainEvent, IpcMainInvokeEvent } from 'electron'
 import { appState } from '../../state'
+import { createRecorderWindow } from '../../windows/recorder-window'
 
 export function handleGetPath(_event: IpcMainInvokeEvent, name: 'home' | 'userData' | 'desktop') {
   return app.getPath(name)
@@ -52,4 +53,20 @@ export function updateTitleBarOverlay(_event: IpcMainEvent, options: { color: st
   if (editorWindow && !editorWindow.isDestroyed()) {
     editorWindow.setTitleBarOverlay(options)
   }
+}
+
+/**
+ * Brings the recorder back to the front ("New recording" in the project menu).
+ * The recorder window usually still exists but is hidden or minimised; it is
+ * only recreated if it was closed outright.
+ */
+export function showRecorderWindow(): void {
+  const existing = appState.recorderWin
+  if (existing && !existing.isDestroyed()) {
+    if (existing.isMinimized()) existing.restore()
+    existing.show()
+    existing.focus()
+    return
+  }
+  createRecorderWindow()
 }

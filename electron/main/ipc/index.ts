@@ -18,6 +18,7 @@ export function registerIpcHandlers() {
   ipcMain.on('window:close', appHandlers.closeWindow)
   ipcMain.handle('window:isMaximized', appHandlers.handleIsMaximized)
   ipcMain.on('window:update-title-bar-overlay', appHandlers.updateTitleBarOverlay)
+  ipcMain.on('app:show-recorder', appHandlers.showRecorderWindow)
 
   // Interface zoom (see desktop handlers)
   ipcMain.handle('window:zoom-in', desktopHandlers.handleZoomIn)

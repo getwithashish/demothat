@@ -1,3 +1,20 @@
+## [1.6.0](https://github.com/getwithashish/DemoThat/compare/v1.5.0...v1.6.0) (2026-10-15)
+
+### Features
+
+* gate upscaling exports behind Pro and estimate render times ([8d959ed](https://github.com/getwithashish/DemoThat/commit/8d959ed47a1d93f81777caeb9530edd8020cbe77))
+* one guard against losing work on open, close and quit ([6637241](https://github.com/getwithashish/DemoThat/commit/6637241e5d6e4c1d5b5c9a9103717452c6efb328))
+* project menu in the editor header ([87950e7](https://github.com/getwithashish/DemoThat/commit/87950e7edb4b6ecd59cbe341643018a65b14b90a))
+* save a copy, rename in place, and a quiet open-recent path ([9f1a95d](https://github.com/getwithashish/DemoThat/commit/9f1a95dba92fa43cd4fdb5e70a9579833d8cb7d9))
+* show save status in the editor header ([44f8eba](https://github.com/getwithashish/DemoThat/commit/44f8eba78b5cefb8d820f64250407e3d0d96b847))
+* surface the crash-recovery copy in Open recent ([b2d3920](https://github.com/getwithashish/DemoThat/commit/b2d39209c719beb010dcfb53a3783ecb54bed354))
+
+### Bug Fixes
+
+* drop the old path from Open recent after a rename ([064573b](https://github.com/getwithashish/DemoThat/commit/064573ba0605872ea53f987438c70bed3a200559))
+* size the recorder window to its dock and make it truly transparent ([6262713](https://github.com/getwithashish/DemoThat/commit/62627134c8e9e16f6728a5f4d635e9769bd0d85f))
+* stop losing edits made while a save is in flight ([40872f7](https://github.com/getwithashish/DemoThat/commit/40872f719ac310746f740d4c00cda6d1b81b5803))
+
 ## [1.4.1](https://github.com/tamnguyenvan/screenarc/compare/v1.4.0...v1.4.1) (2026-07-22)
 
 

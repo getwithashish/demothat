@@ -11,12 +11,15 @@ const css = readFileSync(fileURLToPath(new URL('./tokens.css', import.meta.url))
   /\/\*[\s\S]*?\*\//g,
   '',
 )
+// Prettier may rewrite attribute selectors to single quotes (`[data-theme='light']`),
+// so match markers independently of quote style.
+const normalizeQuotes = (value: string) => value.replace(/"/g, "'")
 
 function themeTokens(marker: string): Record<string, string> {
   const out: Record<string, string> = {}
   for (const chunk of css.split('}')) {
     const brace = chunk.indexOf('{')
-    if (brace < 0 || !chunk.slice(0, brace).includes(marker)) continue
+    if (brace < 0 || !normalizeQuotes(chunk.slice(0, brace)).includes(normalizeQuotes(marker))) continue
     for (const m of chunk.slice(brace + 1).matchAll(/(--sa-[a-z-]+):\s*([^;]+);/g))
       out[m[1].replace('--sa-', '')] = m[2].trim()
   }

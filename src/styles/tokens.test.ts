@@ -12,6 +12,9 @@ const SRC = fileURLToPath(new URL('../../src', import.meta.url))
 const TOKENS = join(SRC, 'styles', 'tokens.css')
 const raw = readFileSync(TOKENS, 'utf8')
 const css = raw.replace(/\/\*[\s\S]*?\*\//g, '')
+// Prettier may rewrite attribute selectors to single quotes (`[data-theme='light']`),
+// so match markers independently of quote style.
+const normalizeQuotes = (value: string) => value.replace(/"/g, "'")
 
 /** --sa-* declarations from the block(s) whose selector matches `marker`. */
 function themeTokens(marker: string): Record<string, string> {
@@ -19,14 +22,14 @@ function themeTokens(marker: string): Record<string, string> {
   for (const chunk of css.split('}')) {
     const brace = chunk.indexOf('{')
     if (brace < 0) continue
-    if (!chunk.slice(0, brace).includes(marker)) continue
+    if (!normalizeQuotes(chunk.slice(0, brace)).includes(normalizeQuotes(marker))) continue
     for (const m of chunk.slice(brace + 1).matchAll(/(--sa-[a-z-]+):\s*([^;]+);/g)) out[m[1]] = m[2].trim()
   }
   return out
 }
 
-const light = themeTokens('[data-theme="light"]')
-const dark = themeTokens('[data-theme="dark"]')
+const light = themeTokens("[data-theme='light']")
+const dark = themeTokens("[data-theme='dark']")
 
 function sourceFiles(dir: string, acc: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {

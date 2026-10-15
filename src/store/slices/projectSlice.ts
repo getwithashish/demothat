@@ -564,17 +564,18 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
           set((state) => {
             state.currentProjectPath = result.path ?? state.currentProjectPath
             state.lastSavedAt = Date.now()
-            state.saveStatus = 'saved'
             state.saveError = null
           })
 
           // Mark clean against the signature captured before the write, then
           // recompute against the live state: edits made while the save was in
-          // flight must remain dirty.
+          // flight must remain dirty. One set, so the derived status can never
+          // be observed mid-flight.
           markSignatureClean(signatureAtStart)
           const stillDirty = captureProjectSignature(get()) !== signatureAtStart
           set((state) => {
             state.isDirty = stillDirty
+            state.saveStatus = stillDirty ? 'unsaved' : state.currentProjectPath ? 'saved' : 'untitled'
           })
           return result
         } catch (error) {

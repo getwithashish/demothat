@@ -56,6 +56,18 @@ export function formatInterval(seconds: number): string {
   return minutes === 1 ? '1 minute' : `${minutes} minutes`
 }
 
+/** "12 seconds ago" / "2 minutes ago" — used for the recovery-copy tooltip. */
+export function formatRelativeTime(at: number | null, now: number): string | null {
+  if (!at || !Number.isFinite(at)) return null
+  const seconds = Math.max(0, Math.round((now - at) / 1000))
+  if (seconds < 5) return 'just now'
+  if (seconds < 60) return `${seconds} seconds ago`
+  const minutes = Math.round(seconds / 60)
+  if (minutes < 60) return minutes === 1 ? '1 minute ago' : `${minutes} minutes ago`
+  const hours = Math.round(minutes / 60)
+  return hours === 1 ? '1 hour ago' : `${hours} hours ago`
+}
+
 export interface SaveIndicatorInput {
   saveStatus: SaveStatus
   /** Milliseconds the current `saving` status has been showing. */

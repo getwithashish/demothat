@@ -3,6 +3,7 @@ import {
   SAVING_INDICATOR_DELAY_MS,
   deriveSaveStatus,
   formatInterval,
+  formatRelativeTime,
   selectSaveIndicator,
   shouldAutoSave,
 } from './auto-save'
@@ -72,6 +73,25 @@ describe('formatInterval', () => {
   it('degrades gracefully for nonsense input', () => {
     expect(formatInterval(0)).toBe('a moment')
     expect(formatInterval(Number.NaN)).toBe('a moment')
+  })
+})
+
+describe('formatRelativeTime', () => {
+  const now = 1_700_000_000_000
+
+  it('reads seconds, minutes and hours', () => {
+    expect(formatRelativeTime(now - 12_000, now)).toBe('12 seconds ago')
+    expect(formatRelativeTime(now - 120_000, now)).toBe('2 minutes ago')
+    expect(formatRelativeTime(now - 7_200_000, now)).toBe('2 hours ago')
+    expect(formatRelativeTime(now - 60_000, now)).toBe('1 minute ago')
+  })
+
+  it('says just now for the last few seconds', () => {
+    expect(formatRelativeTime(now - 1_000, now)).toBe('just now')
+  })
+
+  it('is null when there is no timestamp', () => {
+    expect(formatRelativeTime(null, now)).toBeNull()
   })
 })
 

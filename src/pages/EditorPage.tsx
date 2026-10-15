@@ -8,6 +8,7 @@ import { UpdateNotification } from '../components/editor/UpdateNotification'
 import { ExportButton } from '../components/editor/ExportButton'
 import { ExportModal } from '../components/editor/ExportModal'
 import { WindowControls } from '../components/editor/WindowControls'
+import { SaveStatusIndicator } from '../components/editor/SaveStatusIndicator'
 import { PresetModal } from '../components/editor/PresetModal'
 import { SettingsModal } from '../components/settings/SettingsModal'
 import { Stack3, Loader2, Check, Settings } from 'tabler-icons-react'
@@ -34,17 +35,15 @@ export function EditorPage() {
     seekBackward,
     seekForward,
   } = useEditorStore.getState()
-  const { presetSaveStatus, duration, isPreviewFullScreen, videoDimensions, currentProjectPath, isDirty } =
-    useEditorStore(
-      useShallow((state) => ({
-        presetSaveStatus: state.presetSaveStatus,
-        duration: state.duration,
-        isPreviewFullScreen: state.isPreviewFullScreen,
-        videoDimensions: state.videoDimensions,
-        currentProjectPath: state.currentProjectPath,
-        isDirty: state.isDirty,
-      })),
-    )
+  const { presetSaveStatus, duration, isPreviewFullScreen, videoDimensions, currentProjectPath } = useEditorStore(
+    useShallow((state) => ({
+      presetSaveStatus: state.presetSaveStatus,
+      duration: state.duration,
+      isPreviewFullScreen: state.isPreviewFullScreen,
+      videoDimensions: state.videoDimensions,
+      currentProjectPath: state.currentProjectPath,
+    })),
+  )
   // Top-bar meta (DESIGN_SPEC §5 shows "project | timecode · resolution"). Display only.
   const metaLabel =
     duration > 0 && videoDimensions.width > 0
@@ -301,19 +300,11 @@ export function EditorPage() {
               {renderHeaderActions()}
             </div>
           )}
-          <div className="pointer-events-none flex min-w-0 items-baseline gap-2 pl-1">
+          <div className="pointer-events-none flex min-w-0 items-center gap-2 pl-1">
             <h1 className="truncate text-ui font-semibold tracking-tight text-fg">DemoThat</h1>
-            {projectName && (
-              <span className="truncate text-ui text-muted">
-                {projectName}
-                {isDirty && (
-                  <span className="ml-1 text-accent" title="Unsaved changes">
-                    •
-                  </span>
-                )}
-              </span>
-            )}
+            {projectName && <span className="truncate text-ui text-muted">{projectName}</span>}
             {metaLabel && <span className="truncate font-mono text-sm text-muted">{metaLabel}</span>}
+            <SaveStatusIndicator />
           </div>
         </div>
 

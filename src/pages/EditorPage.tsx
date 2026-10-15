@@ -159,7 +159,17 @@ export function EditorPage() {
     pushToast({ message: `Copy saved as ${fileName}`, actionLabel: 'Open', revealPath: result.path })
   }, [saveProjectCopy, pushToast])
 
-  const handleRename = useCallback(async (newName: string) => renameCurrentProject(newName), [renameCurrentProject])
+  const handleRename = useCallback(
+    async (newName: string) => {
+      const previousPath = useEditorStore.getState().currentProjectPath
+      const result = await renameCurrentProject(newName)
+      // The remembered entry still points at the old file name; the path effect
+      // adds the new one, so drop the stale entry rather than leaving a dead row.
+      if (result.ok && previousPath) forgetRecentProject(previousPath)
+      return result
+    },
+    [renameCurrentProject, forgetRecentProject],
+  )
 
   /**
    * Commands from the native File menu. Both the menu and the keyboard route

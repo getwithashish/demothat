@@ -205,7 +205,12 @@ export interface ProjectActions {
   /** Applies a project opened from a `.dthat` archive over a fresh load. */
   applyOpenedProject: (project: Record<string, unknown>, projectPath: string) => Promise<void>
   /** Saves the project; with saveAs the user is asked for a destination. */
-  saveProject: (options?: { saveAs?: boolean }) => Promise<{ canceled: boolean; path?: string }>
+  saveProject: (options?: { saveAs?: boolean; auto?: boolean }) => Promise<{
+    canceled: boolean
+    path?: string
+    /** True when the write went to the crash-recovery copy, not a real project file. */
+    recovery?: boolean
+  }>
 }
 
 export interface PlaybackState {
@@ -374,6 +379,8 @@ export interface UIState {
   cursorThemeName: string
   cursorStyles: CursorStyles
   activeSidePanelTab: SidePanelTab
+  autoSaveEnabled: boolean
+  autoSaveIntervalSec: number
 }
 export interface UIActions {
   toggleMode: () => void
@@ -382,6 +389,8 @@ export interface UIActions {
   setCursorThemeName: (themeName: string) => void
   updateCursorStyle: (style: Partial<CursorStyles>) => void
   setActiveSidePanelTab: (tab: SidePanelTab) => void
+  setAutoSaveEnabled: (enabled: boolean) => void
+  setAutoSaveIntervalSec: (seconds: number) => void
 }
 
 export interface AudioClip {

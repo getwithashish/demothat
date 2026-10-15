@@ -179,9 +179,12 @@ export const electronAPI = {
   },
 
   // --- Project files (.dthat) ---
-  saveProject: (request: { project: unknown; path?: string | null }): Promise<{ canceled: boolean; path?: string }> =>
-    ipcRenderer.invoke('project:save', request),
-  saveProjectAs: (project: unknown): Promise<{ canceled: boolean; path?: string }> =>
+  saveProject: (request: {
+    project: unknown
+    path?: string | null
+    auto?: boolean
+  }): Promise<{ canceled: boolean; path?: string; recovery?: boolean }> => ipcRenderer.invoke('project:save', request),
+  saveProjectAs: (project: unknown): Promise<{ canceled: boolean; path?: string; recovery?: boolean }> =>
     ipcRenderer.invoke('project:save-as', project),
   openProjectFile: (options?: {
     path?: string

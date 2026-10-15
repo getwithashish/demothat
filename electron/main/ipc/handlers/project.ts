@@ -6,16 +6,20 @@ import { appState } from '../../state'
 import {
   PROJECT_FILE_FILTERS,
   ensureProjectExtension,
+  getRecoveryProjectPath,
   openProject,
   saveProject,
   type SaveProjectPayload,
 } from '../../features/project-file'
+import { resolveSaveDestination } from '../../lib/project-file-core'
 import { promptOpenProject } from '../../features/project-open'
 
 interface SaveRequest {
   project: SaveProjectPayload
   /** Existing destination; when absent the user is asked to choose one. */
   path?: string | null
+  /** Auto-save: never prompt, fall back to the recovery copy when unsaved. */
+  auto?: boolean
 }
 
 function parentWindow(): Electron.BrowserWindow | undefined {
@@ -41,12 +45,23 @@ async function chooseSavePath(): Promise<string | undefined> {
 }
 
 export async function handleProjectSave(_event: IpcMainInvokeEvent, request: SaveRequest) {
-  const destPath = request.path ? ensureProjectExtension(request.path) : await chooseSavePath()
+  const destination = resolveSaveDestination({
+    requestedPath: request.path,
+    auto: request.auto,
+    recoveryPath: getRecoveryProjectPath(),
+  })
+  const destPath = destination
+    ? destination.recovery
+      ? destination.path
+      : ensureProjectExtension(destination.path)
+    : await chooseSavePath()
   if (!destPath) return { canceled: true }
 
   await saveProject(request.project, destPath)
-  appState.editorProjectDirty = false
-  return { canceled: false, path: destPath }
+  // A recovery write does not count as "saved" for the dirty flag.
+  const recovery = destination?.recovery ?? false
+  if (!recovery) appState.editorProjectDirty = false
+  return { canceled: false, path: destPath, recovery }
 }
 
 export async function handleProjectSaveAs(_event: IpcMainInvokeEvent, project: SaveProjectPayload) {

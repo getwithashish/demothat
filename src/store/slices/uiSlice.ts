@@ -1,6 +1,11 @@
 import type { UIState, UIActions, Slice, CursorStyles, SidePanelTab } from '../../types'
 import { DEFAULTS } from '../../lib/constants'
 
+/** Auto-save cadence when the user has not chosen one. */
+export const DEFAULT_AUTO_SAVE_INTERVAL_SEC = 30
+const AUTO_SAVE_ENABLED_KEY = 'editor.autoSaveEnabled'
+const AUTO_SAVE_INTERVAL_KEY = 'editor.autoSaveIntervalSec'
+
 const initialCursorStyles: CursorStyles = {
   showCursor: DEFAULTS.CURSOR.SHOW_CURSOR.defaultValue,
   shadowBlur: DEFAULTS.CURSOR.SHADOW.BLUR.defaultValue,
@@ -23,6 +28,8 @@ export const initialUIState: UIState = {
   cursorThemeName: 'default',
   cursorStyles: initialCursorStyles,
   activeSidePanelTab: 'general',
+  autoSaveEnabled: true,
+  autoSaveIntervalSec: DEFAULT_AUTO_SAVE_INTERVAL_SEC,
 }
 
 const updateWindowsTitleBar = (mode: 'light' | 'dark', platform: NodeJS.Platform | null) => {
@@ -72,6 +79,17 @@ export const createUISlice: Slice<UIState, UIActions> = (set, get) => ({
           state.cursorStyles = { ...initialCursorStyles, ...appearance.cursorStyles }
         })
       }
+      const [autoSaveEnabled, autoSaveIntervalSec] = await Promise.all([
+        window.electronAPI.getSetting<boolean>(AUTO_SAVE_ENABLED_KEY),
+        window.electronAPI.getSetting<number>(AUTO_SAVE_INTERVAL_KEY),
+      ])
+      set((state) => {
+        state.autoSaveEnabled = autoSaveEnabled ?? initialUIState.autoSaveEnabled
+        state.autoSaveIntervalSec =
+          typeof autoSaveIntervalSec === 'number' && autoSaveIntervalSec > 0
+            ? autoSaveIntervalSec
+            : initialUIState.autoSaveIntervalSec
+      })
       updateWindowsTitleBar(finalMode, get().platform)
     } catch (error) {
       console.error('Could not load app settings:', error)
@@ -97,5 +115,18 @@ export const createUISlice: Slice<UIState, UIActions> = (set, get) => ({
     set((state) => {
       state.activeSidePanelTab = tab
     })
+  },
+  setAutoSaveEnabled: (enabled: boolean) => {
+    set((state) => {
+      state.autoSaveEnabled = enabled
+    })
+    window.electronAPI.setSetting(AUTO_SAVE_ENABLED_KEY, enabled)
+  },
+  setAutoSaveIntervalSec: (seconds: number) => {
+    const clamped = Math.max(5, Math.round(seconds))
+    set((state) => {
+      state.autoSaveIntervalSec = clamped
+    })
+    window.electronAPI.setSetting(AUTO_SAVE_INTERVAL_KEY, clamped)
   },
 })

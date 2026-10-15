@@ -43,6 +43,15 @@ export function getProjectsDir(): string {
   return path.join(app.getPath('userData'), 'projects')
 }
 
+/**
+ * Rolling recovery copy for projects that have never been saved to a `.dthat`.
+ * Auto-save writes here so unsaved work survives a crash; the file is a normal
+ * archive and can be opened through File → Open Project.
+ */
+export function getRecoveryProjectPath(): string {
+  return path.join(app.getPath('userData'), 'autosave', 'recovery.dthat')
+}
+
 function buildManifest(source: ProjectSourceInfo): ProjectManifest {
   return {
     format: CURRENT_PROJECT_FORMAT,

@@ -479,14 +479,24 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
         const payload = await collectSavePayload(get())
         const result = options?.saveAs
           ? await window.electronAPI.saveProjectAs(payload)
-          : await window.electronAPI.saveProject({ project: payload, path: current.currentProjectPath })
+          : await window.electronAPI.saveProject({
+              project: payload,
+              path: current.currentProjectPath,
+              auto: options?.auto,
+            })
 
         if (!result.canceled && result.path) {
-          set((state) => {
-            state.currentProjectPath = result.path ?? state.currentProjectPath
-            state.isDirty = false
-          })
-          markProjectClean(get())
+          if (result.recovery) {
+            // Only the crash-recovery copy was written: the project is still
+            // unsaved, so leave currentProjectPath and the dirty flag alone.
+            console.info('[ProjectSlice] Auto-saved a recovery copy to', result.path)
+          } else {
+            set((state) => {
+              state.currentProjectPath = result.path ?? state.currentProjectPath
+              state.isDirty = false
+            })
+            markProjectClean(get())
+          }
         }
         return result
       },

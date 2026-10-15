@@ -84,6 +84,23 @@ export async function assertMediaFilesExist(media: MediaEntry[]): Promise<void> 
   }
 }
 
+/**
+ * Decides where a save should go.
+ *
+ * - an existing destination wins (manual and auto saves alike);
+ * - an auto-save with no destination falls back to the recovery copy;
+ * - a manual save with no destination returns null, meaning "ask the user".
+ */
+export function resolveSaveDestination(options: {
+  requestedPath?: string | null
+  auto?: boolean
+  recoveryPath: string
+}): { path: string; recovery: boolean } | null {
+  if (options.requestedPath) return { path: options.requestedPath, recovery: false }
+  if (options.auto) return { path: options.recoveryPath, recovery: true }
+  return null
+}
+
 // --- Path / entry safety -----------------------------------------------------
 
 /** True for an archive-relative path with no traversal or absolute components. */

@@ -17,6 +17,7 @@ import {
   isSafeArchivePath,
   migrateProject,
   prepareProjectForSave,
+  resolveSaveDestination,
   restoreProjectPaths,
   validateManifest,
   validateProjectFile,
@@ -296,5 +297,33 @@ describe('untrusted input', () => {
     state.videoPath = path.join(sourceDir, 'gone.mp4')
     const prepared = prepareProjectForSave(state)
     await expect(assertMediaFilesExist(prepared.media)).rejects.toThrow(/media file is missing/i)
+  })
+})
+
+describe('resolveSaveDestination', () => {
+  const recoveryPath = '/userData/autosave/recovery.dthat'
+
+  it('uses an existing destination for both manual and auto saves', () => {
+    expect(resolveSaveDestination({ requestedPath: '/p.dthat', auto: false, recoveryPath })).toEqual({
+      path: '/p.dthat',
+      recovery: false,
+    })
+    expect(resolveSaveDestination({ requestedPath: '/p.dthat', auto: true, recoveryPath })).toEqual({
+      path: '/p.dthat',
+      recovery: false,
+    })
+  })
+
+  it('falls back to the recovery copy for an auto-save with no destination', () => {
+    expect(resolveSaveDestination({ requestedPath: null, auto: true, recoveryPath })).toEqual({
+      path: recoveryPath,
+      recovery: true,
+    })
+    expect(resolveSaveDestination({ auto: true, recoveryPath })).toEqual({ path: recoveryPath, recovery: true })
+  })
+
+  it('returns null for a manual save with no destination so the caller can prompt', () => {
+    expect(resolveSaveDestination({ requestedPath: null, auto: false, recoveryPath })).toBeNull()
+    expect(resolveSaveDestination({ recoveryPath })).toBeNull()
   })
 })

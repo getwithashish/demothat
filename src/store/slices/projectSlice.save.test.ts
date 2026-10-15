@@ -28,8 +28,24 @@ const electronAPI = {
       resolveSave = resolve
     })
   }),
+  saveProjectCopy: vi.fn((request: { project: unknown; suggestedName?: string }) => {
+    copyRequests.push(request)
+    return Promise.resolve({ canceled: false, path: '/tmp/recording copy.dthat' })
+  }),
+  renameProject: vi.fn((request: { currentPath: string; newName: string }) => {
+    renameRequests.push(request)
+    if (renameResult) return Promise.resolve(renameResult)
+    return new Promise<{ ok: boolean; path?: string; error?: string }>((resolve) => {
+      resolveRename = resolve
+    })
+  }),
   setProjectDirty: vi.fn(),
 }
+
+const copyRequests: Array<{ project: unknown; suggestedName?: string }> = []
+const renameRequests: Array<{ currentPath: string; newName: string }> = []
+let resolveRename: ((value: { ok: boolean; path?: string; error?: string }) => void) | null = null
+let renameResult: { ok: boolean; path?: string; error?: string } | null = null
 
 /** Collects the project state a save actually shipped, for assertions. */
 function shippedPadding(index: number): number {
@@ -40,7 +56,11 @@ function shippedPadding(index: number): number {
 
 function resetStore(): void {
   saveRequests.length = 0
+  copyRequests.length = 0
+  renameRequests.length = 0
   resolveSave = null
+  resolveRename = null
+  renameResult = null
   rejectSave = null
   useEditorStore.setState({
     ...initialProjectState,
@@ -60,6 +80,11 @@ function resetStore(): void {
 async function waitForSaveRequest(count: number): Promise<void> {
   for (let i = 0; i < 100 && saveRequests.length < count; i++) await Promise.resolve()
   expect(saveRequests.length).toBeGreaterThanOrEqual(count)
+}
+
+async function waitForRenameRequest(count: number): Promise<void> {
+  for (let i = 0; i < 100 && renameRequests.length < count; i++) await Promise.resolve()
+  expect(renameRequests.length).toBeGreaterThanOrEqual(count)
 }
 
 describe('saveProject', () => {
@@ -183,5 +208,93 @@ describe('saveProject', () => {
     expect(recovered.saveStatus).toBe('saved')
     expect(recovered.saveError).toBeNull()
     expect(recovered.isDirty).toBe(false)
+  })
+})
+
+describe('saveProjectCopy', () => {
+  beforeEach(() => {
+    ;(globalThis as unknown as { window: unknown }).window = { electronAPI }
+    vi.clearAllMocks()
+    resetStore()
+  })
+
+  it('writes a snapshot without changing the edited project', async () => {
+    // A titled, edited project: the copy must leave all of this alone.
+    useEditorStore.setState({
+      currentProjectPath: '/tmp/recording.dthat',
+      saveStatus: 'unsaved',
+      isDirty: true,
+    } as never)
+    useEditorStore.setState((state) => {
+      state.frameStyles.padding = 9
+    })
+
+    const before = useEditorStore.getState()
+    const result = await useEditorStore.getState().saveProjectCopy()
+    const after = useEditorStore.getState()
+
+    expect(result.path).toBe('/tmp/recording copy.dthat')
+    expect(copyRequests).toHaveLength(1)
+    // Still editing the original file, still dirty, save state untouched.
+    expect(after.currentProjectPath).toBe(before.currentProjectPath)
+    expect(after.isDirty).toBe(true)
+    expect(after.saveStatus).toBe('unsaved')
+  })
+
+  it('names the copy after the project it came from', async () => {
+    useEditorStore.setState({ currentProjectPath: '/home/me/My Demo.dthat' } as never)
+    await useEditorStore.getState().saveProjectCopy()
+    expect(copyRequests[0].suggestedName).toBe('My Demo')
+  })
+
+  it('does nothing without a recording', async () => {
+    useEditorStore.setState({ videoPath: null } as never)
+    const result = await useEditorStore.getState().saveProjectCopy()
+    expect(result.canceled).toBe(true)
+    expect(copyRequests).toHaveLength(0)
+  })
+})
+
+describe('renameCurrentProject', () => {
+  beforeEach(() => {
+    ;(globalThis as unknown as { window: unknown }).window = { electronAPI }
+    vi.clearAllMocks()
+    resetStore()
+  })
+
+  it('marks the session as renaming, then repoints it at the new path', async () => {
+    useEditorStore.setState({ currentProjectPath: '/tmp/recording.dthat' } as never)
+
+    const renaming = useEditorStore.getState().renameCurrentProject('New Name')
+    await waitForRenameRequest(1)
+    // Autosave stands still while the file is moving.
+    expect(useEditorStore.getState().isRenaming).toBe(true)
+    expect(renameRequests[0]).toEqual({ currentPath: '/tmp/recording.dthat', newName: 'New Name' })
+
+    resolveRename!({ ok: true, path: '/tmp/New Name.dthat' })
+    const result = await renaming
+
+    expect(result.ok).toBe(true)
+    expect(useEditorStore.getState().currentProjectPath).toBe('/tmp/New Name.dthat')
+    expect(useEditorStore.getState().isRenaming).toBe(false)
+  })
+
+  it('leaves the path alone when the main process refuses', async () => {
+    useEditorStore.setState({ currentProjectPath: '/tmp/recording.dthat' } as never)
+    renameResult = { ok: false, error: 'A project with that name already exists here' }
+
+    const result = await useEditorStore.getState().renameCurrentProject('Taken')
+
+    expect(result.ok).toBe(false)
+    expect(result.error).toBe('A project with that name already exists here')
+    expect(useEditorStore.getState().currentProjectPath).toBe('/tmp/recording.dthat')
+    expect(useEditorStore.getState().isRenaming).toBe(false)
+  })
+
+  it('refuses to rename a project that has never been saved', async () => {
+    useEditorStore.setState({ currentProjectPath: null } as never)
+    const result = await useEditorStore.getState().renameCurrentProject('Whatever')
+    expect(result.ok).toBe(false)
+    expect(renameRequests).toHaveLength(0)
   })
 })

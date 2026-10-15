@@ -191,10 +191,29 @@ export const electronAPI = {
   }): Promise<{ canceled: boolean; path?: string; recovery?: boolean }> => ipcRenderer.invoke('project:save', request),
   saveProjectAs: (project: unknown): Promise<{ canceled: boolean; path?: string; recovery?: boolean }> =>
     ipcRenderer.invoke('project:save-as', project),
+  /** Writes a snapshot to a new file without adopting it as the edited project. */
+  saveProjectCopy: (request: {
+    project: unknown
+    suggestedName?: string
+  }): Promise<{ canceled: boolean; path?: string; error?: string }> => ipcRenderer.invoke('project:save-copy', request),
+  /** Renames the `.dthat` in place; the renderer repoints the session. */
+  renameProject: (request: {
+    currentPath: string
+    newName: string
+  }): Promise<{ ok: boolean; path?: string; error?: string }> => ipcRenderer.invoke('project:rename', request),
   openProjectFile: (options?: {
     path?: string
-  }): Promise<{ canceled: boolean; project?: unknown; manifest?: unknown; projectPath?: string; error?: string }> =>
-    ipcRenderer.invoke('project:load', options),
+    /** Quiet: no native dialogs (a missing recent entry is reported, not shouted). */
+    quiet?: boolean
+  }): Promise<{
+    canceled: boolean
+    project?: unknown
+    manifest?: unknown
+    projectPath?: string
+    error?: string
+    /** True when a path was given but no file is there any more. */
+    missing?: boolean
+  }> => ipcRenderer.invoke('project:load', options),
   setProjectDirty: (dirty: boolean): void => ipcRenderer.send('project:set-dirty', dirty),
   /** Opens the project file picker (used by the recorder window). */
   promptOpenProject: (): Promise<{ opened: boolean }> => ipcRenderer.invoke('project:prompt-open'),
@@ -210,8 +229,8 @@ export const electronAPI = {
     }
   },
   // Menu items in the main process forward their command here.
-  onMenuCommand: (callback: (command: 'save' | 'save-as' | 'open') => void) => {
-    const listener = (_event: IpcRendererEvent, command: 'save' | 'save-as' | 'open') => callback(command)
+  onMenuCommand: (callback: (command: 'save' | 'save-copy' | 'open') => void) => {
+    const listener = (_event: IpcRendererEvent, command: 'save' | 'save-copy' | 'open') => callback(command)
     ipcRenderer.on('menu:command', listener)
 
     return () => {

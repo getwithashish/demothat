@@ -30,6 +30,10 @@ describe('shouldAutoSave', () => {
   it('skips while a save is already in flight', () => {
     expect(shouldAutoSave({ ...TICK, inFlight: true })).toBe(false)
   })
+
+  it('skips while the project file is being renamed', () => {
+    expect(shouldAutoSave({ ...TICK, renaming: true })).toBe(false)
+  })
 })
 
 describe('deriveSaveStatus', () => {

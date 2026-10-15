@@ -57,6 +57,8 @@ export function registerIpcHandlers() {
   // Project files (.dthat)
   ipcMain.handle('project:save', projectHandlers.handleProjectSave)
   ipcMain.handle('project:save-as', projectHandlers.handleProjectSaveAs)
+  ipcMain.handle('project:save-copy', projectHandlers.handleProjectSaveCopy)
+  ipcMain.handle('project:rename', projectHandlers.handleProjectRename)
   ipcMain.handle('project:load', projectHandlers.handleProjectLoad)
   ipcMain.on('project:set-dirty', projectHandlers.handleProjectSetDirty)
   ipcMain.handle('project:prompt-open', projectHandlers.handleProjectPromptOpen)

@@ -200,6 +200,8 @@ export interface ProjectState {
   lastRecoveryAt: number | null
   /** Message from the last failed save; cleared on the next success. */
   saveError: string | null
+  /** True while the project file is being renamed; autosave stands still. */
+  isRenaming: boolean
 }
 
 /** Save lifecycle shown in the header's save indicator. */
@@ -237,6 +239,13 @@ export interface ProjectActions {
     /** True when the write went to the crash-recovery copy, not a real project file. */
     recovery?: boolean
   }>
+  /**
+   * Writes a snapshot to a new file. Never adopts the path and never touches the
+   * dirty flag: the original keeps being edited and autosaved.
+   */
+  saveProjectCopy: () => Promise<{ canceled: boolean; path?: string; error?: string }>
+  /** Renames the `.dthat` on disk and repoints the session at it. */
+  renameCurrentProject: (newName: string) => Promise<{ ok: boolean; path?: string; error?: string }>
 }
 
 export interface PlaybackState {

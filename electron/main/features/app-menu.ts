@@ -2,7 +2,7 @@ import { Menu, shell } from 'electron'
 import { appState } from '../state'
 
 /** Forwards a File-menu command to the editor renderer. */
-function sendMenuCommand(command: 'save' | 'save-as' | 'open'): void {
+function sendMenuCommand(command: 'save' | 'save-copy' | 'open'): void {
   const win = appState.editorWin
   if (win && !win.isDestroyed()) win.webContents.send('menu:command', command)
 }
@@ -24,7 +24,7 @@ export function createEditorMenu() {
         { type: 'separator' },
         { label: 'Save Project', accelerator: 'CmdOrCtrl+S', click: () => sendMenuCommand('save') },
         // No accelerator: Cmd/Ctrl+Shift+S is the global "stop recording" shortcut.
-        { label: 'Save Project As…', click: () => sendMenuCommand('save-as') },
+        { label: 'Save a Copy…', click: () => sendMenuCommand('save-copy') },
         { type: 'separator' },
         isMac ? { role: 'close' } : { role: 'quit' },
       ],

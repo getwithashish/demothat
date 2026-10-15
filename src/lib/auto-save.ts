@@ -17,11 +17,13 @@ export interface AutoSaveTickInput {
   hasVideo: boolean
   isDirty: boolean
   inFlight: boolean
+  /** True while the project file is being renamed; a tick must not write. */
+  renaming?: boolean
 }
 
 /** Whether an autosave tick should write. */
 export function shouldAutoSave(input: AutoSaveTickInput): boolean {
-  return input.autoSaveEnabled && input.hasVideo && input.isDirty && !input.inFlight
+  return input.autoSaveEnabled && input.hasVideo && input.isDirty && !input.inFlight && !input.renaming
 }
 
 export interface SaveStatusSource {

@@ -27,6 +27,7 @@ export function useAutoSave(): void {
         hasVideo: !!state.videoPath,
         isDirty: state.isDirty,
         inFlight: inFlightRef.current,
+        renaming: state.isRenaming,
       })
       if (!shouldSave) return
 

@@ -12,7 +12,8 @@ import type { MetaDataItem, ZoomRegion, CursorFrame } from '../../types'
 import { ZOOM } from '../../lib/constants'
 import { initialFrameState, recalculateCanvasDimensions } from './frameSlice'
 import { prepareCursorBitmaps } from '../../lib/utils'
-import { collectSavePayload, withSaveGuard } from '../../lib/project-file'
+import { collectSavePayload, whenSaveIdle, withSaveGuard } from '../../lib/project-file'
+import { projectNameFromPath } from '../../lib/recent-projects'
 import type { EditorState } from '../../types'
 
 export const initialProjectState: ProjectState = {
@@ -37,6 +38,7 @@ export const initialProjectState: ProjectState = {
   lastSavedAt: null,
   lastRecoveryAt: null,
   saveError: null,
+  isRenaming: false,
 }
 
 /**
@@ -586,5 +588,39 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
       },
       { canceled: true },
     )
+  },
+  saveProjectCopy: async () => {
+    const current = get()
+    if (!current.videoPath) return { canceled: true }
+
+    // A copy is a snapshot. It never becomes the file being edited, so the
+    // project path, the dirty flag and the save status are all left untouched.
+    const payload = await collectSavePayload(get())
+    const suggestedName = current.currentProjectPath ? projectNameFromPath(current.currentProjectPath) : undefined
+    return window.electronAPI.saveProjectCopy({ project: payload, suggestedName })
+  },
+  renameCurrentProject: async (newName) => {
+    const currentPath = get().currentProjectPath
+    if (!currentPath) return { ok: false, error: 'Save the project before renaming it' }
+
+    set((state) => {
+      state.isRenaming = true
+    })
+    try {
+      // Never move the file out from under a write that is already running, and
+      // keep the autosave tick away from the old path until the new one is known.
+      await whenSaveIdle()
+      const result = await window.electronAPI.renameProject({ currentPath, newName })
+      if (result.ok && result.path) {
+        set((state) => {
+          state.currentProjectPath = result.path ?? state.currentProjectPath
+        })
+      }
+      return result
+    } finally {
+      set((state) => {
+        state.isRenaming = false
+      })
+    }
   },
 })

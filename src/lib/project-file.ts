@@ -87,14 +87,30 @@ export async function collectSavePayload(state: EditorState): Promise<ProjectSav
 }
 
 let saveInFlight = false
+let saveIdle: Promise<void> = Promise.resolve()
+let resolveSaveIdle: (() => void) | null = null
 
 /** Serialises saves so a menu accelerator and a keydown cannot double-save. */
 export async function withSaveGuard<T>(run: () => Promise<T>, fallback: T): Promise<T> {
   if (saveInFlight) return fallback
   saveInFlight = true
+  saveIdle = new Promise<void>((resolve) => {
+    resolveSaveIdle = resolve
+  })
   try {
     return await run()
   } finally {
     saveInFlight = false
+    resolveSaveIdle?.()
+    resolveSaveIdle = null
   }
+}
+
+/**
+ * Resolves once the save that is currently running (if any) has finished.
+ * Used before moving the project file, so a write cannot land on the old path
+ * after the rename.
+ */
+export function whenSaveIdle(): Promise<void> {
+  return saveIdle
 }

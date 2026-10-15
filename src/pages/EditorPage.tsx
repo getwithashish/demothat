@@ -30,8 +30,12 @@ export function EditorPage() {
     initializeSettings,
     initializeRecentProjects,
     rememberRecentProject,
+    forgetRecentProject,
+    pushToast,
     applyOpenedProject,
     saveProject,
+    saveProjectCopy,
+    renameCurrentProject,
     togglePlay,
     togglePreviewFullScreen,
     seekToNextFrame,
@@ -120,24 +124,45 @@ export function EditorPage() {
   /** Opens a project, optionally one the user picked from Open recent. */
   const openProject = useCallback(
     async (path?: string) => {
-      const result = await window.electronAPI.openProjectFile(path ? { path } : undefined)
-      if (result.canceled || !result.project) return
+      const result = await window.electronAPI.openProjectFile(path ? { path, quiet: true } : undefined)
+      if (result.canceled) {
+        if (path && result.missing) {
+          // The remembered file has gone: say so quietly and forget it.
+          forgetRecentProject(path)
+          pushToast({ message: "That project can't be found" })
+        }
+        return
+      }
+      if (!result.project) return
       await applyOpenedProject(result.project as Record<string, unknown>, result.projectPath ?? '')
       useEditorStore.temporal.getState().clear()
     },
-    [applyOpenedProject],
+    [applyOpenedProject, forgetRecentProject, pushToast],
   )
 
   const handleSaveNow = useCallback(async () => {
     await saveProject()
   }, [saveProject])
 
+  /** Writes a snapshot elsewhere; the edited project stays where it is. */
+  const handleSaveCopy = useCallback(async () => {
+    const result = await saveProjectCopy()
+    if (result.canceled || !result.path) {
+      if (result.error) pushToast({ message: `Couldn't save the copy: ${result.error}` })
+      return
+    }
+    const fileName = result.path.split(/[\\/]/).pop() ?? result.path
+    pushToast({ message: `Copy saved as ${fileName}`, actionLabel: 'Open', revealPath: result.path })
+  }, [saveProjectCopy, pushToast])
+
+  const handleRename = useCallback(async (newName: string) => renameCurrentProject(newName), [renameCurrentProject])
+
   /**
    * Commands from the native File menu. Both the menu and the keyboard route
    * through the same handlers as the project menu's items.
    */
   const handleMenuCommand = useCallback(
-    async (command: 'save' | 'save-as' | 'open') => {
+    async (command: 'save' | 'save-copy' | 'open') => {
       if (command === 'open') {
         await openProject()
         return
@@ -146,9 +171,9 @@ export function EditorPage() {
         await handleSaveNow()
         return
       }
-      await saveProject({ saveAs: true })
+      await handleSaveCopy()
     },
-    [openProject, handleSaveNow, saveProject],
+    [openProject, handleSaveNow, handleSaveCopy],
   )
 
   const handleShowInFolder = useCallback(() => {
@@ -340,6 +365,8 @@ export function EditorPage() {
               onOpenProject={() => void openProject()}
               onOpenRecent={(path) => void openProject(path)}
               onSave={() => void handleSaveNow()}
+              onSaveCopy={() => void handleSaveCopy()}
+              onRename={handleRename}
               onShowInFolder={handleShowInFolder}
               onNewRecording={handleNewRecording}
             />

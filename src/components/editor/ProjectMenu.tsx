@@ -1,12 +1,12 @@
-// The editor header's project menu: open, recent, save and reveal, behind one
-// trigger that carries the project name (DESIGN_SPEC §5).
+// The editor header's project menu: open, recent, save, copy, rename and
+// reveal, behind one trigger that carries the project name (DESIGN_SPEC §5).
 //
 // §3 of the brief replaces the wordmark with this trigger, so "DemoThat" no
 // longer appears in the header.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { ChevronDown, Clock, Folder, Video } from 'tabler-icons-react'
+import { ChevronDown, Clock, Copy, Folder, Pencil, Video } from 'tabler-icons-react'
 import { useEditorStore } from '../../store/editorStore'
 import {
   DropdownMenu,
@@ -20,18 +20,36 @@ import {
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu'
 import { formatRelativeTime } from '../../lib/auto-save'
-import { projectNameFromPath } from '../../lib/recent-projects'
+import { projectNameFromPath, validateProjectName } from '../../lib/recent-projects'
 import { ICON_STROKE } from '../ui/icons'
+import { cn } from '../../lib/utils'
+
+export interface RenameResult {
+  ok: boolean
+  path?: string
+  error?: string
+}
 
 export interface ProjectMenuProps {
   onOpenProject: () => void
   onOpenRecent: (path: string) => void
   onSave: () => void
+  onSaveCopy: () => void
+  /** Renames the file on disk; resolves with the outcome for inline display. */
+  onRename: (newName: string) => Promise<RenameResult>
   onShowInFolder: () => void
   onNewRecording: () => void
 }
 
-export function ProjectMenu({ onOpenProject, onOpenRecent, onSave, onShowInFolder, onNewRecording }: ProjectMenuProps) {
+export function ProjectMenu({
+  onOpenProject,
+  onOpenRecent,
+  onSave,
+  onSaveCopy,
+  onRename,
+  onShowInFolder,
+  onNewRecording,
+}: ProjectMenuProps) {
   const { currentProjectPath, recentProjects, autoSaveEnabled, lastSavedAt, lastRecoveryAt, platform } = useEditorStore(
     useShallow((state) => ({
       currentProjectPath: state.currentProjectPath,
@@ -46,6 +64,10 @@ export function ProjectMenu({ onOpenProject, onOpenRecent, onSave, onShowInFolde
 
   const [isOpen, setOpen] = useState(false)
   const [now, setNow] = useState(() => Date.now())
+  const [isRenaming, setRenaming] = useState(false)
+  const [nameDraft, setNameDraft] = useState('')
+  const [nameError, setNameError] = useState<string | null>(null)
+  const nameInputRef = useRef<HTMLInputElement>(null)
 
   // The footer is a live relative time while the menu is open.
   useEffect(() => {
@@ -54,6 +76,17 @@ export function ProjectMenu({ onOpenProject, onOpenRecent, onSave, onShowInFolde
     const timer = window.setInterval(() => setNow(Date.now()), 1000)
     return () => window.clearInterval(timer)
   }, [isOpen])
+
+  // Focus once the closed menu has finished handing focus back to the trigger
+  // this field replaces, so the caret really lands here and the text is selected.
+  useEffect(() => {
+    if (!isRenaming) return
+    const timer = window.setTimeout(() => {
+      nameInputRef.current?.focus()
+      nameInputRef.current?.select()
+    }, 60)
+    return () => window.clearTimeout(timer)
+  }, [isRenaming])
 
   const isTitled = !!currentProjectPath
   const name = isTitled ? projectNameFromPath(currentProjectPath) : 'Untitled project'
@@ -68,6 +101,63 @@ export function ProjectMenu({ onOpenProject, onOpenRecent, onSave, onShowInFolde
     : recoveryClock
       ? `Recovery copy saved ${recoveryClock}`
       : 'Not saved yet'
+
+  const startRename = () => {
+    setNameDraft(name)
+    setNameError(null)
+    setRenaming(true)
+  }
+
+  const commitRename = async () => {
+    // The current project is excluded from the collision check: keeping its own
+    // name is a harmless no-op, not a clash.
+    const otherNames = recentProjects.filter((project) => project.path !== currentProjectPath).map((p) => p.name)
+    const validationError = validateProjectName(nameDraft, otherNames)
+    if (validationError) {
+      setNameError(validationError)
+      return
+    }
+    const result = await onRename(nameDraft.trim())
+    if (!result.ok) {
+      setNameError(result.error ?? 'Could not rename the project')
+      return
+    }
+    setRenaming(false)
+    setNameError(null)
+  }
+
+  if (isRenaming) {
+    return (
+      <span className="pointer-events-auto flex items-center gap-2 text-ui" style={{ WebkitAppRegion: 'no-drag' }}>
+        <input
+          ref={nameInputRef}
+          value={nameDraft}
+          aria-label="Project name"
+          aria-invalid={nameError !== null}
+          onChange={(event) => {
+            setNameDraft(event.target.value)
+            setNameError(null)
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault()
+              void commitRename()
+            } else if (event.key === 'Escape') {
+              event.preventDefault()
+              setRenaming(false)
+            }
+          }}
+          onBlur={() => setRenaming(false)}
+          className={cn(
+            'w-[200px] rounded-ctl border bg-ctl px-2 py-1 text-ui text-fg outline-none',
+            'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
+            nameError ? 'border-danger' : 'border-line',
+          )}
+        />
+        {nameError && <span className="text-xs text-danger">{nameError}</span>}
+      </span>
+    )
+  }
 
   return (
     <DropdownMenu open={isOpen} onOpenChange={setOpen}>
@@ -134,10 +224,20 @@ export function ProjectMenu({ onOpenProject, onOpenRecent, onSave, onShowInFolde
         )}
 
         {isTitled && (
-          <DropdownMenuItem onSelect={onShowInFolder}>
-            <Folder size={16} strokeWidth={ICON_STROKE} className="text-muted" />
-            Show in folder
-          </DropdownMenuItem>
+          <>
+            <DropdownMenuItem onSelect={onSaveCopy}>
+              <Copy size={16} strokeWidth={ICON_STROKE} className="text-muted" />
+              Save a copy…
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={startRename}>
+              <Pencil size={16} strokeWidth={ICON_STROKE} className="text-muted" />
+              Rename
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={onShowInFolder}>
+              <Folder size={16} strokeWidth={ICON_STROKE} className="text-muted" />
+              Show in folder
+            </DropdownMenuItem>
+          </>
         )}
 
         <DropdownMenuSeparator />

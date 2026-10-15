@@ -3,7 +3,7 @@ import { useEffect, useRef } from 'react'
 import { useEditorStore } from '../store/editorStore'
 import { EditorState, EditorActions, CursorTheme, CursorFrame, CursorImageBitmap } from '../types'
 import { ExportSettings } from '../components/editor/ExportModal'
-import { RESOLUTIONS } from '../lib/constants'
+import { RESOLUTIONS } from '../../shared/export-resolutions'
 import { drawScene, getClipSourceTime, type VideoClipLayer } from '../lib/renderer'
 import { prepareCursorBitmaps, mapExportTimeToSourceTime } from '../lib/utils'
 import type { VideoClip } from '../types'
@@ -300,11 +300,17 @@ export function RendererPage() {
             activeClipLayers,
           )
 
-          // Send the rendered frame to the main process
+          // Send the rendered frame to the main process. The call resolves once
+          // FFmpeg has accepted the frame (backpressure), or with aborted=true
+          // when the export was cancelled or FFmpeg died — stop the loop then.
           const imageData = ctx.getImageData(0, 0, outputWidth, outputHeight)
           const frameBuffer = Buffer.from(imageData.data.buffer)
           const progress = ((frame + 1) / totalFrames) * 100
-          window.electronAPI.sendFrameToMain({ frame: frameBuffer, progress })
+          const { aborted } = await window.electronAPI.sendFrameToMain({ frame: frameBuffer, progress })
+          if (aborted) {
+            log.info('[RendererPage] Export aborted by the main process; stopping render loop.')
+            break
+          }
         }
 
         // --- 6. FINISH ---

@@ -4,7 +4,7 @@ import path from 'node:path'
 export default defineConfig({
   test: {
     environment: 'node',
-    include: ['electron/**/*.test.ts', 'src/**/*.test.ts', 'src/**/*.test.tsx'],
+    include: ['electron/**/*.test.ts', 'src/**/*.test.ts', 'src/**/*.test.tsx', 'shared/**/*.test.ts'],
     globals: false,
     testTimeout: 10000,
   },

@@ -4,7 +4,7 @@ import log from 'electron-log/main'
 import { app } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs/promises'
-import { ResolutionKey, RESOLUTIONS } from './constants'
+import { RESOLUTIONS, type ResolutionKey } from '../../../shared/export-resolutions'
 
 export function getBinaryPath(name: string): string {
   const platform = process.platform === 'win32' ? 'windows' : process.platform === 'darwin' ? 'darwin' : 'linux'

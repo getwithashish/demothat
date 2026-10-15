@@ -1,7 +1,7 @@
 // Contains business logic for video export.
 
 import log from 'electron-log/main'
-import { BrowserWindow, IpcMainEvent, IpcMainInvokeEvent, ipcMain } from 'electron'
+import { BrowserWindow, IpcMainInvokeEvent, ipcMain } from 'electron'
 import { spawn } from 'node:child_process'
 import path from 'node:path'
 import os from 'node:os'
@@ -9,8 +9,13 @@ import fs from 'node:fs'
 import fsPromises from 'node:fs/promises'
 import { appState } from '../state'
 import { getFFmpegPath, calculateExportDimensions } from '../lib/utils'
-import type { ResolutionKey } from '../lib/constants'
 import { VITE_DEV_SERVER_URL, RENDERER_DIST, PRELOAD_SCRIPT } from '../lib/constants'
+import {
+  buildExportArgs,
+  needsBuiltInClickSound,
+  type ExportProjectState,
+  type ExportSettingsInput,
+} from './build-export-args'
 
 const FFMPEG_PATH = getFFmpegPath()
 
@@ -40,72 +45,20 @@ function createBuiltInClickWav(): Buffer {
   }
   return buffer
 }
-/** Shapes the renderer sends over IPC for an export. Declared structurally here
- *  (mirroring src/types) so the main process does not depend on renderer types. */
-interface ExportRegion {
-  startTime: number
-  duration: number
-}
-
-interface ExportSpeedRegion extends ExportRegion {
-  speed: number
-}
-
-interface ExportAudioClip {
-  filePath: string
-  startTime: number
-  duration: number
-  sourceStart: number
-  sourceDuration: number
-  volume: number
-  fadeIn: number
-  fadeOut: number
-  loop: boolean
-  kind?: 'music' | 'click'
-  speed?: number
-}
-
-interface ExportProjectState {
-  aspectRatio: string
-  duration: number
-  videoPath?: string
-  hasAudioTrack?: boolean
-  isMuted?: boolean
-  volume?: number
-  mouseClickSoundsEnabled?: boolean
-  mouseClickSoundPath?: string | null
-  mouseClickSoundVolume?: number
-  cutRegions?: Record<string, ExportRegion>
-  speedRegions?: Record<string, ExportSpeedRegion>
-  audioClips?: ExportAudioClip[]
-}
 
 interface ExportRequest {
   projectState: ExportProjectState
-  exportSettings: { resolution: ResolutionKey; fps: number; format: string }
+  exportSettings: ExportSettingsInput
   outputPath: string
 }
 
-function mapSourceTimeToExportTime(sourceTime: number, projectState: ExportProjectState): number {
-  let exportTime = Math.max(0, sourceTime)
-  for (const region of Object.values(projectState.cutRegions ?? {}) as ExportRegion[]) {
-    if (region.startTime + region.duration <= sourceTime) exportTime -= region.duration
-    else if (region.startTime < sourceTime) exportTime -= sourceTime - region.startTime
-  }
-  for (const region of Object.values(projectState.speedRegions ?? {}) as ExportSpeedRegion[]) {
-    if (region.startTime + region.duration <= sourceTime) exportTime += region.duration - region.duration / region.speed
-    else if (region.startTime < sourceTime) {
-      const elapsed = sourceTime - region.startTime
-      exportTime += elapsed - elapsed / region.speed
-    }
-  }
-  return Math.max(0, exportTime)
+/** Result of handing one frame to FFmpeg. `aborted` means "stop rendering". */
+interface FrameWriteResult {
+  aborted: boolean
 }
 
-export async function startExport(
-  event: IpcMainInvokeEvent,
-  { projectState, exportSettings, outputPath }: ExportRequest,
-) {
+export async function startExport(event: IpcMainInvokeEvent, request: ExportRequest) {
+  const { projectState, exportSettings, outputPath } = request
   log.info('[ExportManager] Starting export process...')
   const editorWindow = BrowserWindow.fromWebContents(event.sender)
   if (!editorWindow) return
@@ -133,171 +86,100 @@ export async function startExport(
     log.info(`[ExportManager] Loading render worker file (Prod): ${renderPath}#renderer`)
   }
 
-  const { resolution, fps, format } = exportSettings
+  const { resolution } = exportSettings
   const { width: outputWidth, height: outputHeight } = calculateExportDimensions(resolution, projectState.aspectRatio)
 
-  const ffmpegArgs = [
-    '-y',
-    '-f',
-    'rawvideo',
-    '-vcodec',
-    'rawvideo',
-    '-pix_fmt',
-    'rgba',
-    '-s',
-    `${outputWidth}x${outputHeight}`,
-    '-r',
-    fps.toString(),
-    '-i',
-    '-',
-  ]
+  // Materialise the built-in click WAV when click sounds are on and no custom
+  // sound is set, so buildExportArgs can stay pure.
   const temporaryFiles: string[] = []
-  const audioFilterParts: string[] = []
-  const audioLabels: string[] = []
-  let exportDuration = Math.max(0, Number(projectState.duration) || 0)
-  for (const region of Object.values(projectState.cutRegions ?? {}) as ExportRegion[])
-    exportDuration -= Number(region.duration) || 0
-  for (const region of Object.values(projectState.speedRegions ?? {}) as ExportSpeedRegion[]) {
-    exportDuration -= Number(region.duration) || 0
-    exportDuration += (Number(region.duration) || 0) / Math.max(0.01, Number(region.speed) || 1)
-  }
-  exportDuration = Math.max(0, exportDuration)
-  const isMp4 = format === 'mp4'
-
-  if (isMp4) {
-    let inputIndex = 1
-    if (
-      projectState.hasAudioTrack &&
-      projectState.videoPath &&
-      !projectState.isMuted &&
-      Number(projectState.volume) > 0
-    ) {
-      ffmpegArgs.push('-i', projectState.videoPath)
-      const originalVolume = Math.max(0, Math.min(1, Number(projectState.volume) || 0))
-      audioFilterParts.push(
-        `[${inputIndex}:a]atrim=duration=${exportDuration},asetpts=PTS-STARTPTS,volume=${originalVolume}[original]`,
-      )
-      audioLabels.push('[original]')
-      inputIndex++
-    }
-
-    const clips = (projectState.audioClips ?? []).filter(
-      (clip: ExportAudioClip) =>
-        clip.kind !== 'click' &&
-        clip.filePath &&
-        clip.duration > 0 &&
-        clip.volume > 0 &&
-        Number(clip.startTime) < Number(projectState.duration),
-    )
-    clips.forEach((clip: ExportAudioClip, index: number) => {
-      const start = mapSourceTimeToExportTime(Math.max(0, Number(clip.startTime) || 0), projectState)
-      if (start >= exportDuration) return
-      const clipDuration = Math.min(Number(clip.duration) || 0.1, exportDuration - start)
-      if (clipDuration <= 0) return
-      if (clip.loop) ffmpegArgs.push('-stream_loop', '-1')
-      ffmpegArgs.push('-i', clip.filePath)
-      const speed = Math.max(0.5, Math.min(2, Number(clip.speed) || 1))
-      const fadeIn = Math.max(0, Math.min(clipDuration, Number(clip.fadeIn) || 0))
-      const fadeOut = Math.max(0, Math.min(clipDuration, Number(clip.fadeOut) || 0))
-      const sourceStart = Math.max(0, Number(clip.sourceStart) || 0)
-      const sourceAvailable = Math.max(0.1, (Number(clip.sourceDuration) || clipDuration) - sourceStart)
-      const sourceTrimDuration = clip.loop ? clipDuration * speed : Math.min(clipDuration * speed, sourceAvailable)
-      const label = `music${index}`
-      let filter = `[${inputIndex}:a]atrim=start=${sourceStart}:duration=${sourceTrimDuration},asetpts=PTS-STARTPTS,atempo=${speed},volume=${Math.max(0, Math.min(1, Number(clip.volume) || 0))}`
-      if (fadeIn > 0) filter += `,afade=t=in:st=0:d=${fadeIn}`
-      if (fadeOut > 0) filter += `,afade=t=out:st=${Math.max(0, clipDuration - fadeOut)}:d=${fadeOut}`
-      filter += `,adelay=${Math.round(start * 1000)}|${Math.round(start * 1000)}[${label}]`
-      audioFilterParts.push(filter)
-      audioLabels.push(`[${label}]`)
-      inputIndex++
-    })
-
-    const cuts = Object.values(projectState.cutRegions ?? {}) as ExportRegion[]
-    // Each click sound is its own timeline clip, so deleting one removes only that event from export.
-    const clicks = projectState.mouseClickSoundsEnabled
-      ? (projectState.audioClips ?? []).filter(
-          (clip: ExportAudioClip) =>
-            clip.kind === 'click' &&
-            clip.startTime >= 0 &&
-            clip.startTime < projectState.duration &&
-            clip.volume > 0 &&
-            !cuts.some(
-              (region) => clip.startTime >= region.startTime && clip.startTime < region.startTime + region.duration,
-            ),
-        )
-      : []
-    const mappedClicks = clicks
-      .map((click) => ({
-        start: mapSourceTimeToExportTime(Number(click.startTime) || 0, projectState),
-        clipVolume: Math.max(0, Math.min(1, Number(click.volume) || 0)),
-      }))
-      .filter((click) => click.start < exportDuration)
-    if (mappedClicks.length > 0) {
-      let clickPath: string | null = projectState.mouseClickSoundPath ?? null
-      if (!clickPath) {
-        const generatedClickPath = path.join(os.tmpdir(), `demothat-click-${Date.now()}.wav`)
-        clickPath = generatedClickPath
-        await fsPromises.writeFile(generatedClickPath, createBuiltInClickWav())
-        temporaryFiles.push(generatedClickPath)
-      }
-      const resolvedClickPath = clickPath as string
-      ffmpegArgs.push('-i', resolvedClickPath)
-      const splitLabels = mappedClicks.map((_click, index: number) => `[clicksrc${index}]`).join('')
-      audioFilterParts.push(`[${inputIndex}:a]asplit=${mappedClicks.length}${splitLabels}`)
-      const volume = Math.max(0, Math.min(1, Number(projectState.mouseClickSoundVolume ?? 0.8)))
-      mappedClicks.forEach((click, index: number) => {
-        const label = `click${index}`
-        const delay = Math.round(click.start * 1000)
-        audioFilterParts.push(
-          `[clicksrc${index}]atrim=duration=0.25,asetpts=PTS-STARTPTS,volume=${volume * click.clipVolume},adelay=${delay}|${delay}[${label}]`,
-        )
-        audioLabels.push(`[${label}]`)
-      })
-      inputIndex++
-    }
+  let clickSoundPath: string | null = projectState.mouseClickSoundPath ?? null
+  if (needsBuiltInClickSound(projectState)) {
+    const generatedClickPath = path.join(os.tmpdir(), `demothat-click-${Date.now()}.wav`)
+    await fsPromises.writeFile(generatedClickPath, createBuiltInClickWav())
+    temporaryFiles.push(generatedClickPath)
+    clickSoundPath = generatedClickPath
   }
 
-  if (format === 'mp4') {
-    ffmpegArgs.push('-map', '0:v:0')
-    if (audioLabels.length > 0) {
-      const mixInputs = audioLabels.join('')
-      audioFilterParts.push(
-        `${mixInputs}amix=inputs=${audioLabels.length}:duration=longest:dropout_transition=0:normalize=0,alimiter=limit=0.95,atrim=duration=${exportDuration}[aout]`,
-      )
-      ffmpegArgs.push(
-        '-filter_complex',
-        audioFilterParts.join(';'),
-        '-map',
-        '[aout]',
-        '-c:v',
-        'libx264',
-        '-preset',
-        'medium',
-        '-pix_fmt',
-        'yuv420p',
-        '-c:a',
-        'aac',
-        '-b:a',
-        '192k',
-        '-t',
-        exportDuration.toString(),
-      )
-    } else {
-      ffmpegArgs.push('-c:v', 'libx264', '-preset', 'medium', '-pix_fmt', 'yuv420p', '-t', exportDuration.toString())
-    }
-  } else {
-    ffmpegArgs.push('-vf', 'split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse')
-  }
-  ffmpegArgs.push(outputPath)
+  const ffmpegArgs = buildExportArgs({
+    projectState,
+    exportSettings,
+    outputPath,
+    width: outputWidth,
+    height: outputHeight,
+    clickSoundPath,
+  })
 
   log.info('[ExportManager] Spawning FFmpeg with args:', ffmpegArgs.join(' '))
   const ffmpeg = spawn(FFMPEG_PATH, ffmpegArgs)
+
   let ffmpegClosed = false
+  let exportAborted = false
+  // Set while a frame write waits for `drain` so a cancel or an early FFmpeg
+  // exit can unblock the renderer instead of leaving it hung.
+  let unblockPendingWrite: (() => void) | null = null
 
   ffmpeg.stderr.on('data', (data) => log.info(`[FFmpeg stderr]: ${data.toString()}`))
 
+  const abortExport = (reason: string) => {
+    if (exportAborted) return
+    exportAborted = true
+    log.warn(`[ExportManager] Aborting export: ${reason}`)
+    const unblock = unblockPendingWrite
+    unblockPendingWrite = null
+    unblock?.()
+  }
+
+  // FFmpeg can die (bad args, disk full, permissions) while frames are still
+  // streaming in; unblock the renderer so it stops instead of piling frames up.
+  ffmpeg.stdin?.on('error', (error) => {
+    log.error('[ExportManager] FFmpeg stdin error:', error)
+    abortExport('stdin error')
+  })
+
+  /**
+   * Writes one frame and resolves once FFmpeg has accepted it, waiting for
+   * `drain` when the pipe is full. Resolves aborted=true when the export has
+   * been cancelled or FFmpeg is gone.
+   */
+  const writeFrame = (frame: Uint8Array): Promise<FrameWriteResult> =>
+    new Promise((resolve) => {
+      const stdin = ffmpeg.stdin
+      const done = (aborted: boolean) => {
+        unblockPendingWrite = null
+        stdin?.off('drain', onDrain)
+        stdin?.off('error', onError)
+        resolve({ aborted })
+      }
+      const onDrain = () => done(false)
+      const onError = () => done(true)
+
+      if (exportAborted || ffmpegClosed || !stdin?.writable) {
+        done(true)
+        return
+      }
+      if (stdin.write(frame)) {
+        done(false)
+        return
+      }
+      stdin.once('drain', onDrain)
+      stdin.once('error', onError)
+      unblockPendingWrite = () => done(true)
+    })
+
+  const frameHandler = async (
+    _event: IpcMainInvokeEvent,
+    { frame, progress }: { frame: Uint8Array; progress: number },
+  ): Promise<FrameWriteResult> => {
+    const result = await writeFrame(frame)
+    if (editorWindow && !editorWindow.isDestroyed()) {
+      editorWindow.webContents.send('export:progress', { progress, stage: 'Rendering...' })
+    }
+    return result
+  }
+
   const cancellationHandler = () => {
     log.warn('[ExportManager] Received "export:cancel". Terminating export.')
+    abortExport('cancelled by user')
     if (ffmpeg && !ffmpeg.killed) {
       ffmpeg.kill('SIGKILL')
     }
@@ -310,26 +192,20 @@ export async function startExport(
     for (const temporaryFile of temporaryFiles) fsPromises.unlink(temporaryFile).catch(() => undefined)
   }
 
-  const frameListener = (_e: IpcMainEvent, { frame, progress }: { frame: Buffer; progress: number }) => {
-    if (!ffmpegClosed && ffmpeg.stdin.writable) ffmpeg.stdin.write(frame)
-    if (editorWindow && !editorWindow.isDestroyed()) {
-      editorWindow.webContents.send('export:progress', { progress, stage: 'Rendering...' })
-    }
-  }
-
   const finishListener = () => {
     log.info('[ExportManager] Render finished. Closing FFmpeg stdin.')
-    if (!ffmpegClosed && ffmpeg.stdin.writable) {
+    if (!ffmpegClosed && ffmpeg.stdin?.writable) {
       ffmpeg.stdin.end()
     }
   }
 
-  ipcMain.on('export:frame-data', frameListener)
+  ipcMain.handle('export:frame-data', frameHandler)
   ipcMain.on('export:render-finished', finishListener)
-  ipcMain.once('export:cancel', cancellationHandler) // Use once to avoid multiple calls
+  ipcMain.once('export:cancel', cancellationHandler)
 
   ffmpeg.on('close', (code) => {
     ffmpegClosed = true
+    abortExport(`FFmpeg exited with code ${code}`)
     log.info(`[ExportManager] FFmpeg process exited with code ${code}.`)
     if (appState.renderWorker && !appState.renderWorker.isDestroyed()) {
       appState.renderWorker.close()
@@ -354,7 +230,7 @@ export async function startExport(
     }
 
     // Clean up all listeners
-    ipcMain.removeListener('export:frame-data', frameListener)
+    ipcMain.removeHandler('export:frame-data')
     ipcMain.removeListener('export:render-finished', finishListener)
     ipcMain.removeListener('export:cancel', cancellationHandler)
   })

@@ -27,13 +27,5 @@ export const RECORDING_SHORTCUTS = {
 } as const
 
 // --- Export ---
-export type ResolutionKey = '720p' | '1080p' | '2k' | '4k'
-export const RESOLUTIONS: Record<ResolutionKey, { width: number; height: number }> = {
-  '720p': { width: 1280, height: 720 },
-  '1080p': { width: 1920, height: 1080 },
-  '2k': { width: 2560, height: 1440 },
-  '4k': { width: 3840, height: 2160 },
-}
-
 export const LINUX_SCALES = [1, 1.5, 2]
 export const LINUX_BASE_SIZE = 24

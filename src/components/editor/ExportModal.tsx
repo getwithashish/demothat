@@ -9,11 +9,12 @@ import { Input } from '../ui/input'
 import { Section } from '../ui/section'
 import { useEditorStore } from '../../store/editorStore'
 import { formatTime } from '../../lib/utils'
+import { RESOLUTION_OPTIONS, type ResolutionKey } from '../../../shared/export-resolutions'
 import { PanelHeader } from './PanelHeader'
 
 export type ExportSettings = {
   format: 'mp4' | 'gif'
-  resolution: '720p' | '1080p' | '2k' | '4k'
+  resolution: ResolutionKey
   fps: 30 | 60
   quality: 'low' | 'medium' | 'high'
 }
@@ -139,10 +140,11 @@ const SettingsView = ({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="720p">HD (720p)</SelectItem>
-                <SelectItem value="1080p">Full HD (1080p)</SelectItem>
-                <SelectItem value="2k">2K (1440p)</SelectItem>
-                <SelectItem value="4k">4K (2160p)</SelectItem>
+                {RESOLUTION_OPTIONS.map((option) => (
+                  <SelectItem key={option.key} value={option.key}>
+                    {option.label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
 

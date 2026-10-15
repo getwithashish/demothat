@@ -268,9 +268,8 @@ export const electronAPI = {
   rendererReady: () => {
     ipcRenderer.send('render:ready')
   },
-  sendFrameToMain: (payload: { frame: Buffer; progress: number }) => {
-    ipcRenderer.send('export:frame-data', payload)
-  },
+  sendFrameToMain: (payload: { frame: Uint8Array; progress: number }): Promise<{ aborted: boolean }> =>
+    ipcRenderer.invoke('export:frame-data', payload),
   finishRender: () => {
     ipcRenderer.send('export:render-finished')
   },

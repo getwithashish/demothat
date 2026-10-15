@@ -16,10 +16,19 @@ import {
   needsBuiltInClickSound,
   type ExportProjectState,
   type ExportSettingsInput,
+  buildCloudFallbackArgs,
 } from './build-export-args'
 import { getEncoderCapabilities } from './encoder-capabilities'
 import { getEntitlement } from './entitlement'
 import { recordExportPerf } from './export-perf'
+import {
+  cloudStagePercent,
+  intermediatePathFor,
+  preflightCloudUpscale,
+  runCloudStages,
+  type CloudStage,
+} from './cloud-upscale-job'
+import type { CloudCancellation, CloudJobCreated, CloudSettings } from './cloud-upscale-client'
 import { isFormatAllowed, selectExportCodec } from '../../../shared/export-codec'
 import { maxCameraScale, maxZoomLevel, detectUpscale } from '../../../shared/export-upscale'
 import { applyRenderCap } from '../../../shared/export-render-cap'
@@ -57,6 +66,11 @@ interface ExportRequest {
   projectState: ExportProjectState
   exportSettings: ExportSettingsInput
   outputPath: string
+  /**
+   * Present for the AI (cloud) method: render the intermediate locally, then
+   * upload it for the cloud to upscale.
+   */
+  cloud?: { model?: string }
 }
 
 /** Result of handing one frame to FFmpeg. `aborted` means "stop rendering". */
@@ -127,6 +141,36 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
   const { width: renderWidth, height: renderHeight } = applyRenderCap(targetWidth, targetHeight)
   log.info(`[ExportManager] Target ${targetWidth}x${targetHeight}, rendering at ${renderWidth}x${renderHeight}.`)
 
+  // --- Cloud (AI) upscaling: reserve the credits BEFORE rendering anything ----
+  // A refusal (no credits, no consent, backend unreachable) must cost the user no
+  // render time at all.
+  const cloudCancellation: CloudCancellation = { cancelled: false }
+  let cloudJob: CloudJobCreated | null = null
+  let cloudSettings: CloudSettings | null = null
+  let intermediatePath: string | null = null
+
+  if (request.cloud) {
+    const preflight = await preflightCloudUpscale({
+      editorWindow,
+      targetWidth,
+      targetHeight,
+      renderWidth,
+      renderHeight,
+      fps: exportSettings.fps,
+      durationSec: computeExportDuration(projectState),
+      model: request.cloud.model,
+    })
+    if (!preflight.ok) {
+      log.warn(`[ExportManager] Cloud preflight refused: ${preflight.error}`)
+      editorWindow.webContents.send('export:complete', { success: false, error: preflight.error })
+      return
+    }
+    cloudJob = preflight.job
+    cloudSettings = preflight.settings
+    intermediatePath = intermediatePathFor(os.tmpdir(), Date.now())
+    log.info(`[ExportManager] Cloud job ${cloudJob.jobId}: rendering the intermediate at ${renderWidth}x${renderHeight}.`)
+  }
+
   if (appState.renderWorker) {
     appState.renderWorker.close()
   }
@@ -164,12 +208,13 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
   const ffmpegArgs = buildExportArgs({
     projectState,
     exportSettings,
-    outputPath,
+    outputPath: intermediatePath ?? outputPath,
     renderWidth,
     renderHeight,
     targetWidth,
     targetHeight,
     clickSoundPath,
+    intermediate: !!request.cloud,
   })
 
   log.info('[ExportManager] Spawning FFmpeg with args:', ffmpegArgs.join(' '))
@@ -185,6 +230,9 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
   // Recorded when the export completes so the modal can estimate render times.
   const perfStartedAt = Date.now()
   let framesWritten = 0
+  // Set once the local render is done and the cloud stages take over; it also
+  // marks the intermediate as complete (so a cancel keeps it).
+  let cloudContinuation: (() => void) | null = null
 
   ffmpeg.stderr.on('data', (data) => log.info(`[FFmpeg stderr]: ${data.toString()}`))
 
@@ -197,10 +245,25 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
   let encodeProgress = 0
   let renderFinished = false
 
-  const emitProgress = () => {
+  /** Cloud stage progress: the stage's own percent mapped onto the overall bar. */
+  const emitCloudProgress = (stage: CloudStage, stagePercent: number) => {
     if (!editorWindow || editorWindow.isDestroyed()) return
     editorWindow.webContents.send('export:progress', {
-      progress: Math.min(100, Math.max(frameProgress, encodeProgress)),
+      progress: cloudStagePercent(stage, stagePercent),
+      stage,
+    })
+  }
+
+  const emitProgress = () => {
+    if (!editorWindow || editorWindow.isDestroyed()) return
+    const percent = Math.min(100, Math.max(frameProgress, encodeProgress))
+    if (request.cloud) {
+      // The same render, reported against the cloud flow's own bar and label.
+      emitCloudProgress('Rendering locally', percent)
+      return
+    }
+    editorWindow.webContents.send('export:progress', {
+      progress: percent,
       stage: renderFinished ? 'Encoding' : 'Rendering',
     })
   }
@@ -289,6 +352,8 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
 
   const cancellationHandler = () => {
     log.warn('[ExportManager] Received "export:cancel". Terminating export.')
+    // Stops an in-flight upload/download/poll as well as the render.
+    cloudCancellation.cancelled = true
     abortExport('cancelled by user')
     if (ffmpeg && !ffmpeg.killed) {
       ffmpeg.kill('SIGKILL')
@@ -296,7 +361,12 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
     if (appState.renderWorker && !appState.renderWorker.isDestroyed()) {
       appState.renderWorker.close()
     }
-    if (fs.existsSync(outputPath)) {
+    // A finished intermediate is kept (it can be retried or upscaled locally); a
+    // half-written one is not worth anything.
+    if (cloudContinuation === null && intermediatePath) {
+      fsPromises.unlink(intermediatePath).catch(() => undefined)
+    }
+    if (intermediatePath === null && fs.existsSync(outputPath)) {
       fsPromises.unlink(outputPath).catch((err) => log.error('Failed to delete cancelled export file:', err))
     }
     for (const temporaryFile of temporaryFiles) fsPromises.unlink(temporaryFile).catch(() => undefined)
@@ -332,6 +402,37 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
       if (code === null) {
         // Cancelled by SIGKILL
         editorWindow.webContents.send('export:complete', { success: false, error: 'Export cancelled.' })
+      } else if (code === 0 && cloudJob && cloudSettings && intermediatePath) {
+        // The render is done. Hand the intermediate to the cloud *after* the
+        // listeners below are cleaned up, so a second export can start while the
+        // upload is still running.
+        const job = cloudJob
+        const settings = cloudSettings
+        const intermediate = intermediatePath
+        cloudContinuation = () => {
+          void runCloudStages({
+            editorWindow,
+            settings,
+            job,
+            intermediatePath: intermediate,
+            outputPath,
+            cancel: cloudCancellation,
+            onProgress: emitCloudProgress,
+          }).then((outcome) => {
+            if (editorWindow.isDestroyed()) return
+            if (outcome.ok) {
+              editorWindow.webContents.send('export:complete', { success: true, outputPath })
+              return
+            }
+            editorWindow.webContents.send('export:complete', {
+              success: false,
+              error: outcome.error ?? 'The cloud upscale failed.',
+              // Kept so retry / Standard fallback need no second render.
+              intermediatePath: outcome.intermediatePath,
+              canRetryCloud: !cloudCancellation.cancelled,
+            })
+          })
+        }
       } else if (code === 0) {
         // Remember how fast this configuration actually ran (render + encode).
         if (framesWritten > 0) {
@@ -357,6 +458,10 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
     ipcMain.removeHandler('export:frame-data')
     ipcMain.removeListener('export:render-finished', finishListener)
     ipcMain.removeListener('export:cancel', cancellationHandler)
+
+    // The cloud stages start only now, so the export slot is free again and a
+    // cancel during the upload does not fight the render's cleanup.
+    cloudContinuation?.()
   })
 
   ipcMain.once('render:ready', () => {
@@ -364,5 +469,62 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
     if (appState.renderWorker && !appState.renderWorker.isDestroyed()) {
       appState.renderWorker.webContents.send('render:start', { projectState, exportSettings })
     }
+  })
+}
+
+export interface StandardFallbackRequest {
+  intermediatePath: string
+  outputPath: string
+  targetWidth: number
+  targetHeight: number
+  durationSec: number
+  quality?: ExportSettingsInput['quality']
+  onProgress?: (percent: number) => void
+}
+
+/**
+ * Standard (Lanczos) upscale of an intermediate that a cloud export already
+ * rendered, so a failed cloud step costs no render time to recover from.
+ *
+ * Independent of the render worker: FFmpeg reads the intermediate straight from
+ * disk, scales it to the exact target and copies the audio it already contains.
+ */
+export function runStandardFallback(request: StandardFallbackRequest): Promise<{ ok: boolean; error?: string }> {
+  return new Promise((resolve) => {
+    const args = buildCloudFallbackArgs({
+      intermediatePath: request.intermediatePath,
+      outputPath: request.outputPath,
+      targetWidth: request.targetWidth,
+      targetHeight: request.targetHeight,
+      quality: request.quality,
+    })
+    log.info('[ExportManager] Standard fallback with args:', args.join(' '))
+    const ffmpeg = spawn(FFMPEG_PATH, args)
+
+    let buffer = ''
+    ffmpeg.stdout.on('data', (chunk: Buffer) => {
+      buffer += chunk.toString()
+      const lines = buffer.split('\n')
+      buffer = lines.pop() ?? ''
+      for (const line of lines) {
+        const [key, value] = line.split('=')
+        if (key !== 'out_time_us' || !(request.durationSec > 0)) continue
+        const seconds = Number(value) / 1_000_000
+        request.onProgress?.(Math.max(0, Math.min(100, (seconds / request.durationSec) * 100)))
+      }
+    })
+    ffmpeg.stderr.on('data', (data) => log.info(`[FFmpeg fallback stderr]: ${data.toString()}`))
+    ffmpeg.on('error', (error) => {
+      log.error('[ExportManager] Standard fallback failed to start:', error)
+      resolve({ ok: false, error: String(error) })
+    })
+    ffmpeg.on('close', (code) => {
+      if (code === 0) {
+        request.onProgress?.(100)
+        resolve({ ok: true })
+        return
+      }
+      resolve({ ok: false, error: `FFmpeg exited with code ${code}` })
+    })
   })
 }

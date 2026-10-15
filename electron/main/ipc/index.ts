@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron'
 import * as appHandlers from './handlers/app'
+import * as cloudHandlers from './handlers/cloud'
 import * as desktopHandlers from './handlers/desktop'
 import * as exportHandlers from './handlers/export'
 import * as fsHandlers from './handlers/file-system'
@@ -73,6 +74,9 @@ export function registerIpcHandlers() {
   ipcMain.handle('export:capabilities', exportHandlers.handleGetExportCapabilities)
   ipcMain.handle('export:perf', exportHandlers.handleGetExportPerf)
   ipcMain.handle('entitlement:get', exportHandlers.handleGetEntitlement)
+
+  // Cloud (AI) upscaling: status, consent, and the retry / fallback paths.
+  cloudHandlers.registerCloudHandlers()
 
   // File System
   ipcMain.handle('fs:readFile', fsHandlers.handleReadFile)

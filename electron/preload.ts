@@ -279,6 +279,11 @@ export const electronAPI = {
   // --- Export ---
   startExport: (payload: ExportPayload): Promise<void> => ipcRenderer.invoke('export:start', payload),
   cancelExport: (): void => ipcRenderer.send('export:cancel'),
+  cloudStatus: () => ipcRenderer.invoke('cloud:status'),
+  setCloudConsent: (accepted: boolean) => ipcRenderer.invoke('cloud:consent', accepted),
+  cloudFallback: (payload: unknown) => ipcRenderer.invoke('cloud:fallback', payload),
+  cloudRetry: (payload: unknown) => ipcRenderer.invoke('cloud:retry', payload),
+  cancelCloudRetry: (): void => ipcRenderer.send('cloud:cancel'),
   /** Encoders the bundled FFmpeg has (a missing libx265 disables the 8K option). */
   getExportCapabilities: (): Promise<{ libx265: boolean; hevcEncoders: string[] }> =>
     ipcRenderer.invoke('export:capabilities'),

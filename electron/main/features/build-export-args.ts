@@ -69,6 +69,11 @@ export interface BuildExportArgsOptions {
   targetWidth: number
   targetHeight: number
   /**
+   * Cloud intermediate: near-lossless H.264 at the render size with the audio
+   * already muxed, so the upscaling service only has to touch video.
+   */
+  intermediate?: boolean
+  /**
    * Resolved click-sound file path, or null when none applies. The caller is
    * responsible for materialising the built-in click WAV (see
    * needsBuiltInClickSound) so this function stays pure.
@@ -135,11 +140,71 @@ export function needsBuiltInClickSound(projectState: ExportProjectState): boolea
   return collectMappedClicks(projectState).length > 0
 }
 
+/**
+ * The Standard (Lanczos) fallback for a cloud export that failed.
+ *
+ * The intermediate is already rendered with its audio muxed, so this only scales
+ * it to the exact target and encodes — no second render, which is the whole point
+ * of keeping the intermediate around.
+ */
+export function buildCloudFallbackArgs(options: {
+  intermediatePath: string
+  outputPath: string
+  targetWidth: number
+  targetHeight: number
+  quality?: BuildExportArgsOptions['exportSettings']['quality']
+}): string[] {
+  const { intermediatePath, outputPath, targetWidth, targetHeight } = options
+  return [
+    '-y',
+    '-hide_banner',
+    '-i',
+    intermediatePath,
+    '-map',
+    '0:v:0',
+    '-vf',
+    `scale=${targetWidth}:${targetHeight}:flags=lanczos`,
+    ...videoEncodeArgs(selectExportCodec(targetHeight), options.quality),
+    // Audio was muxed by the render; copy it rather than re-encoding.
+    '-map',
+    '0:a?',
+    '-c:a',
+    'copy',
+    '-movflags',
+    '+faststart',
+    '-progress',
+    'pipe:1',
+    '-nostats',
+    outputPath,
+  ]
+}
+
+/**
+ * The cloud path's intermediate: near-lossless H.264 at the render size, audio
+ * already muxed, so the server only upscales video and copies audio. CRF 14
+ * keeps the upscaler's input clean without a lossless codec's cost, and
+ * faststart helps the server seek the upload.
+ */
+const INTERMEDIATE_VIDEO_ARGS = [
+  '-c:v',
+  'libx264',
+  '-preset',
+  'medium',
+  '-crf',
+  '14',
+  '-pix_fmt',
+  'yuv420p',
+  '-movflags',
+  '+faststart',
+]
+
 export function buildExportArgs(options: BuildExportArgsOptions): string[] {
   const { projectState, exportSettings, outputPath, renderWidth, renderHeight, targetWidth, targetHeight } = options
   const { fps, format, quality } = exportSettings
   const isMp4 = format === 'mp4'
-  const scaled = renderWidth !== targetWidth || renderHeight !== targetHeight
+  const intermediate = options.intermediate === true
+  // The intermediate stays at the render size: the server does the final scale.
+  const scaled = !intermediate && (renderWidth !== targetWidth || renderHeight !== targetHeight)
 
   const ffmpegArgs: string[] = [
     '-y',
@@ -228,7 +293,9 @@ export function buildExportArgs(options: BuildExportArgsOptions): string[] {
   }
 
   if (isMp4) {
-    const encodeArgs = videoEncodeArgs(selectExportCodec(targetHeight), quality)
+    const encodeArgs = intermediate
+      ? INTERMEDIATE_VIDEO_ARGS
+      : videoEncodeArgs(selectExportCodec(targetHeight), quality)
     ffmpegArgs.push('-map', '0:v:0')
     if (scaled) {
       // The frame arrived at the capped render size; scale to the exact target.

@@ -1,3 +1,12 @@
+## [1.7.0](https://github.com/getwithashish/DemoThat/compare/v1.6.0...v1.7.0) (2026-10-15)
+
+### Features
+
+* cloud upscale client (upload, poll, download, cancel) ([2c28d63](https://github.com/getwithashish/DemoThat/commit/2c28d63ad558b0194367126bc7d072dc2d1855e6))
+* cloud upscale contract, mock server and scale planning ([cfb0973](https://github.com/getwithashish/DemoThat/commit/cfb0973e17486251fef8d05ac4211aad602e1ecb))
+* render an intermediate locally and upscale it in the cloud ([b602951](https://github.com/getwithashish/DemoThat/commit/b602951b8ef9b63859a73f571bda9992811b12db))
+* start an AI (cloud) export from the modal ([c969aaa](https://github.com/getwithashish/DemoThat/commit/c969aaac0dd7c0fa6d7a6d55fb86340557eba607))
+
 ## [1.6.0](https://github.com/getwithashish/DemoThat/compare/v1.5.0...v1.6.0) (2026-10-15)
 
 ### Features

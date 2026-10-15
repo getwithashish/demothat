@@ -7,6 +7,7 @@ import { useShallow } from 'zustand/react/shallow'
 import type { EditorState } from '../types'
 import type { EditorActions as AllActions } from '../types'
 import { createProjectSlice, initialProjectState, projectIsDirty } from './slices/projectSlice'
+import { deriveSaveStatus } from '../lib/auto-save'
 import { createPlaybackSlice, initialPlaybackState } from './slices/playbackSlice'
 import { createFrameSlice, initialFrameState } from './slices/frameSlice'
 import { createTimelineSlice, initialTimelineState } from './slices/timelineSlice'
@@ -141,13 +142,15 @@ export const useAllRegions = () =>
   )
 
 // --- Dirty tracking ---
-// Keep `isDirty` in sync with the tracked fields and mirror it to the main
-// process, which needs to know before replacing the session with a new project.
+// Keep `isDirty` in sync with the tracked fields, derive the header's save
+// status from it, and mirror the dirty flag to the main process, which needs to
+// know before replacing the session with a new project.
 useEditorStore.subscribe((state) => {
   const dirty = projectIsDirty(state)
-  if (dirty === state.isDirty) return
-  useEditorStore.setState({ isDirty: dirty })
-  if (typeof window !== 'undefined' && window.electronAPI?.setProjectDirty) {
+  const saveStatus = deriveSaveStatus(state, dirty)
+  if (dirty === state.isDirty && saveStatus === state.saveStatus) return
+  useEditorStore.setState({ isDirty: dirty, saveStatus })
+  if (dirty !== state.isDirty && typeof window !== 'undefined' && window.electronAPI?.setProjectDirty) {
     window.electronAPI.setProjectDirty(dirty)
   }
 })

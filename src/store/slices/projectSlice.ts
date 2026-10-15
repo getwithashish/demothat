@@ -6,6 +6,7 @@ import type {
   VideoDimensions,
   CursorTheme,
   CursorImageBitmap,
+  SaveStatus,
 } from '../../types'
 import type { MetaDataItem, ZoomRegion, CursorFrame } from '../../types'
 import { ZOOM } from '../../lib/constants'
@@ -32,6 +33,10 @@ export const initialProjectState: ProjectState = {
   hasAudioTrack: false,
   currentProjectPath: null,
   isDirty: false,
+  saveStatus: 'untitled',
+  lastSavedAt: null,
+  lastRecoveryAt: null,
+  saveError: null,
 }
 
 /**
@@ -84,9 +89,35 @@ function projectSignature(state: EditorState): string {
 /** Signature captured at the last save/open; the dirty baseline. */
 let cleanSignature = ''
 
+/** Impossible baseline used when a project is adopted as untitled. */
+const DIRTY_BASELINE = '\u0000untitled-project'
+
 /** Records the current state as the clean baseline (call after save/open/load). */
 export function markProjectClean(state: EditorState): void {
   cleanSignature = projectSignature(state)
+}
+
+/**
+ * Records an already-captured signature as the clean baseline.
+ *
+ * A save must mark clean against the signature taken *before* it collected its
+ * payload, so edits made while the write was in flight stay dirty.
+ */
+export function markSignatureClean(signature: string): void {
+  cleanSignature = signature
+}
+
+/** Sentinel baseline: forces the session to read as dirty (see applyOpenedProject). */
+export function markProjectDirtyBaseline(): void {
+  cleanSignature = DIRTY_BASELINE
+}
+
+/**
+ * Captures the project signature for a later `markSignatureClean` call.
+ * Exported so the save path (and its tests) use exactly the same signature.
+ */
+export function captureProjectSignature(state: EditorState): string {
+  return projectSignature(state)
 }
 
 /** True when the tracked fields differ from the last clean baseline. */
@@ -343,6 +374,8 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
 
     set((state) => {
       state.isDirty = false
+      state.saveStatus = state.currentProjectPath ? 'saved' : 'untitled'
+      state.saveError = null
     })
     markProjectClean(get())
   },
@@ -428,7 +461,7 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
       state.hasAudioTrack = hasAudio
     })
   },
-  applyOpenedProject: async (project, projectPath) => {
+  applyOpenedProject: async (project, projectPath, options) => {
     const opened = project as unknown as Partial<EditorState>
     const videoPath = typeof opened.videoPath === 'string' ? opened.videoPath : null
     const metadataPath = typeof opened.metadataPath === 'string' ? opened.metadataPath : null
@@ -465,40 +498,90 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
       if (opened.cursorStyles) state.cursorStyles = opened.cursorStyles
       if (opened.activePresetId !== undefined) state.activePresetId = opened.activePresetId
 
-      state.currentProjectPath = projectPath
+      state.currentProjectPath = options?.asUntitled ? null : projectPath || null
       state.isDirty = false
+      state.saveStatus = options?.asUntitled || !projectPath ? 'untitled' : 'saved'
+      state.saveError = null
     })
-    markProjectClean(get())
+
+    if (options?.asUntitled) {
+      // A recovered project has never been saved to a file. Keep it dirty so the
+      // first save asks for a location, and never let the recovery copy become
+      // currentProjectPath - autosave would overwrite it.
+      markProjectDirtyBaseline()
+    } else {
+      markProjectClean(get())
+    }
   },
   saveProject: async (options) => {
     const current = get()
     if (!current.videoPath) return { canceled: true }
 
+    const previousStatus = current.saveStatus
+    // Capture the dirty baseline BEFORE the payload is collected. A save takes
+    // time, and anything the user changes meanwhile must stay dirty so the next
+    // tick still sees work to do.
+    const signatureAtStart = captureProjectSignature(current)
+
+    const setStatus = (status: SaveStatus, error: string | null = null) =>
+      set((state) => {
+        state.saveStatus = status
+        state.saveError = error
+      })
+
     return withSaveGuard(
       async () => {
-        const payload = await collectSavePayload(get())
-        const result = options?.saveAs
-          ? await window.electronAPI.saveProjectAs(payload)
-          : await window.electronAPI.saveProject({
-              project: payload,
-              path: current.currentProjectPath,
-              auto: options?.auto,
-            })
+        setStatus('saving')
 
-        if (!result.canceled && result.path) {
+        try {
+          const payload = await collectSavePayload(get())
+          const result = options?.saveAs
+            ? await window.electronAPI.saveProjectAs(payload)
+            : await window.electronAPI.saveProject({
+                project: payload,
+                path: current.currentProjectPath,
+                auto: options?.auto,
+              })
+
+          if (result.canceled) {
+            // Nothing was written (the user dismissed the save dialog).
+            setStatus(previousStatus)
+            return result
+          }
+
           if (result.recovery) {
             // Only the crash-recovery copy was written: the project is still
             // unsaved, so leave currentProjectPath and the dirty flag alone.
             console.info('[ProjectSlice] Auto-saved a recovery copy to', result.path)
-          } else {
             set((state) => {
-              state.currentProjectPath = result.path ?? state.currentProjectPath
-              state.isDirty = false
+              state.lastRecoveryAt = Date.now()
+              state.saveStatus = 'untitled'
+              state.saveError = null
             })
-            markProjectClean(get())
+            return result
           }
+
+          set((state) => {
+            state.currentProjectPath = result.path ?? state.currentProjectPath
+            state.lastSavedAt = Date.now()
+            state.saveStatus = 'saved'
+            state.saveError = null
+          })
+
+          // Mark clean against the signature captured before the write, then
+          // recompute against the live state: edits made while the save was in
+          // flight must remain dirty.
+          markSignatureClean(signatureAtStart)
+          const stillDirty = captureProjectSignature(get()) !== signatureAtStart
+          set((state) => {
+            state.isDirty = stillDirty
+          })
+          return result
+        } catch (error) {
+          console.error('[ProjectSlice] Failed to save the project:', error)
+          setStatus('error', (error as Error)?.message ?? 'The save failed.')
+          throw error
         }
-        return result
       },
       { canceled: true },
     )

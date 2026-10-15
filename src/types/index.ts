@@ -192,7 +192,18 @@ export interface ProjectState {
   currentProjectPath: string | null
   /** True when the project has changes since the last save/open. */
   isDirty: boolean
+  /** Where the save lifecycle currently is; drives the header indicator. */
+  saveStatus: SaveStatus
+  /** Epoch ms of the last successful save to a real `.dthat`. */
+  lastSavedAt: number | null
+  /** Epoch ms of the last crash-recovery copy write. */
+  lastRecoveryAt: number | null
+  /** Message from the last failed save; cleared on the next success. */
+  saveError: string | null
 }
+
+/** Save lifecycle shown in the header's save indicator. */
+export type SaveStatus = 'saved' | 'saving' | 'unsaved' | 'error' | 'untitled'
 
 export interface ProjectActions {
   loadProject: (paths: { videoPath: string; metadataPath: string; webcamVideoPath?: string }) => Promise<void>
@@ -203,7 +214,12 @@ export interface ProjectActions {
   reloadCursorTheme: (themeName: string) => Promise<void>
   setHasAudioTrack: (hasAudio: boolean) => void
   /** Applies a project opened from a `.dthat` archive over a fresh load. */
-  applyOpenedProject: (project: Record<string, unknown>, projectPath: string) => Promise<void>
+  applyOpenedProject: (
+    project: Record<string, unknown>,
+    projectPath: string,
+    /** `asUntitled` adopts a recovered project: no path, and left dirty. */
+    options?: { asUntitled?: boolean },
+  ) => Promise<void>
   /** Saves the project; with saveAs the user is asked for a destination. */
   saveProject: (options?: { saveAs?: boolean; auto?: boolean }) => Promise<{
     canceled: boolean

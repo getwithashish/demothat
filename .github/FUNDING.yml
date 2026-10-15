@@ -3,9 +3,9 @@
 # Up to 4 custom URLs are allowed under `custom`.
 
 github: getwithashish
-# ko_fi: your-username
-# buy_me_a_coffee: your-username
+ko_fi: getwithashish
+buy_me_a_coffee: getwithashish
 # patreon: your-username
 # open_collective: your-project
 # liberapay: your-username
-# custom: ['https://example.com/donate']
+custom: ['https://nowpayments.io/donation/getwithashish']

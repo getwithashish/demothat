@@ -12,6 +12,7 @@ import {
   Marquee2,
   Pointer,
   Folder,
+  Folders,
   Square,
   Volume,
   VolumeOff,
@@ -455,6 +456,15 @@ export function RecorderPage() {
     }
   }
 
+  const handleOpenProject = async () => {
+    if (isRecording || actionInProgressRef.current !== 'none') return
+    try {
+      await window.electronAPI.promptOpenProject()
+    } catch (error) {
+      console.error('[Recorder] Failed to open project:', error)
+    }
+  }
+
   const handleSelectionChange = (setter: (id: string) => void, key: string) => (id: string) => {
     setter(id)
     window.electronAPI.setSetting(key, id)
@@ -736,6 +746,15 @@ export function RecorderPage() {
                   size="icon"
                 >
                   <Folder size={ICON_SIZE} strokeWidth={ICON_STROKE} />
+                </Button>
+                <Button
+                  onClick={handleOpenProject}
+                  title="Open Project"
+                  disabled={isInitializing || isBusy || isRecording}
+                  variant="secondary"
+                  size="icon"
+                >
+                  <Folders size={ICON_SIZE} strokeWidth={ICON_STROKE} />
                 </Button>
               </div>
               <div className="w-8 h-10 flex items-center justify-center">

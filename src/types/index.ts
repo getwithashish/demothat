@@ -188,6 +188,10 @@ export interface ProjectState {
   platform: NodeJS.Platform | null
   cursorTheme: CursorTheme | null
   hasAudioTrack: boolean
+  /** Path of the `.dthat` this session was saved to / opened from. */
+  currentProjectPath: string | null
+  /** True when the project has changes since the last save/open. */
+  isDirty: boolean
 }
 
 export interface ProjectActions {
@@ -198,6 +202,10 @@ export interface ProjectActions {
   setPostProcessingCursorScale: (scale: number) => Promise<void>
   reloadCursorTheme: (themeName: string) => Promise<void>
   setHasAudioTrack: (hasAudio: boolean) => void
+  /** Applies a project opened from a `.dthat` archive over a fresh load. */
+  applyOpenedProject: (project: Record<string, unknown>, projectPath: string) => Promise<void>
+  /** Saves the project; with saveAs the user is asked for a destination. */
+  saveProject: (options?: { saveAs?: boolean }) => Promise<{ canceled: boolean; path?: string }>
 }
 
 export interface PlaybackState {

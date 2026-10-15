@@ -63,6 +63,10 @@ interface AppState {
   currentRecordingSession: RecordingSession | null
   currentEditorSessionFiles: RecordingSession | null
 
+  // True while the open editor has unsaved project changes. Updated by the
+  // renderer over IPC so the main process can warn before replacing a session.
+  editorProjectDirty: boolean
+
   // Flags
   isCleanupInProgress: boolean
 }
@@ -82,5 +86,6 @@ export const appState: AppState = {
   originalCursorScale: null,
   currentRecordingSession: null,
   currentEditorSessionFiles: null,
+  editorProjectDirty: false,
   isCleanupInProgress: false,
 }

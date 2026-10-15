@@ -1,4 +1,11 @@
 import { Menu, shell } from 'electron'
+import { appState } from '../state'
+
+/** Forwards a File-menu command to the editor renderer. */
+function sendMenuCommand(command: 'save' | 'save-as' | 'open'): void {
+  const win = appState.editorWin
+  if (win && !win.isDestroyed()) win.webContents.send('menu:command', command)
+}
 
 /**
  * Creates and sets the main application menu for the Editor window.
@@ -10,7 +17,18 @@ export function createEditorMenu() {
   const template: (Electron.MenuItemConstructorOptions | Electron.MenuItem)[] = [
     // On macOS, the first menu item is the App menu
     ...(isMac ? ([{ role: 'appMenu' }] as Electron.MenuItemConstructorOptions[]) : []),
-    { role: 'fileMenu' },
+    {
+      label: 'File',
+      submenu: [
+        { label: 'Open Project…', accelerator: 'CmdOrCtrl+O', click: () => sendMenuCommand('open') },
+        { type: 'separator' },
+        { label: 'Save Project', accelerator: 'CmdOrCtrl+S', click: () => sendMenuCommand('save') },
+        // No accelerator: Cmd/Ctrl+Shift+S is the global "stop recording" shortcut.
+        { label: 'Save Project As…', click: () => sendMenuCommand('save-as') },
+        { type: 'separator' },
+        isMac ? { role: 'close' } : { role: 'quit' },
+      ],
+    },
     { role: 'editMenu' },
     {
       // Explicit View menu: the default `viewMenu` role also ships zoom items

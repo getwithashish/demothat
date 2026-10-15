@@ -4,6 +4,7 @@ import * as desktopHandlers from './handlers/desktop'
 import * as exportHandlers from './handlers/export'
 import * as fsHandlers from './handlers/file-system'
 import * as recordingHandlers from './handlers/recording'
+import * as projectHandlers from './handlers/project'
 import * as settingsHandlers from './handlers/settings'
 import * as shellHandlers from './handlers/shell'
 
@@ -51,6 +52,13 @@ export function registerIpcHandlers() {
   ipcMain.handle('recording:write-screen-video', recordingHandlers.handleWriteScreenVideoChunk)
   ipcMain.handle('recording:screen-capture-stopped', recordingHandlers.handleScreenCaptureStopped)
   ipcMain.handle('recording:get-screen-sources', recordingHandlers.handleGetScreenSources)
+
+  // Project files (.dthat)
+  ipcMain.handle('project:save', projectHandlers.handleProjectSave)
+  ipcMain.handle('project:save-as', projectHandlers.handleProjectSaveAs)
+  ipcMain.handle('project:load', projectHandlers.handleProjectLoad)
+  ipcMain.on('project:set-dirty', projectHandlers.handleProjectSetDirty)
+  ipcMain.handle('project:prompt-open', projectHandlers.handleProjectPromptOpen)
 
   // Export
   ipcMain.handle('export:start', exportHandlers.handleStartExport)

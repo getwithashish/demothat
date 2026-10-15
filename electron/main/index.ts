@@ -21,6 +21,7 @@ import { registerIpcHandlers } from './ipc'
 import { createRecorderWindow } from './windows/recorder-window'
 import { onAppQuit, startRecording, loadVideoFromFile } from './features/recording-manager'
 import { registerRecordingShortcuts, unregisterRecordingShortcuts } from './features/shortcuts'
+import { findProjectArg, markAppReadyForProjects, promptOpenProject, requestOpenProject } from './features/project-open'
 import { initializeMouseTrackerDependencies } from './features/mouse-tracker'
 import { appState } from './state'
 
@@ -32,6 +33,40 @@ setupLogging()
 // `app.whenReady()` because it appends Chromium feature flags.
 // See: https://github.com/alectrocute/electron-audio-loopback
 initAudioLoopback({ forceCoreAudioTap: true })
+
+// --- Single instance ---
+// A second launch (for example from a `.dthat` file association) must hand the
+// path to the running instance instead of starting a rival copy.
+const gotTheLock = app.requestSingleInstanceLock()
+
+if (!gotTheLock) {
+  log.info('[App] Another instance is already running. Quitting this one.')
+  app.quit()
+} else {
+  app.on('second-instance', (_event, argv) => {
+    const projectPath = findProjectArg(argv)
+    if (projectPath) {
+      log.info(`[App] Second instance requested to open a project: ${projectPath}`)
+      requestOpenProject(projectPath)
+      return
+    }
+    // No project argument: just surface the existing window.
+    const win = appState.editorWin ?? appState.recorderWin
+    if (win && !win.isDestroyed()) {
+      if (win.isMinimized()) win.restore()
+      win.show()
+      win.focus()
+    }
+  })
+
+  // macOS delivers double-clicked documents through `open-file`. This must be
+  // registered before the app is ready; requests are queued until then.
+  app.on('open-file', (event, filePath) => {
+    event.preventDefault()
+    log.info(`[App] open-file received: ${filePath}`)
+    requestOpenProject(filePath)
+  })
+}
 
 // --- App Lifecycle Events ---
 app.on('window-all-closed', () => {
@@ -53,6 +88,7 @@ app.on('activate', () => {
 })
 
 app.whenReady().then(async () => {
+  if (!gotTheLock) return
   log.info('[App] Ready. Initializing...')
 
   // Set Dock Menu on macOS
@@ -108,6 +144,12 @@ app.whenReady().then(async () => {
           loadVideoFromFile()
         },
       },
+      {
+        label: 'Open Project...',
+        click: () => {
+          void promptOpenProject()
+        },
+      },
     ])
     app.dock.setMenu(dockMenu)
   }
@@ -146,4 +188,10 @@ app.whenReady().then(async () => {
   registerIpcHandlers()
   registerRecordingShortcuts()
   createRecorderWindow()
+
+  // Flush any project queued before ready (open-file / argv) and open a `.dthat`
+  // passed on this launch.
+  markAppReadyForProjects()
+  const startupProject = findProjectArg(process.argv)
+  if (startupProject) requestOpenProject(startupProject)
 })

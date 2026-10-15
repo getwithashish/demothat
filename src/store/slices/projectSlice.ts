@@ -11,6 +11,8 @@ import type { MetaDataItem, ZoomRegion, CursorFrame } from '../../types'
 import { ZOOM } from '../../lib/constants'
 import { initialFrameState, recalculateCanvasDimensions } from './frameSlice'
 import { prepareCursorBitmaps } from '../../lib/utils'
+import { collectSavePayload, withSaveGuard } from '../../lib/project-file'
+import type { EditorState } from '../../types'
 
 export const initialProjectState: ProjectState = {
   videoPath: null,
@@ -28,6 +30,69 @@ export const initialProjectState: ProjectState = {
   platform: null,
   cursorTheme: null,
   hasAudioTrack: false,
+  currentProjectPath: null,
+  isDirty: false,
+}
+
+/**
+ * Fields that, when changed, make the project dirty. Mirrors the zundo
+ * partialize list plus cursor styles.
+ */
+function projectSignature(state: EditorState): string {
+  const {
+    frameStyles,
+    cameraMotions,
+    visualEffects,
+    compositionLayouts,
+    audioClips,
+    mouseClickSoundsEnabled,
+    mouseClickSoundPath,
+    mouseClickSoundName,
+    mouseClickSoundVolume,
+    aspectRatio,
+    zoomRegions,
+    cutRegions,
+    speedRegions,
+    videoClips,
+    webcamPosition,
+    webcamStyles,
+    isWebcamVisible,
+    cursorStyles,
+  } = state
+  return JSON.stringify({
+    frameStyles,
+    cameraMotions,
+    visualEffects,
+    compositionLayouts,
+    audioClips,
+    mouseClickSoundsEnabled,
+    mouseClickSoundPath,
+    mouseClickSoundName,
+    mouseClickSoundVolume,
+    aspectRatio,
+    zoomRegions,
+    cutRegions,
+    speedRegions,
+    videoClips,
+    webcamPosition,
+    webcamStyles,
+    isWebcamVisible,
+    cursorStyles,
+  })
+}
+
+/** Signature captured at the last save/open; the dirty baseline. */
+let cleanSignature = ''
+
+/** Records the current state as the clean baseline (call after save/open/load). */
+export function markProjectClean(state: EditorState): void {
+  cleanSignature = projectSignature(state)
+}
+
+/** True when the tracked fields differ from the last clean baseline. */
+export function projectIsDirty(state: EditorState): boolean {
+  if (!state.videoPath) return false
+  return projectSignature(state) !== cleanSignature
 }
 
 /**
@@ -275,6 +340,11 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
     } catch (error) {
       console.error('Failed to process metadata file:', error)
     }
+
+    set((state) => {
+      state.isDirty = false
+    })
+    markProjectClean(get())
   },
   setVideoDimensions: (dims) =>
     set((state) => {
@@ -357,5 +427,70 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
     set((state) => {
       state.hasAudioTrack = hasAudio
     })
+  },
+  applyOpenedProject: async (project, projectPath) => {
+    const opened = project as unknown as Partial<EditorState>
+    const videoPath = typeof opened.videoPath === 'string' ? opened.videoPath : null
+    const metadataPath = typeof opened.metadataPath === 'string' ? opened.metadataPath : null
+    if (!videoPath || !metadataPath) {
+      console.error('[ProjectSlice] Opened project is missing its media paths.')
+      return
+    }
+
+    // Rebuild the derived state (geometry, cursors, platform, auto zoom) first…
+    await get().loadProject({ videoPath, metadataPath, webcamVideoPath: opened.webcamVideoPath ?? undefined })
+
+    // …then overlay the saved edits so they win over the auto-generated ones.
+    set((state) => {
+      if (opened.frameStyles) state.frameStyles = opened.frameStyles
+      if (opened.aspectRatio) state.aspectRatio = opened.aspectRatio
+      if (opened.cameraMotions) state.cameraMotions = opened.cameraMotions
+      if (opened.visualEffects) state.visualEffects = opened.visualEffects
+      if (opened.compositionLayouts) state.compositionLayouts = opened.compositionLayouts
+      if (opened.audioClips) state.audioClips = opened.audioClips
+      if (opened.mouseClickSoundsEnabled !== undefined) state.mouseClickSoundsEnabled = opened.mouseClickSoundsEnabled
+      if (opened.mouseClickSoundPath !== undefined) state.mouseClickSoundPath = opened.mouseClickSoundPath
+      if (opened.mouseClickSoundName !== undefined) state.mouseClickSoundName = opened.mouseClickSoundName
+      if (opened.mouseClickSoundVolume !== undefined) state.mouseClickSoundVolume = opened.mouseClickSoundVolume
+      if (opened.hasAudioTrack !== undefined) state.hasAudioTrack = opened.hasAudioTrack
+      if (opened.volume !== undefined) state.volume = opened.volume
+      if (opened.isMuted !== undefined) state.isMuted = opened.isMuted
+      if (opened.zoomRegions) state.zoomRegions = opened.zoomRegions
+      if (opened.cutRegions) state.cutRegions = opened.cutRegions
+      if (opened.speedRegions) state.speedRegions = opened.speedRegions
+      if (opened.videoClips) state.videoClips = opened.videoClips
+      if (opened.webcamPosition) state.webcamPosition = opened.webcamPosition
+      if (opened.webcamStyles) state.webcamStyles = opened.webcamStyles
+      if (opened.isWebcamVisible !== undefined) state.isWebcamVisible = opened.isWebcamVisible
+      if (opened.cursorStyles) state.cursorStyles = opened.cursorStyles
+      if (opened.activePresetId !== undefined) state.activePresetId = opened.activePresetId
+
+      state.currentProjectPath = projectPath
+      state.isDirty = false
+    })
+    markProjectClean(get())
+  },
+  saveProject: async (options) => {
+    const current = get()
+    if (!current.videoPath) return { canceled: true }
+
+    return withSaveGuard(
+      async () => {
+        const payload = await collectSavePayload(get())
+        const result = options?.saveAs
+          ? await window.electronAPI.saveProjectAs(payload)
+          : await window.electronAPI.saveProject({ project: payload, path: current.currentProjectPath })
+
+        if (!result.canceled && result.path) {
+          set((state) => {
+            state.currentProjectPath = result.path ?? state.currentProjectPath
+            state.isDirty = false
+          })
+          markProjectClean(get())
+        }
+        return result
+      },
+      { canceled: true },
+    )
   },
 })

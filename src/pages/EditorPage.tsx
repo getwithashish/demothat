@@ -24,6 +24,8 @@ export function EditorPage() {
     deleteRegion,
     initializePresets,
     initializeSettings,
+    applyOpenedProject,
+    saveProject,
     togglePlay,
     togglePreviewFullScreen,
     seekToNextFrame,
@@ -31,19 +33,25 @@ export function EditorPage() {
     seekBackward,
     seekForward,
   } = useEditorStore.getState()
-  const { presetSaveStatus, duration, isPreviewFullScreen, videoDimensions } = useEditorStore(
-    useShallow((state) => ({
-      presetSaveStatus: state.presetSaveStatus,
-      duration: state.duration,
-      isPreviewFullScreen: state.isPreviewFullScreen,
-      videoDimensions: state.videoDimensions,
-    })),
-  )
+  const { presetSaveStatus, duration, isPreviewFullScreen, videoDimensions, currentProjectPath, isDirty } =
+    useEditorStore(
+      useShallow((state) => ({
+        presetSaveStatus: state.presetSaveStatus,
+        duration: state.duration,
+        isPreviewFullScreen: state.isPreviewFullScreen,
+        videoDimensions: state.videoDimensions,
+        currentProjectPath: state.currentProjectPath,
+        isDirty: state.isDirty,
+      })),
+    )
   // Top-bar meta (DESIGN_SPEC §5 shows "project | timecode · resolution"). Display only.
   const metaLabel =
     duration > 0 && videoDimensions.width > 0
       ? `${formatTime(duration, true)} · ${videoDimensions.width}\u00d7${videoDimensions.height}`
       : null
+  const projectName = currentProjectPath
+    ? (currentProjectPath.split(/[\\/]/).pop() ?? '').replace(/\.dthat$/i, '')
+    : null
   const { undo, redo } = useEditorStore.temporal.getState()
   const {
     isModalOpen: isExportModalOpen,
@@ -105,6 +113,21 @@ export function EditorPage() {
     [seekForward, seekBackward],
   )
 
+  const handleMenuCommand = useCallback(
+    async (command: 'save' | 'save-as' | 'open') => {
+      if (command === 'open') {
+        const result = await window.electronAPI.openProjectFile()
+        if (!result.canceled && result.project) {
+          await applyOpenedProject(result.project as Record<string, unknown>, result.projectPath ?? '')
+          useEditorStore.temporal.getState().clear()
+        }
+        return
+      }
+      await saveProject({ saveAs: command === 'save-as' })
+    },
+    [applyOpenedProject, saveProject],
+  )
+
   useKeyboardShortcuts(
     {
       delete: handleDeleteSelectedRegion,
@@ -118,6 +141,10 @@ export function EditorPage() {
       arrowleft: () => handleSeekByTime(-1),
       arrowright: () => handleSeekByTime(1),
       f: () => togglePreviewFullScreen(),
+      'ctrl+s': (e) => {
+        e.preventDefault()
+        void handleMenuCommand('save')
+      },
       'ctrl+z': (e) => {
         e.preventDefault()
         undo()
@@ -131,7 +158,7 @@ export function EditorPage() {
         redo()
       },
     },
-    [handleDeleteSelectedRegion, undo, redo, togglePlay, handleSeekFrame, togglePreviewFullScreen],
+    [handleDeleteSelectedRegion, undo, redo, togglePlay, handleSeekFrame, togglePreviewFullScreen, handleMenuCommand],
   )
 
   useEffect(() => {
@@ -163,6 +190,21 @@ export function EditorPage() {
     })
     return () => cleanup()
   }, [loadProject, initializePresets, initializeSettings])
+
+  useEffect(() => {
+    const cleanupMenu = window.electronAPI.onMenuCommand((command) => {
+      void handleMenuCommand(command)
+    })
+    // Projects opened from the OS (file association / CLI) arrive here.
+    const cleanupApply = window.electronAPI.onProjectApply(async (payload) => {
+      await applyOpenedProject(payload.project as Record<string, unknown>, payload.projectPath)
+      useEditorStore.temporal.getState().clear()
+    })
+    return () => {
+      cleanupMenu()
+      cleanupApply()
+    }
+  }, [handleMenuCommand, applyOpenedProject])
 
   const getPresetButtonContent = () => {
     switch (presetSaveStatus) {
@@ -257,6 +299,16 @@ export function EditorPage() {
           )}
           <div className="pointer-events-none flex min-w-0 items-baseline gap-2 pl-1">
             <h1 className="truncate text-ui font-semibold tracking-tight text-fg">DemoThat</h1>
+            {projectName && (
+              <span className="truncate text-ui text-muted">
+                {projectName}
+                {isDirty && (
+                  <span className="ml-1 text-accent" title="Unsaved changes">
+                    •
+                  </span>
+                )}
+              </span>
+            )}
             {metaLabel && <span className="truncate font-mono text-sm text-muted">{metaLabel}</span>}
           </div>
         </div>

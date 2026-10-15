@@ -16,21 +16,18 @@ import { RecordingGeometry } from '../state'
 
 const store = new Store() // Can be configured with schema if needed
 
-export function createEditorWindow(
-  videoPath: string,
-  metadataPath: string,
-  recordingGeometry: RecordingGeometry,
-  webcamVideoPath?: string,
-) {
+/**
+ * Creates and configures the editor BrowserWindow, loads the editor route and
+ * returns the window. Callers attach their own `did-finish-load` handler to
+ * deliver the initial payload (a recording session or an opened project).
+ */
+function setupEditorWindow(): BrowserWindow {
   const bounds = store.get('windowBounds', { width: 1280, height: 800 }) as {
     x?: number
     y?: number
     width: number
     height: number
   }
-
-  appState.currentEditorSessionFiles = { screenVideoPath: videoPath, metadataPath, recordingGeometry, webcamVideoPath }
-  log.info('[EditorWindow] Stored session files for cleanup:', appState.currentEditorSessionFiles)
 
   const isWindows = process.platform === 'win32'
   let titleBarOptions = {}
@@ -49,7 +46,7 @@ export function createEditorWindow(
     }
   }
 
-  appState.editorWin = new BrowserWindow({
+  const win = new BrowserWindow({
     icon: path.join(process.env.VITE_PUBLIC!, 'demothat-appicon.png'),
     autoHideMenuBar: true,
     ...bounds,
@@ -64,19 +61,20 @@ export function createEditorWindow(
       webSecurity: !VITE_DEV_SERVER_URL,
     },
   })
+  appState.editorWin = win
 
   // Set the application menu for the editor window
   createEditorMenu()
 
   // Add listeners for maximize/unmaximize
-  appState.editorWin.on('maximize', () => {
-    appState.editorWin?.webContents.send('window:state-changed', { isMaximized: true })
+  win.on('maximize', () => {
+    win.webContents.send('window:state-changed', { isMaximized: true })
   })
-  appState.editorWin.on('unmaximize', () => {
-    appState.editorWin?.webContents.send('window:state-changed', { isMaximized: false })
+  win.on('unmaximize', () => {
+    win.webContents.send('window:state-changed', { isMaximized: false })
   })
 
-  appState.editorWin.maximize()
+  win.maximize()
 
   // Cleanup orphaned recordings
   cleanupOrphanedRecordings()
@@ -84,23 +82,19 @@ export function createEditorWindow(
   // Save bounds logic
   let resizeTimeout: NodeJS.Timeout
   const saveBounds = () => {
-    if (appState.editorWin && !appState.editorWin.isDestroyed() && !appState.editorWin.isMaximized()) {
-      store.set('windowBounds', appState.editorWin.getBounds())
+    if (!win.isDestroyed() && !win.isMaximized()) {
+      store.set('windowBounds', win.getBounds())
     }
   }
   const debouncedSaveBounds = () => {
     clearTimeout(resizeTimeout)
     resizeTimeout = setTimeout(saveBounds, 500)
   }
-  appState.editorWin.on('resize', debouncedSaveBounds)
-  appState.editorWin.on('move', debouncedSaveBounds)
-  appState.editorWin.on('close', saveBounds)
+  win.on('resize', debouncedSaveBounds)
+  win.on('move', debouncedSaveBounds)
+  win.on('close', saveBounds)
 
-  // if (process.env.NODE_ENV === 'development') {
-  //   editorWin.webContents.openDevTools();
-  // }
-
-  appState.editorWin.on('closed', () => {
+  win.on('closed', () => {
     // Clear the application menu when the editor window is closed
     clearMenu()
     if (appState.currentEditorSessionFiles) {
@@ -108,22 +102,49 @@ export function createEditorWindow(
       appState.currentEditorSessionFiles = null
     }
     appState.editorWin = null
+    appState.editorProjectDirty = false
   })
 
-  appState.editorWin.show()
+  win.show()
 
   const editorUrl = VITE_DEV_SERVER_URL
     ? `${VITE_DEV_SERVER_URL}#editor`
     : formatUrl({ pathname: path.join(RENDERER_DIST, 'index.html'), protocol: 'file:', slashes: true, hash: 'editor' })
 
   log.info(`[EditorWindow] Loading URL: ${editorUrl}`)
-  appState.editorWin.loadURL(editorUrl)
+  win.loadURL(editorUrl)
 
-  appState.editorWin.webContents.on('did-finish-load', () => {
+  return win
+}
+
+export function createEditorWindow(
+  videoPath: string,
+  metadataPath: string,
+  recordingGeometry: RecordingGeometry,
+  webcamVideoPath?: string,
+) {
+  appState.currentEditorSessionFiles = { screenVideoPath: videoPath, metadataPath, recordingGeometry, webcamVideoPath }
+  log.info('[EditorWindow] Stored session files for cleanup:', appState.currentEditorSessionFiles)
+
+  const win = setupEditorWindow()
+
+  win.webContents.on('did-finish-load', () => {
     log.info(`[EditorWindow] Finished loading. Sending project data.`)
-    appState.editorWin?.webContents.send('project:open', { videoPath, metadataPath, webcamVideoPath })
-    checkForUpdates(appState.editorWin)
+    win.webContents.send('project:open', { videoPath, metadataPath, webcamVideoPath })
+    checkForUpdates(win)
   })
+
+  return win
+}
+
+/**
+ * Creates an editor window for an already-opened project. The caller delivers
+ * the payload once the renderer is ready (see requestOpenProject).
+ */
+export function createEditorWindowForProject(): BrowserWindow {
+  appState.currentEditorSessionFiles = null
+  appState.editorProjectDirty = false
+  return setupEditorWindow()
 }
 
 export async function cleanupEditorFiles(files: {

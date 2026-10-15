@@ -178,6 +178,39 @@ export const electronAPI = {
     }
   },
 
+  // --- Project files (.dthat) ---
+  saveProject: (request: { project: unknown; path?: string | null }): Promise<{ canceled: boolean; path?: string }> =>
+    ipcRenderer.invoke('project:save', request),
+  saveProjectAs: (project: unknown): Promise<{ canceled: boolean; path?: string }> =>
+    ipcRenderer.invoke('project:save-as', project),
+  openProjectFile: (options?: {
+    path?: string
+  }): Promise<{ canceled: boolean; project?: unknown; manifest?: unknown; projectPath?: string; error?: string }> =>
+    ipcRenderer.invoke('project:load', options),
+  setProjectDirty: (dirty: boolean): void => ipcRenderer.send('project:set-dirty', dirty),
+  /** Opens the project file picker (used by the recorder window). */
+  promptOpenProject: (): Promise<{ opened: boolean }> => ipcRenderer.invoke('project:prompt-open'),
+  // Fired when a project opened from the OS (file association / CLI) is ready.
+  onProjectApply: (
+    callback: (payload: { project: unknown; manifest: unknown; projectPath: string; projectDir: string }) => void,
+  ) => {
+    const listener = (_event: IpcRendererEvent, payload: any) => callback(payload)
+    ipcRenderer.on('project:apply', listener)
+
+    return () => {
+      ipcRenderer.removeListener('project:apply', listener)
+    }
+  },
+  // Menu items in the main process forward their command here.
+  onMenuCommand: (callback: (command: 'save' | 'save-as' | 'open') => void) => {
+    const listener = (_event: IpcRendererEvent, command: 'save' | 'save-as' | 'open') => callback(command)
+    ipcRenderer.on('menu:command', listener)
+
+    return () => {
+      ipcRenderer.removeListener('menu:command', listener)
+    }
+  },
+
   readFile: (filePath: string): Promise<string> => ipcRenderer.invoke('fs:readFile', filePath),
 
   // --- Export ---

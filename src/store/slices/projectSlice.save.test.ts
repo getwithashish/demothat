@@ -32,6 +32,22 @@ const electronAPI = {
     copyRequests.push(request)
     return Promise.resolve({ canceled: false, path: '/tmp/recording copy.dthat' })
   }),
+  openRecoveryCopy: vi.fn(() =>
+    Promise.resolve({
+      canceled: false,
+      project: {
+        videoPath: '/tmp/userData/projects/abc/media/screen.mp4',
+        metadataPath: '/tmp/userData/projects/abc/media/recording.json',
+        frameStyles: { padding: 5 },
+      },
+      projectPath: '',
+      recovered: true,
+    }),
+  ),
+  getRecoveryInfo: vi.fn(() => Promise.resolve({ exists: true, modifiedAt: 1_700_000_000_000 })),
+  discardRecoveryCopy: vi.fn(() => Promise.resolve({ removed: true })),
+  readFile: vi.fn(() => Promise.resolve('{}')),
+  getPlatform: vi.fn(() => Promise.resolve('linux')),
   renameProject: vi.fn((request: { currentPath: string; newName: string }) => {
     renameRequests.push(request)
     if (renameResult) return Promise.resolve(renameResult)
@@ -296,5 +312,89 @@ describe('renameCurrentProject', () => {
     const result = await useEditorStore.getState().renameCurrentProject('Whatever')
     expect(result.ok).toBe(false)
     expect(renameRequests).toHaveLength(0)
+  })
+})
+
+describe('recovery copy', () => {
+  beforeEach(() => {
+    ;(globalThis as unknown as { window: unknown }).window = { electronAPI }
+    vi.clearAllMocks()
+    resetStore()
+  })
+
+  it('opens it as an untitled project, never as the file being edited', async () => {
+    const opened = await useEditorStore.getState().openRecoveryCopy()
+
+    expect(opened).toBe(true)
+    const state = useEditorStore.getState()
+    // recovery.dthat must never become currentProjectPath: autosave would then
+    // overwrite the copy with itself.
+    expect(state.currentProjectPath).toBeNull()
+    // Left dirty, so the first save asks where to put it.
+    expect(state.isDirty).toBe(true)
+    expect(state.saveStatus).toBe('untitled')
+    // And it counts as owned, so it can be cleared once saved for real.
+    expect(state.recoveryCopyOwned).toBe(true)
+  })
+
+  it('reports failure when there is no copy to open', async () => {
+    ;(electronAPI.openRecoveryCopy as unknown as { mockResolvedValueOnce: (v: unknown) => void }).mockResolvedValueOnce(
+      {
+        canceled: true,
+        missing: true,
+      },
+    )
+    expect(await useEditorStore.getState().openRecoveryCopy()).toBe(false)
+  })
+
+  it('removes the copy once its work has been saved to a real file', async () => {
+    useEditorStore.setState({
+      recoveryCopyOwned: true,
+      lastRecoveryAt: 1_700_000_000_000,
+      recoveryCopy: { exists: true, modifiedAt: 1_700_000_000_000 },
+      currentProjectPath: null,
+    } as never)
+    useEditorStore.setState((state) => {
+      state.frameStyles.padding = 9
+    })
+
+    const saving = useEditorStore.getState().saveProject()
+    await waitForSaveRequest(1)
+    resolveSave!({ canceled: false, path: '/tmp/recording.dthat' })
+    await saving
+
+    expect(electronAPI.discardRecoveryCopy).toHaveBeenCalledTimes(1)
+    const state = useEditorStore.getState()
+    expect(state.recoveryCopyOwned).toBe(false)
+    expect(state.recoveryCopy.exists).toBe(false)
+    expect(state.lastRecoveryAt).toBeNull()
+  })
+
+  it('keeps the copy when the save only wrote another recovery copy', async () => {
+    useEditorStore.setState({
+      recoveryCopyOwned: true,
+      recoveryCopy: { exists: true, modifiedAt: 1 },
+    } as never)
+
+    const saving = useEditorStore.getState().saveProject({ auto: true })
+    await waitForSaveRequest(1)
+    resolveSave!({ canceled: false, path: '/tmp/userData/autosave/recovery.dthat', recovery: true })
+    await saving
+
+    expect(electronAPI.discardRecoveryCopy).not.toHaveBeenCalled()
+    expect(useEditorStore.getState().recoveryCopy.exists).toBe(true)
+  })
+
+  it('does not claim a copy it never wrote or opened', async () => {
+    useEditorStore.setState({
+      recoveryCopyOwned: false,
+      currentProjectPath: '/tmp/recording.dthat',
+    } as never)
+    const saving = useEditorStore.getState().saveProject()
+    await waitForSaveRequest(1)
+    resolveSave!({ canceled: false, path: '/tmp/recording.dthat' })
+    await saving
+
+    expect(electronAPI.discardRecoveryCopy).not.toHaveBeenCalled()
   })
 })

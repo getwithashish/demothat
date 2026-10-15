@@ -241,3 +241,60 @@ export async function handleProjectPromptOpen(): Promise<{ opened: boolean }> {
   await promptOpenProject()
   return { opened: true }
 }
+
+/** Where a never-saved project's crash copy is, and how old it is. */
+export async function handleProjectRecoveryInfo(): Promise<{ exists: boolean; modifiedAt: number | null }> {
+  const recoveryPath = getRecoveryProjectPath()
+  try {
+    const stats = await fs.stat(recoveryPath)
+    return { exists: true, modifiedAt: stats.mtimeMs }
+  } catch {
+    return { exists: false, modifiedAt: null }
+  }
+}
+
+/**
+ * Opens the rolling recovery copy.
+ *
+ * The returned path is deliberately EMPTY: a recovered project has never been
+ * saved by the user, so it must be adopted as untitled (and left dirty), or
+ * autosave would start overwriting the recovery copy itself.
+ */
+export async function handleProjectOpenRecovery() {
+  const recoveryPath = getRecoveryProjectPath()
+  const exists = await fs
+    .access(recoveryPath)
+    .then(() => true)
+    .catch(() => false)
+  if (!exists) return { canceled: true, missing: true, error: 'There is no recovery copy to open.' }
+
+  try {
+    const opened = await openProject(recoveryPath)
+    log.info('[ProjectIpc] Opened the recovery copy as an unsaved project.')
+    return {
+      canceled: false,
+      project: opened.project,
+      manifest: opened.manifest,
+      projectPath: '',
+      recovered: true,
+    }
+  } catch (error) {
+    log.error('[ProjectIpc] Failed to open the recovery copy:', error)
+    return { canceled: true, error: (error as Error).message }
+  }
+}
+
+/**
+ * Deletes the recovery copy. Only ever called once the work it holds has been
+ * saved to a real file, by the session that wrote or opened it.
+ */
+export async function handleProjectDiscardRecovery(): Promise<{ removed: boolean }> {
+  try {
+    await fs.rm(getRecoveryProjectPath(), { force: true })
+    log.info('[ProjectIpc] Removed the recovery copy.')
+    return { removed: true }
+  } catch (error) {
+    log.warn('[ProjectIpc] Could not remove the recovery copy:', error)
+    return { removed: false }
+  }
+}

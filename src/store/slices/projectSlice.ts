@@ -39,6 +39,8 @@ export const initialProjectState: ProjectState = {
   lastRecoveryAt: null,
   saveError: null,
   isRenaming: false,
+  recoveryCopy: { exists: false, modifiedAt: null },
+  recoveryCopyOwned: false,
 }
 
 /**
@@ -556,9 +558,14 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
             // unsaved, so leave currentProjectPath and the dirty flag alone.
             console.info('[ProjectSlice] Auto-saved a recovery copy to', result.path)
             set((state) => {
-              state.lastRecoveryAt = Date.now()
+              const now = Date.now()
+              state.lastRecoveryAt = now
               state.saveStatus = 'untitled'
               state.saveError = null
+              // This session owns that copy now: it may be cleared once the work
+              // it holds has been saved to a real file.
+              state.recoveryCopyOwned = true
+              state.recoveryCopy = { exists: true, modifiedAt: now }
             })
             return result
           }
@@ -575,10 +582,22 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
           // be observed mid-flight.
           markSignatureClean(signatureAtStart)
           const stillDirty = captureProjectSignature(get()) !== signatureAtStart
+          const shouldDiscardRecovery = get().recoveryCopyOwned
           set((state) => {
             state.isDirty = stillDirty
             state.saveStatus = stillDirty ? 'unsaved' : state.currentProjectPath ? 'saved' : 'untitled'
+            if (shouldDiscardRecovery) {
+              // The work the recovery copy held is now in a real file.
+              state.recoveryCopyOwned = false
+              state.recoveryCopy = { exists: false, modifiedAt: null }
+              state.lastRecoveryAt = null
+            }
           })
+          if (shouldDiscardRecovery) {
+            void window.electronAPI.discardRecoveryCopy().catch((error) => {
+              console.warn('[ProjectSlice] Could not remove the recovery copy:', error)
+            })
+          }
           return result
         } catch (error) {
           console.error('[ProjectSlice] Failed to save the project:', error)
@@ -621,6 +640,33 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
       set((state) => {
         state.isRenaming = false
       })
+    }
+  },
+  refreshRecoveryCopy: async () => {
+    try {
+      const info = await window.electronAPI.getRecoveryInfo()
+      set((state) => {
+        state.recoveryCopy = { exists: !!info?.exists, modifiedAt: info?.modifiedAt ?? null }
+      })
+    } catch (error) {
+      console.error('[ProjectSlice] Could not read the recovery copy info:', error)
+    }
+  },
+  openRecoveryCopy: async () => {
+    try {
+      const result = await window.electronAPI.openRecoveryCopy()
+      if (result.canceled || !result.project) return false
+
+      // Adopted as UNTITLED: recovery.dthat must never become currentProjectPath,
+      // or the next autosave would overwrite the copy with itself.
+      await get().applyOpenedProject(result.project as Record<string, unknown>, '', { asUntitled: true })
+      set((state) => {
+        state.recoveryCopyOwned = true
+      })
+      return true
+    } catch (error) {
+      console.error('[ProjectSlice] Could not open the recovery copy:', error)
+      return false
     }
   },
 })

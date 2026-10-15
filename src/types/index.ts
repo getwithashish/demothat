@@ -202,6 +202,10 @@ export interface ProjectState {
   saveError: string | null
   /** True while the project file is being renamed; autosave stands still. */
   isRenaming: boolean
+  /** The rolling crash-recovery copy on disk, if there is one. */
+  recoveryCopy: { exists: boolean; modifiedAt: number | null }
+  /** True when this session wrote (or opened) that recovery copy. */
+  recoveryCopyOwned: boolean
 }
 
 /** Save lifecycle shown in the header's save indicator. */
@@ -246,6 +250,13 @@ export interface ProjectActions {
   saveProjectCopy: () => Promise<{ canceled: boolean; path?: string; error?: string }>
   /** Renames the `.dthat` on disk and repoints the session at it. */
   renameCurrentProject: (newName: string) => Promise<{ ok: boolean; path?: string; error?: string }>
+  /** Re-reads whether a crash-recovery copy exists (and how old it is). */
+  refreshRecoveryCopy: () => Promise<void>
+  /**
+   * Opens the rolling recovery copy as an UNSAVED project, so the first save
+   * asks for a location and never lands back on the recovery file.
+   */
+  openRecoveryCopy: () => Promise<boolean>
 }
 
 export interface PlaybackState {

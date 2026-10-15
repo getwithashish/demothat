@@ -37,6 +37,8 @@ export interface ProjectMenuProps {
   onSaveCopy: () => void
   /** Renames the file on disk; resolves with the outcome for inline display. */
   onRename: (newName: string) => Promise<RenameResult>
+  /** Opens the rolling crash-recovery copy as an unsaved project. */
+  onOpenRecovery: () => void
   onShowInFolder: () => void
   onNewRecording: () => void
 }
@@ -47,20 +49,24 @@ export function ProjectMenu({
   onSave,
   onSaveCopy,
   onRename,
+  onOpenRecovery,
   onShowInFolder,
   onNewRecording,
 }: ProjectMenuProps) {
-  const { currentProjectPath, recentProjects, autoSaveEnabled, lastSavedAt, lastRecoveryAt, platform } = useEditorStore(
-    useShallow((state) => ({
-      currentProjectPath: state.currentProjectPath,
-      recentProjects: state.recentProjects,
-      autoSaveEnabled: state.autoSaveEnabled,
-      lastSavedAt: state.lastSavedAt,
-      lastRecoveryAt: state.lastRecoveryAt,
-      platform: state.platform,
-    })),
-  )
+  const { currentProjectPath, recentProjects, autoSaveEnabled, lastSavedAt, lastRecoveryAt, platform, recoveryCopy } =
+    useEditorStore(
+      useShallow((state) => ({
+        currentProjectPath: state.currentProjectPath,
+        recentProjects: state.recentProjects,
+        autoSaveEnabled: state.autoSaveEnabled,
+        lastSavedAt: state.lastSavedAt,
+        lastRecoveryAt: state.lastRecoveryAt,
+        platform: state.platform,
+        recoveryCopy: state.recoveryCopy,
+      })),
+    )
   const clearRecentProjects = useEditorStore((state) => state.clearRecentProjects)
+  const refreshRecoveryCopy = useEditorStore((state) => state.refreshRecoveryCopy)
 
   const [isOpen, setOpen] = useState(false)
   const [now, setNow] = useState(() => Date.now())
@@ -73,9 +79,11 @@ export function ProjectMenu({
   useEffect(() => {
     if (!isOpen) return
     setNow(Date.now())
+    // A recovery copy can appear (the first autosave tick) while the app runs.
+    void refreshRecoveryCopy()
     const timer = window.setInterval(() => setNow(Date.now()), 1000)
     return () => window.clearInterval(timer)
-  }, [isOpen])
+  }, [isOpen, refreshRecoveryCopy])
 
   // Focus once the closed menu has finished handing focus back to the trigger
   // this field replaces, so the caret really lands here and the text is selected.
@@ -93,7 +101,9 @@ export function ProjectMenu({
   const modKey = platform === 'darwin' ? '⌘' : 'Ctrl+'
 
   const savedClock = formatRelativeTime(lastSavedAt, now)
-  const recoveryClock = formatRelativeTime(lastRecoveryAt, now)
+  // The copy on disk is the one the user cares about; this session's write is
+  // the fallback before the store has re-read it.
+  const recoveryClock = formatRelativeTime(recoveryCopy.exists ? recoveryCopy.modifiedAt : lastRecoveryAt, now)
   const footer = isTitled
     ? savedClock
       ? `Autosaved ${savedClock}`
@@ -180,13 +190,24 @@ export function ProjectMenu({
         </DropdownMenuItem>
 
         <DropdownMenuSub>
-          <DropdownMenuSubTrigger disabled={recentProjects.length === 0}>
+          <DropdownMenuSubTrigger disabled={recentProjects.length === 0 && !recoveryCopy.exists}>
             <span className="flex items-center gap-2">
               <Clock size={16} strokeWidth={ICON_STROKE} className="text-muted" />
               Open recent
             </span>
           </DropdownMenuSubTrigger>
           <DropdownMenuSubContent>
+            {recoveryCopy.exists && (
+              <>
+                <DropdownMenuItem onSelect={onOpenRecovery}>
+                  <span className="truncate">
+                    Recovered project
+                    {recoveryClock ? `, ${recoveryClock}` : ''}
+                  </span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
+            )}
             {recentProjects.map((project) => (
               <DropdownMenuItem key={project.path} onSelect={() => onOpenRecent(project.path)}>
                 <span className="truncate" title={project.path}>

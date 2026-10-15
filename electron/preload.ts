@@ -236,6 +236,23 @@ export const electronAPI = {
     ipcRenderer.send('project:perform-save-result', payload),
   /** Opens the project file picker (used by the recorder window). */
   promptOpenProject: (): Promise<{ opened: boolean }> => ipcRenderer.invoke('project:prompt-open'),
+  /** Whether a crash-recovery copy exists, and when it was written. */
+  getRecoveryInfo: (): Promise<{ exists: boolean; modifiedAt: number | null }> =>
+    ipcRenderer.invoke('project:recovery-info'),
+  /**
+   * Opens the recovery copy for an UNSAVED session. The returned projectPath is
+   * empty on purpose, so it never becomes the file autosave writes to.
+   */
+  openRecoveryCopy: (): Promise<{
+    canceled: boolean
+    project?: unknown
+    manifest?: unknown
+    projectPath?: string
+    recovered?: boolean
+    error?: string
+  }> => ipcRenderer.invoke('project:open-recovery'),
+  /** Removes the recovery copy once its work has been saved for real. */
+  discardRecoveryCopy: (): Promise<{ removed: boolean }> => ipcRenderer.invoke('project:recovery-discard'),
   // Fired when a project opened from the OS (file association / CLI) is ready.
   onProjectApply: (
     callback: (payload: { project: unknown; manifest: unknown; projectPath: string; projectDir: string }) => void,

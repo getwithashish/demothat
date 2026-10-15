@@ -64,6 +64,9 @@ export function registerIpcHandlers() {
   ipcMain.on('project:before-replace-result', projectHandlers.handleBeforeReplaceResult)
   ipcMain.on('project:perform-save-result', projectHandlers.handlePerformSaveResult)
   ipcMain.handle('project:prompt-open', projectHandlers.handleProjectPromptOpen)
+  ipcMain.handle('project:recovery-info', projectHandlers.handleProjectRecoveryInfo)
+  ipcMain.handle('project:open-recovery', projectHandlers.handleProjectOpenRecovery)
+  ipcMain.handle('project:recovery-discard', projectHandlers.handleProjectDiscardRecovery)
 
   // Export
   ipcMain.handle('export:start', exportHandlers.handleStartExport)

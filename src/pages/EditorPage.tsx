@@ -37,6 +37,7 @@ export function EditorPage() {
     saveProject,
     saveProjectCopy,
     renameCurrentProject,
+    openRecoveryCopy,
     togglePlay,
     togglePreviewFullScreen,
     seekToNextFrame,
@@ -187,6 +188,16 @@ export function EditorPage() {
   const handleNewRecording = useCallback(() => {
     window.electronAPI.showRecorderWindow()
   }, [])
+
+  /** Opens the crash copy as an unsaved project, so the first save asks where. */
+  const handleOpenRecovery = useCallback(async () => {
+    const opened = await openRecoveryCopy()
+    if (!opened) {
+      pushToast({ message: "That project can't be found" })
+      return
+    }
+    useEditorStore.temporal.getState().clear()
+  }, [openRecoveryCopy, pushToast])
 
   // Every project that gets a path (opened, saved, renamed) is remembered.
   useEffect(() => {
@@ -370,6 +381,7 @@ export function EditorPage() {
               onSave={() => void handleSaveNow()}
               onSaveCopy={() => void handleSaveCopy()}
               onRename={handleRename}
+              onOpenRecovery={() => void handleOpenRecovery()}
               onShowInFolder={handleShowInFolder}
               onNewRecording={handleNewRecording}
             />

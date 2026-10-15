@@ -20,6 +20,7 @@ import { setupLogging } from './lib/logging'
 import { registerIpcHandlers } from './ipc'
 import { createRecorderWindow } from './windows/recorder-window'
 import { onAppQuit, startRecording, loadVideoFromFile } from './features/recording-manager'
+import { registerRecordingShortcuts, unregisterRecordingShortcuts } from './features/shortcuts'
 import { initializeMouseTrackerDependencies } from './features/mouse-tracker'
 import { appState } from './state'
 
@@ -39,6 +40,11 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', onAppQuit)
+
+app.on('will-quit', () => {
+  // Release the global recording shortcuts before the process goes away.
+  unregisterRecordingShortcuts()
+})
 
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
@@ -138,5 +144,6 @@ app.whenReady().then(async () => {
   )
 
   registerIpcHandlers()
+  registerRecordingShortcuts()
   createRecorderWindow()
 })

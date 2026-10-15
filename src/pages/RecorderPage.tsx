@@ -63,6 +63,9 @@ export function RecorderPage() {
   const systemAudioHandleRef = useRef<SystemAudioCaptureHandle | null>(null)
   const screenCaptureHandleRef = useRef<ScreenCaptureHandle | null>(null)
   const actionInProgressRef = useRef<ActionInProgress>('none')
+  // Always points at the latest handleStart so the global-shortcut listener
+  // (registered once) can invoke it without re-subscribing on every render.
+  const startHandlerRef = useRef<() => void>(() => {})
 
   const supportsSystemAudio = platform === 'darwin'
   const usesRendererScreenCapture = platform === 'darwin'
@@ -224,11 +227,19 @@ export function RecorderPage() {
       })()
     })
 
+    // Global start shortcut from the main process → run the normal start flow
+    // using the current UI selections.
+    const cleanupTriggerStart = window.electronAPI.onTriggerStart(() => {
+      console.info('[Recorder] recorder:trigger-start received from main.')
+      startHandlerRef.current()
+    })
+
     return () => {
       cleanupStarted()
       cleanupFinished()
       cleanupStopSystemAudio?.()
       cleanupStopScreenCapture?.()
+      cleanupTriggerStart()
     }
   }, [reloadDevices, setActionState, stopSystemAudio, stopScreenCapture])
 
@@ -417,6 +428,12 @@ export function RecorderPage() {
       setIsRecording(false)
     }
   }
+
+  // Keep the ref pointed at the latest handleStart for the global-shortcut
+  // listener (which is registered once, in the IPC effect above).
+  useEffect(() => {
+    startHandlerRef.current = handleStart
+  })
 
   const handleStop = () => {
     if (!isRecording || actionInProgressRef.current !== 'none') return
@@ -693,11 +710,21 @@ export function RecorderPage() {
             <div className="flex items-center" style={{ WebkitAppRegion: 'no-drag' }}>
               <div className="flex items-center gap-2">
                 {isRecording ? (
-                  <Button onClick={handleStop} title="Stop Recording" variant="destructive" size="icon">
+                  <Button
+                    onClick={handleStop}
+                    title={`Stop Recording (${platform === 'darwin' ? 'Cmd' : 'Ctrl'}+Shift+S)`}
+                    variant="destructive"
+                    size="icon"
+                  >
                     <Square size={ICON_SIZE} strokeWidth={ICON_STROKE} fill="currentColor" />
                   </Button>
                 ) : (
-                  <Button onClick={handleStart} title="Record" disabled={isInitializing || isBusy} size="icon">
+                  <Button
+                    onClick={handleStart}
+                    title={`Record (${platform === 'darwin' ? 'Cmd' : 'Ctrl'}+Shift+R)`}
+                    disabled={isInitializing || isBusy}
+                    size="icon"
+                  >
                     <Video size={ICON_SIZE} strokeWidth={ICON_STROKE} />
                   </Button>
                 )}

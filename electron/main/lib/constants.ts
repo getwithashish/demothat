@@ -18,6 +18,14 @@ export const PRELOAD_SCRIPT = path.join(process.env.APP_ROOT!, 'dist-electron/pr
 // --- Recording ---
 export const MOUSE_RECORDING_FPS = 50
 
+// Global accelerators for starting/stopping a recording. Declared here (a
+// dependency-free module) so both the shortcut registrar and the tray menu can
+// use the same values without a circular import.
+export const RECORDING_SHORTCUTS = {
+  start: 'CommandOrControl+Shift+R',
+  stop: 'CommandOrControl+Shift+S',
+} as const
+
 // --- Export ---
 export type ResolutionKey = '720p' | '1080p' | '2k' | '4k'
 export const RESOLUTIONS: Record<ResolutionKey, { width: number; height: number }> = {

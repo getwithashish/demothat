@@ -151,6 +151,16 @@ export const electronAPI = {
       ipcRenderer.removeListener('recording-finished', listener)
     }
   },
+  // Fired by the global start shortcut in the main process; tells the recorder
+  // to run its own start flow with the current UI selections.
+  onTriggerStart: (callback: () => void) => {
+    const listener = () => callback()
+    ipcRenderer.on('recorder:trigger-start', listener)
+
+    return () => {
+      ipcRenderer.removeListener('recorder:trigger-start', listener)
+    }
+  },
   onReleaseWebcamRequest: (callback: () => void) => {
     const listener = () => callback()
     ipcRenderer.on('recorder:release-webcam', listener)

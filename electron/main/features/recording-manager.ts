@@ -19,7 +19,7 @@ import {
 } from 'electron'
 import { appState } from '../state'
 import { getFFmpegPath, ensureDirectoryExists } from '../lib/utils'
-import { VITE_PUBLIC } from '../lib/constants'
+import { VITE_PUBLIC, RECORDING_SHORTCUTS } from '../lib/constants'
 import { createMouseTracker } from './mouse-tracker'
 import { getCursorScale, restoreOriginalCursorScale, resetCursorScale } from './cursor-manager'
 import { createEditorWindow, cleanupEditorFiles } from '../windows/editor-window'
@@ -429,6 +429,7 @@ function createTray() {
   const contextMenu = Menu.buildFromTemplate([
     {
       label: 'Stop Recording',
+      accelerator: RECORDING_SHORTCUTS.stop,
       click: async () => {
         await stopRecording()
       },

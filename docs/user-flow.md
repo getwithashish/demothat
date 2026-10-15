@@ -1,4 +1,4 @@
-# ScreenArc - Detailed User Flows
+# DemoThat - Detailed User Flows
 
 This document details the user's journey through the application, describing actions, UI responses, and underlying processes based on the current implementation.
 

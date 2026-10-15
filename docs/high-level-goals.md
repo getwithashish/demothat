@@ -1,8 +1,8 @@
-# ScreenArc - High-Level Goals
+# DemoThat - High-Level Goals
 
 ## Vision
 
-To create a streamlined, powerful screen recording and editing application for Linux, Windows, and macOS, enabling creators to produce professional-looking, engaging videos with minimal effort. ScreenArc aims to be the go-to tool for tutorials, demos, and presentations by automating complex editing tasks like cursor tracking and zooming.
+To create a streamlined, powerful screen recording and editing application for Linux, Windows, and macOS, enabling creators to produce professional-looking, engaging videos with minimal effort. DemoThat aims to be the go-to tool for tutorials, demos, and presentations by automating complex editing tasks like cursor tracking and zooming.
 
 ## Core Features (Phase 1)
 

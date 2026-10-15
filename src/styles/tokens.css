@@ -1,4 +1,4 @@
-/* ScreenArc UI revamp: design tokens (Tailwind CSS v4)
+/* DemoThat UI revamp: design tokens (Tailwind CSS v4)
    Imported from src/index.css, AFTER `@import "tailwindcss";`.
    Theme switching: set data-theme="light" | "dark" on <html>.
    Default it from Electron's nativeTheme (or prefers-color-scheme) and let the user override. */

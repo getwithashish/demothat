@@ -1,0 +1,1001 @@
+diff --git a/.github/FUNDING.yml b/.github/FUNDING.yml
+index 2c8b0d7..1fd1f99 100644
+--- a/.github/FUNDING.yml
++++ b/.github/FUNDING.yml
+@@ -1,14 +1,11 @@
+-# These are supported funding model platforms
++# Sponsor button configuration.
++# Docs: https://docs.github.com/en/repositories/managing-your-repositorys-community/displaying-a-sponsor-button-in-your-repository
++# Up to 4 custom URLs are allowed under `custom`.
+ 
+-github: #
+-patreon: # Replace with a single Patreon username
+-open_collective: # Replace with a single Open Collective username
+-ko_fi: tamnv # Replace with a single Ko-fi username
+-tidelift: # Replace with a single Tidelift platform-name/package-name e.g., npm/babel
+-community_bridge: # Replace with a single Community Bridge project-name e.g., cloud-foundry
+-liberapay: # Replace with a single Liberapay username
+-issuehunt: # Replace with a single IssueHunt username
+-lfx_crowdfunding: # Replace with a single LFX Crowdfunding project-name e.g., cloud-foundry
+-polar: # Replace with a single Polar username
+-buy_me_a_coffee: tamnvhustcc
+-custom: # Replace with up to 4 custom sponsorship URLs e.g., ['link1', 'link2']
++github: getwithashish
++# ko_fi: your-username
++# buy_me_a_coffee: your-username
++# patreon: your-username
++# open_collective: your-project
++# liberapay: your-username
++# custom: ['https://example.com/donate']
+diff --git a/.github/ISSUE_TEMPLATE/bug_report.yml b/.github/ISSUE_TEMPLATE/bug_report.yml
+index a7c5ec6..22eb581 100644
+--- a/.github/ISSUE_TEMPLATE/bug_report.yml
++++ b/.github/ISSUE_TEMPLATE/bug_report.yml
+@@ -6,9 +6,9 @@ body:
+     attributes:
+       label: Checklist
+       options:
+-        - label: I have **tried ALL** of the steps mentioned in the [troubleshooting guide](https://github.com/screenarc/screenarc/wiki/Troubleshooting).
++        - label: I have **tried ALL** of the steps mentioned in the [troubleshooting guide](https://github.com/getwithashish/DemoThat#troubleshooting).
+           required: true
+-        - label: I have **searched** for this in the [issues tab](https://github.com/screenarc/screenarc/issues?q=).
++        - label: I have **searched** for this in the [issues tab](https://github.com/getwithashish/DemoThat/issues?q=).
+           required: true
+   - type: textarea
+     attributes:
+@@ -26,8 +26,8 @@ body:
+ 
+   - type: input
+     attributes:
+-      label: ScreenArc Version (or commit hash)
+-      description: ✍️ What version of ScreenArc did you use?
++      label: DemoThat Version (or commit hash)
++      description: ✍️ What version of DemoThat did you use?
+     validations:
+       required: true
+ 
+@@ -54,7 +54,7 @@ body:
+   - type: input
+     attributes:
+       label: GPU Name
+-      description: 📝 What GPU do you have? If you do not know, please just write the name of your device. If the name is something like "Intel Core", "Intel Graphics" or "AMD Vega" and you can't export videos, [STOP and read the 4th point in the FAQ](https://github.com/screenarc/screenarc?tab=readme-ov-file#-faq).
++      description: 📝 What GPU do you have? If you do not know, please just write the name of your device. If the name is something like "Intel Core", "Intel Graphics" or "AMD Vega" and you can't export videos, [STOP and read the 4th point in the FAQ](https://github.com/getwithashish/DemoThat?tab=readme-ov-file#-faq).
+     validations:
+       required: true
+ 
+@@ -71,7 +71,7 @@ body:
+   - type: textarea
+     attributes:
+       label: Logs
+-      description: 💥 Paste the logs below. [Here's a Guide if you don't know how to do that](https://github.com/screenarc/screenarc/wiki/Guide#logs).
++      description: 💥 Paste the logs below. [Here's a Guide if you don't know how to do that](https://github.com/getwithashish/DemoThat/wiki/Guide#logs).
+       render: sh
+     validations:
+       required: true
+diff --git a/.github/workflows/release.yml b/.github/workflows/release.yml
+index ee48226..55dd7f8 100644
+--- a/.github/workflows/release.yml
++++ b/.github/workflows/release.yml
+@@ -7,7 +7,7 @@ on:
+   workflow_dispatch:
+ 
+ jobs:
+-  # --- JOB 1: Create Release using Semantic Release (KHÔNG THAY ĐỔI) ---
++  # --- JOB 1: Create Release using Semantic Release (runs on every push to main) ---
+   release:
+     name: Semantic Release
+     runs-on: ubuntu-latest
+diff --git a/.releaserc.json b/.releaserc.json
+index eaa18ee..1c6300b 100644
+--- a/.releaserc.json
++++ b/.releaserc.json
+@@ -1,8 +1,25 @@
+ {
+   "branches": ["main"],
+   "plugins": [
+-    "@semantic-release/commit-analyzer",
+-    "@semantic-release/release-notes-generator",
++    [
++      "@semantic-release/commit-analyzer",
++      {
++        "preset": "conventionalcommits",
++        "releaseRules": [
++          { "breaking": true, "release": "major" },
++          { "revert": true, "release": "patch" },
++          { "type": "feat", "release": "minor" },
++          { "type": "fix", "release": "patch" },
++          { "type": "perf", "release": "patch" }
++        ]
++      }
++    ],
++    [
++      "@semantic-release/release-notes-generator",
++      {
++        "preset": "conventionalcommits"
++      }
++    ],
+     [
+       "@semantic-release/changelog",
+       {
+diff --git a/CODE_OF_CONDUCT.md b/CODE_OF_CONDUCT.md
+index f2df328..6009698 100644
+--- a/CODE_OF_CONDUCT.md
++++ b/CODE_OF_CONDUCT.md
+@@ -37,6 +37,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
+ 
+ ### Added
+ 
+-- Initial public release of ScreenArc.
++- Initial public release of DemoThat.
+ - Core recording engine for screen and mouse metadata.
+ - Editing studio with timeline, frame customization, and auto-zoom.
+diff --git a/CONTRIBUTING.md b/CONTRIBUTING.md
+index d9a1380..c8c3920 100644
+--- a/CONTRIBUTING.md
++++ b/CONTRIBUTING.md
+@@ -1,6 +1,6 @@
+-# Contributing to ScreenArc
++# Contributing to DemoThat
+ 
+-First off, thank you for considering contributing to ScreenArc! It's people like you that make open source such a great community.
++First off, thank you for considering contributing to DemoThat! It's people like you that make open source such a great community.
+ 
+ ## How Can I Contribute?
+ 
+@@ -15,7 +15,7 @@ Unsure where to begin? You can start by looking through `good first issue` and `
+ ## Contribution Workflow
+ 
+ 1.  **Fork the repository:** Create your own copy of the project on GitHub.
+-2.  **Clone your fork:** `git clone https://github.com/tamnguyenvan/screenarc.git`
++2.  **Clone your fork:** `git clone https://github.com/getwithashish/DemoThat.git`
+ 3.  **Create a branch:** `git checkout -b feature/your-amazing-feature` or `fix/issue-number`. Please use a descriptive branch name.
+ 4.  **Install dependencies:** `npm install`
+ 5.  **Make your changes:** Write your code and make sure it works by running the app locally (`npm run dev`).
+@@ -25,4 +25,4 @@ Unsure where to begin? You can start by looking through `good first issue` and `
+     - `fix: Correctly handle multi-monitor recording on Windows`
+     - `docs: Update README with installation instructions`
+ 8.  **Push to your fork:** `git push origin feature/your-amazing-feature`
+-9.  **Open a Pull Request:** Go to the original ScreenArc repository and open a PR from your forked branch. Please fill out the PR template with as much detail as possible.
++9.  **Open a Pull Request:** Go to the original DemoThat repository and open a PR from your forked branch. Please fill out the PR template with as much detail as possible.
+diff --git a/README.md b/README.md
+index 4b8b48b..29b0ac1 100644
+--- a/README.md
++++ b/README.md
+@@ -1,30 +1,27 @@
+-# ScreenArc 🎬
++# DemoThat 🎬
+ 
+ <div align="center">
+-  <img src="https://raw.githubusercontent.com/tamnguyenvan/screenarc/main/docs/assets/small-banner.png" alt="ScreenArc Banner">
++  <img src="docs/assets/small-banner.png" alt="DemoThat Banner">
+ </div>
+ 
+ <div align="center">
+-  <img src="https://img.shields.io/github/v/release/tamnguyenvan/screenarc?style=for-the-badge" alt="Latest Release" />
+-  <img src="https://img.shields.io/github/license/tamnguyenvan/screenarc?style=for-the-badge" alt="License" />
+-  <img src="https://img.shields.io/github/downloads/tamnguyenvan/screenarc/total?style=for-the-badge&color=green" alt="Total Downloads" />
++  <img src="https://img.shields.io/github/v/release/getwithashish/DemoThat?style=for-the-badge" alt="Latest Release" />
++  <img src="https://img.shields.io/github/license/getwithashish/DemoThat?style=for-the-badge" alt="License" />
++  <img src="https://img.shields.io/github/downloads/getwithashish/DemoThat/total?style=for-the-badge&color=green" alt="Total Downloads" />
++  <a href="https://github.com/sponsors/getwithashish"><img src="https://img.shields.io/badge/Sponsor-%E2%9D%A4-ea4aaa?style=for-the-badge&logo=githubsponsors" alt="Sponsor this project" /></a>
+ </div>
+ 
+ <div align="center">
+   <h3>✨ Create cinematic screen recordings with automatic pan-and-zoom effects ✨</h3>
+ </div>
+ 
+-**ScreenArc** is a smart screen recording and editing tool that makes professional video creation effortless. It automatically tracks your mouse movements and clicks, creating smooth cinematic animations that keep viewers focused on what matters. **No manual keyframing needed!**
++**DemoThat** is a smart screen recording and editing tool that makes professional video creation effortless. It automatically tracks your mouse movements and clicks, creating smooth cinematic animations that keep viewers focused on what matters. **No manual keyframing needed!**
+ 
+ Perfect for developers, educators, and content creators who want to produce stunning tutorials, demos, and presentations.
+ 
+ ## 🎥 Demo
+ 
+-<!-- Example comment. For centralization, keep the original repository.
+-![Demo Video](https://github.com/extencil/screenarc/blob/main/docs/assets/screenarc-demo.gif?raw=true)
+--->
+-
+-![Demo Video](https://github.com/tamnguyenvan/screenarc/blob/main/docs/assets/screenarc-demo.gif?raw=true)
++![Demo Video](docs/assets/demothat-demo.gif)
+ 
+ ---
+ 
+@@ -42,13 +39,13 @@ Perfect for developers, educators, and content creators who want to produce stun
+ 
+ ## 🚀 Installation
+ 
+-Grab the latest version for your OS from the [**Releases Page**](https://github.com/tamnguyenvan/screenarc/releases/latest).
++Grab the latest version for your OS from the [**Releases Page**](https://github.com/getwithashish/DemoThat/releases/latest).
+ 
+ ### 🐧 Linux Instructions
+ 
+ #### Prerequisites
+ 
+-- **X11 Display Server Required** - ScreenArc currently doesn't support Wayland.
++- **X11 Display Server Required** - DemoThat currently doesn't support Wayland.
+   - Check your session type: `echo $XDG_SESSION_TYPE`
+   - If it shows `wayland`, switch to X11 from your login screen.
+ 
+@@ -57,20 +54,20 @@ Grab the latest version for your OS from the [**Releases Page**](https://github.
+ 1. **Download** the latest AppImage:
+ 
+    ```bash
+-   wget https://github.com/tamnguyenvan/screenarc/releases/latest/download/ScreenArc-*-linux-x64.AppImage
++   wget https://github.com/getwithashish/DemoThat/releases/latest/download/DemoThat-*-linux-x64.AppImage
+    ```
+ 
+ 2. **Make it executable**:
+ 
+    ```bash
+-   chmod +x ScreenArc-*-linux-x64.AppImage
++   chmod +x DemoThat-*-linux-x64.AppImage
+    ```
+ 
+-3. **Run ScreenArc**:
++3. **Run DemoThat**:
+    - Double-click the file in your file manager, or
+    - Run from terminal:
+      ```bash
+-     ./ScreenArc-*-linux-x64.AppImage
++     ./DemoThat-*-linux-x64.AppImage
+      ```
+ 
+ #### Troubleshooting
+@@ -89,13 +86,13 @@ Grab the latest version for your OS from the [**Releases Page**](https://github.
+ > - In your browser, click "Keep" or "Keep anyway" when downloading
+ > - On the SmartScreen prompt, click "More info" → "Run anyway"
+ >
+-> Our code is [fully open source](https://github.com/tamnguyenvan/screenarc) for your review.
++> Our code is [fully open source](https://github.com/getwithashish/DemoThat) for your review.
+ 
+ #### Installation Steps
+ 
+ 1. **Download** the latest Windows installer:
+-   - Visit our [Releases Page](https://github.com/tamnguyenvan/screenarc/releases/latest)
+-   - Download the `ScreenArc-*-Setup.exe` file
++   - Visit our [Releases Page](https://github.com/getwithashish/DemoThat/releases/latest)
++   - Download the `DemoThat-*-Setup.exe` file
+ 
+ 2. **Run the installer**:
+    - Locate the downloaded file (usually in your `Downloads` folder)
+@@ -114,21 +111,21 @@ Grab the latest version for your OS from the [**Releases Page**](https://github.
+ > 2. Close the warning dialog
+ > 3. Open System Settings > Privacy & Security
+ > 4. Scroll down to the "Security" section
+-> 5. Click "Open Anyway" next to the warning about ScreenArc
++> 5. Click "Open Anyway" next to the warning about DemoThat
+ > 6. Click "Open" in the confirmation dialog
+ >
+-> Our code is [fully open source](https://github.com/tamnguyenvan/screenarc) for your review
++> Our code is [fully open source](https://github.com/getwithashish/DemoThat) for your review
+ 
+ #### Installation Steps
+ 
+ 1. **Download** the appropriate macOS package for your system:
+-   - Visit our [Releases Page](https://github.com/tamnguyenvan/screenarc/releases/latest)
+-   - For Apple Silicon (M1/M2/M3) Macs: Download `ScreenArc-*-arm64.dmg`
+-   - For Intel Macs: Download `ScreenArc-*-x64.dmg`
++   - Visit our [Releases Page](https://github.com/getwithashish/DemoThat/releases/latest)
++   - For Apple Silicon (M1/M2/M3) Macs: Download `DemoThat-*-arm64.dmg`
++   - For Intel Macs: Download `DemoThat-*-x64.dmg`
+ 
+-2. **Install ScreenArc**:
++2. **Install DemoThat**:
+    - Open the downloaded `.dmg` file
+-   - Drag the ScreenArc app to your Applications folder
++   - Drag the DemoThat app to your Applications folder
+    - Open from Launchpad or Applications folder
+ 
+ ---
+@@ -158,8 +155,8 @@ Grab the latest version for your OS from the [**Releases Page**](https://github.
+ 
+ 1.  **Clone the repo:**
+     ```bash
+-    git clone https://github.com/tamnguyenvan/screenarc.git
+-    cd screenarc
++    git clone https://github.com/getwithashish/DemoThat.git
++    cd DemoThat
+     ```
+ 2.  **Install dependencies:**
+     ```bash
+@@ -191,12 +188,27 @@ Grab the latest version for your OS from the [**Releases Page**](https://github.
+     npm run dev
+     ```
+ 
++## 💖 Sponsor This Project
++
++DemoThat is free and open source. If it saves you time, please consider [sponsoring the project](https://github.com/sponsors/getwithashish) to support continued development.
++
++---
++
+ ## 🤝 Contributing
+ 
+-A huge thank you to everyone who has contributed to making ScreenArc better!
++A huge thank you to everyone who has contributed to making DemoThat better!
+ 
+-<a href="https://github.com/tamnguyenvan/screenarc/graphs/contributors">
+-  <img src="https://contrib.rocks/image?repo=tamnguyenvan/screenarc" />
++Commits follow the [Conventional Commits](https://www.conventionalcommits.org/) format, because releases are fully automated from them. Every push to `main` is analysed and, when it contains releasable changes, a new [semantic version](https://semver.org/) is published:
++
++| Commit | Release |
++| ------ | ------- |
++| `fix: ...`, `perf: ...` | Patch (`1.0.0` → `1.0.1`) |
++| `feat: ...` | Minor (`1.0.0` → `1.1.0`) |
++| `feat!: ...`, or a `BREAKING CHANGE:` footer | Major (`1.0.0` → `2.0.0`) |
++| `docs:`, `chore:`, `refactor:`, `test:`, `ci:`, `style:` | No release |
++
++<a href="https://github.com/getwithashish/DemoThat/graphs/contributors">
++  <img src="https://contrib.rocks/image?repo=getwithashish/DemoThat" />
+ </a>
+ 
+ <br/>
+@@ -205,7 +217,9 @@ A huge thank you to everyone who has contributed to making ScreenArc better!
+ 
+ ## 🙏 Acknowledgements
+ 
+-ScreenArc stands on the shoulders of giants. This project would not be possible without the incredible work of the open-source community. A special thank you to the authors and maintainers of these key libraries & tools that handle low-level system interactions:
++DemoThat is a fork of [ScreenArc](https://github.com/tamnguyenvan/screenarc) by Tam Nguyen, and is modified and maintained by Ashish Sam. Thank you to the original author for releasing it as free software.
++
++DemoThat stands on the shoulders of giants. This project would not be possible without the incredible work of the open-source community. A special thank you to the authors and maintainers of these key libraries & tools that handle low-level system interactions:
+ 
+ - [global-mouse-events](https://github.com/xanderfrangos/global-mouse-events): Mouse event listener on Windows
+ - [node-x11](https://github.com/sidorares/node-x11): X11 Node.js binding
+@@ -216,3 +230,8 @@ ScreenArc stands on the shoulders of giants. This project would not be possible
+ ## 📜 License
+ 
+ This project is licensed under the [GPL-3.0 License](LICENSE).
++
++- Copyright (C) 2025 Tam Nguyen (original ScreenArc)
++- Copyright (C) 2026 Ashish Sam (modifications in DemoThat)
++
++DemoThat is a modified version of ScreenArc. The original copyright notices are retained as required by the GPL, and the complete corresponding source for every release is available in this repository.
+diff --git a/docs/assets/screenarc-demo.gif b/docs/assets/demothat-demo.gif
+similarity index 100%
+rename from docs/assets/screenarc-demo.gif
+rename to docs/assets/demothat-demo.gif
+diff --git a/docs/assets/screenarc-demo.mp4 b/docs/assets/demothat-demo.mp4
+similarity index 100%
+rename from docs/assets/screenarc-demo.mp4
+rename to docs/assets/demothat-demo.mp4
+diff --git a/docs/development-plan.md b/docs/development-plan.md
+index abc21fd..f374b9b 100644
+--- a/docs/development-plan.md
++++ b/docs/development-plan.md
+@@ -1,4 +1,4 @@
+-# ScreenArc - Development Plan
++# DemoThat - Development Plan
+ 
+ ...
+ 
+diff --git a/docs/high-level-goals.md b/docs/high-level-goals.md
+index 73fc164..e4590be 100644
+--- a/docs/high-level-goals.md
++++ b/docs/high-level-goals.md
+@@ -1,8 +1,8 @@
+-# ScreenArc - High-Level Goals
++# DemoThat - High-Level Goals
+ 
+ ## Vision
+ 
+-To create a streamlined, powerful screen recording and editing application for Linux, Windows, and macOS, enabling creators to produce professional-looking, engaging videos with minimal effort. ScreenArc aims to be the go-to tool for tutorials, demos, and presentations by automating complex editing tasks like cursor tracking and zooming.
++To create a streamlined, powerful screen recording and editing application for Linux, Windows, and macOS, enabling creators to produce professional-looking, engaging videos with minimal effort. DemoThat aims to be the go-to tool for tutorials, demos, and presentations by automating complex editing tasks like cursor tracking and zooming.
+ 
+ ## Core Features (Phase 1)
+ 
+diff --git a/docs/project_structure.md b/docs/project_structure.md
+index 4bac13b..fb2b838 100644
+--- a/docs/project_structure.md
++++ b/docs/project_structure.md
+@@ -22,7 +22,7 @@
+ │   ├── saving
+ │   │   ├── index.html
+ │   │   └── style.css
+-│   ├── screenarc-appicon.png
++│   ├── demothat-appicon.png
+ │   └── wallpapers
+ │       ├── images
+ │       └── thumbnails
+diff --git a/docs/prompt.md b/docs/prompt.md
+index d340917..a8d280f 100644
+--- a/docs/prompt.md
++++ b/docs/prompt.md
+@@ -1,4 +1,4 @@
+-tôi đang muốn làm 1 desktop app bằng electron (chủ yếu cho linux, sẽ mở rộng cho windows, macos sau) tên là ScreenArc - một screen recorder + edit studio như là Screen Studio. các tính năng:
++tôi đang muốn làm 1 desktop app bằng electron (chủ yếu cho linux, sẽ mở rộng cho windows, macos sau) tên là DemoThat - một screen recorder + edit studio như là Screen Studio. các tính năng:
+ 
+ - ghi màn hình chất lượng cao (up to 2k): cho phép select custom area, window hoặc full screen
+ - tự động theo dấu con trỏ chuột và auto zoom (phóng to con trỏ chuột và vùng click)
+@@ -29,7 +29,7 @@ mô tả sơ lược user flow theo như ý kiến của tôi (tiếp thu từ S
+ 
+ sơ lược về giao diện edit:
+ 
+-- title bar: từ trái sang gồm có traffic lights -> ScreenArc -> Nút export
++- title bar: từ trái sang gồm có traffic lights -> DemoThat -> Nút export
+ - vùng chính gồm bên trái là một vùng lớn hiển thị preview và bên dưới là tool bar, bên phải là side panel (background, padding, roundeness, etc). toolbar gồm có 1 thanh bar điều khiển (dropdown chọn aspect ratio, 3 nút prev, play/pause, next, nút thêm cut track, nút thêm zoom track, slider để phóng to/thu nhỏ tracks)
+ - vùng chỉnh sửa video, tracks gồm có timeline, original video track, và track thứ hai để hiển thị các đoạn (rounded rectangle) cho zoom và cut
+ 
+diff --git a/docs/tech-stacks.md b/docs/tech-stacks.md
+index 1e8287c..3e21b1c 100644
+--- a/docs/tech-stacks.md
++++ b/docs/tech-stacks.md
+@@ -1,6 +1,6 @@
+-# ScreenArc - Technology Stack
++# DemoThat - Technology Stack
+ 
+-This document outlines the primary technologies chosen for the development of ScreenArc. The stack is selected to facilitate rapid development, ensure cross-platform compatibility, and leverage the modern JavaScript/TypeScript ecosystem.
++This document outlines the primary technologies chosen for the development of DemoThat. The stack is selected to facilitate rapid development, ensure cross-platform compatibility, and leverage the modern JavaScript/TypeScript ecosystem.
+ 
+ ## Core Framework
+ 
+diff --git a/docs/user-flow.md b/docs/user-flow.md
+index 987a16d..20cf6f9 100644
+--- a/docs/user-flow.md
++++ b/docs/user-flow.md
+@@ -1,4 +1,4 @@
+-# ScreenArc - Detailed User Flows
++# DemoThat - Detailed User Flows
+ 
+ This document details the user's journey through the application, describing actions, UI responses, and underlying processes based on the current implementation.
+ 
+diff --git a/electron/main/features/app-menu.ts b/electron/main/features/app-menu.ts
+index 85e41ce..739d338 100644
+--- a/electron/main/features/app-menu.ts
++++ b/electron/main/features/app-menu.ts
+@@ -33,7 +33,7 @@ export function createEditorMenu() {
+         {
+           label: 'Learn More on GitHub',
+           click: async () => {
+-            await shell.openExternal('https://github.com/tamnguyenvan/screenarc')
++            await shell.openExternal('https://github.com/getwithashish/DemoThat')
+           },
+         },
+       ],
+diff --git a/electron/main/features/build-recording-args.test.ts b/electron/main/features/build-recording-args.test.ts
+index 00b0673..d604acd 100644
+--- a/electron/main/features/build-recording-args.test.ts
++++ b/electron/main/features/build-recording-args.test.ts
+@@ -7,11 +7,11 @@ describe('buildFfmpegArgs', () => {
+       ['-f', 'gdigrab', '-i', 'desktop'],
+       false,
+       false,
+-      'ScreenArc-recording-screen.mp4',
++      'DemoThat-recording-screen.mp4',
+     )
+ 
+     expect(args[0]).toBe('-y')
+-    expect(args).toContain('ScreenArc-recording-screen.mp4')
++    expect(args).toContain('DemoThat-recording-screen.mp4')
+   })
+ 
+   test('maps microphone audio into the same output as screen video', () => {
+diff --git a/electron/main/features/export-manager.ts b/electron/main/features/export-manager.ts
+index f44f246..e2f2c82 100644
+--- a/electron/main/features/export-manager.ts
++++ b/electron/main/features/export-manager.ts
+@@ -198,7 +198,7 @@ export async function startExport(event: IpcMainInvokeEvent, { projectState, exp
+     if (mappedClicks.length > 0) {
+       let clickPath: string | null = projectState.mouseClickSoundPath ?? null
+       if (!clickPath) {
+-        const generatedClickPath = path.join(os.tmpdir(), `screenarc-click-${Date.now()}.wav`)
++        const generatedClickPath = path.join(os.tmpdir(), `demothat-click-${Date.now()}.wav`)
+         clickPath = generatedClickPath
+         await fsPromises.writeFile(generatedClickPath, createBuiltInClickWav())
+         temporaryFiles.push(generatedClickPath)
+diff --git a/electron/main/features/recording-manager.ts b/electron/main/features/recording-manager.ts
+index e350d43..027b9fa 100644
+--- a/electron/main/features/recording-manager.ts
++++ b/electron/main/features/recording-manager.ts
+@@ -226,9 +226,9 @@ async function startActualRecording(
+   recordingGeometry: RecordingGeometry,
+   cleanDemo = false,
+ ) {
+-  const recordingDir = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.screenarc')
++  const recordingDir = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.demothat')
+   await ensureDirectoryExists(recordingDir)
+-  const baseName = `ScreenArc-recording-${Date.now()}`
++  const baseName = `DemoThat-recording-${Date.now()}`
+ 
+   const screenVideoPath = path.join(recordingDir, `${baseName}-screen.mp4`)
+   const webcamVideoPath = hasWebcam ? path.join(recordingDir, `${baseName}-webcam.mp4`) : undefined
+@@ -422,7 +422,7 @@ function buildMacFfmpegArgs(
+  * Creates the system tray icon and context menu for controlling an active recording.
+  */
+ function createTray() {
+-  const icon = nativeImage.createFromPath(path.join(VITE_PUBLIC, 'screenarc-appicon-tray.png'))
++  const icon = nativeImage.createFromPath(path.join(VITE_PUBLIC, 'demothat-appicon-tray.png'))
+   appState.tray = new Tray(icon)
+   const contextMenu = Menu.buildFromTemplate([
+     {
+@@ -438,7 +438,7 @@ function createTray() {
+       },
+     },
+   ])
+-  appState.tray.setToolTip('ScreenArc is recording...')
++  appState.tray.setToolTip('DemoThat is recording...')
+   appState.tray.setContextMenu(contextMenu)
+ }
+ 
+@@ -473,7 +473,7 @@ export async function startRecording(options: any) {
+       const { response } = await dialog.showMessageBox({
+         type: 'warning',
+         title: 'Screen Recording Permission Required',
+-        message: 'ScreenArc needs Screen Recording permission to record your screen.',
++        message: 'DemoThat needs Screen Recording permission to record your screen.',
+         detail:
+           'Go to System Settings → Privacy & Security → Screen Recording and enable the toggle next to "Electron" (the dev build). Then restart the app and try again.',
+         buttons: ['Open System Settings', 'Cancel'],
+@@ -1118,7 +1118,7 @@ export async function cleanupAndDiscard() {
+  */
+ export async function cleanupOrphanedRecordings() {
+   log.info('[Cleanup] Starting orphaned recording cleanup...')
+-  const recordingDir = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.screenarc')
++  const recordingDir = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.demothat')
+   const protectedFiles = new Set<string>()
+ 
+   // Protect files from the currently active editor or recording session
+@@ -1131,7 +1131,7 @@ export async function cleanupOrphanedRecordings() {
+ 
+   try {
+     const allFiles = await fsPromises.readdir(recordingDir)
+-    const filePattern = /^ScreenArc-recording-\d+(-screen\.mp4|-screen\.muxed\.mp4|-screen\.webm|-webcam\.mp4|-system\.webm|-mic\.m4a|\.json)$/
++    const filePattern = /^DemoThat-recording-\d+(-screen\.mp4|-screen\.muxed\.mp4|-screen\.webm|-webcam\.mp4|-system\.webm|-mic\.m4a|\.json)$/
+     const filesToDelete = allFiles
+       .filter((file) => filePattern.test(file))
+       .map((file) => path.join(recordingDir, file))
+@@ -1200,9 +1200,9 @@ export async function loadVideoFromFile() {
+   createSavingWindow()
+ 
+   try {
+-    const recordingDir = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.screenarc')
++    const recordingDir = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.demothat')
+     await ensureDirectoryExists(recordingDir)
+-    const baseName = `ScreenArc-recording-${Date.now()}`
++    const baseName = `DemoThat-recording-${Date.now()}`
+     const screenVideoPath = path.join(recordingDir, `${baseName}-screen.mp4`)
+     const metadataPath = path.join(recordingDir, `${baseName}.json`)
+ 
+diff --git a/electron/main/features/screen-video-writer.test.ts b/electron/main/features/screen-video-writer.test.ts
+index 96867dc..3310939 100644
+--- a/electron/main/features/screen-video-writer.test.ts
++++ b/electron/main/features/screen-video-writer.test.ts
+@@ -8,7 +8,7 @@ import { ScreenVideoWriter } from './screen-video-writer'
+ let scratchDir: string
+ 
+ beforeEach(() => {
+-  scratchDir = mkdtempSync(path.join(tmpdir(), 'screenarc-svw-'))
++  scratchDir = mkdtempSync(path.join(tmpdir(), 'demothat-svw-'))
+ })
+ 
+ afterEach(async () => {
+diff --git a/electron/main/features/system-audio-writer.test.ts b/electron/main/features/system-audio-writer.test.ts
+index 131a3aa..df5103e 100644
+--- a/electron/main/features/system-audio-writer.test.ts
++++ b/electron/main/features/system-audio-writer.test.ts
+@@ -8,7 +8,7 @@ import { SystemAudioWriter } from './system-audio-writer'
+ let scratchDir: string
+ 
+ beforeEach(() => {
+-  scratchDir = mkdtempSync(path.join(tmpdir(), 'screenarc-saw-'))
++  scratchDir = mkdtempSync(path.join(tmpdir(), 'demothat-saw-'))
+ })
+ 
+ afterEach(async () => {
+diff --git a/electron/main/features/update-checker.ts b/electron/main/features/update-checker.ts
+index 1ec8213..b8aa825 100644
+--- a/electron/main/features/update-checker.ts
++++ b/electron/main/features/update-checker.ts
+@@ -7,8 +7,8 @@ export async function checkForUpdates(window: BrowserWindow | null) {
+   if (!window) return
+ 
+   const currentVersion = app.getVersion()
+-  const repoOwner = 'tamnguyenvan'
+-  const repoName = 'screenarc'
++  const repoOwner = 'getwithashish'
++  const repoName = 'DemoThat'
+   const url = `https://api.github.com/repos/${repoOwner}/${repoName}/releases/latest`
+   const maxAttempts = 3
+   let currentAttempt = 0
+diff --git a/electron/main/ipc/handlers/desktop.ts b/electron/main/ipc/handlers/desktop.ts
+index d3845c3..0768e0c 100644
+--- a/electron/main/ipc/handlers/desktop.ts
++++ b/electron/main/ipc/handlers/desktop.ts
+@@ -99,7 +99,7 @@ export async function checkScreenRecordingPermission(_event: IpcMainInvokeEvent)
+     const { response } = await dialog.showMessageBox({
+       type: 'warning',
+       title: 'Screen Recording Permission Required',
+-      message: 'ScreenArc needs Screen Recording permission to capture system audio.',
++      message: 'DemoThat needs Screen Recording permission to capture system audio.',
+       detail: 'Click "Open Settings" to go to System Settings → Privacy & Security → Screen Recording and enable "Electron". Then restart the app and try again.',
+       buttons: ['Open Settings', 'Cancel'],
+       defaultId: 0,
+diff --git a/electron/main/windows/editor-window.ts b/electron/main/windows/editor-window.ts
+index e7925a3..01f1b42 100644
+--- a/electron/main/windows/editor-window.ts
++++ b/electron/main/windows/editor-window.ts
+@@ -50,7 +50,7 @@ export function createEditorWindow(
+   }
+ 
+   appState.editorWin = new BrowserWindow({
+-    icon: path.join(process.env.VITE_PUBLIC!, 'screenarc-appicon.png'),
++    icon: path.join(process.env.VITE_PUBLIC!, 'demothat-appicon.png'),
+     autoHideMenuBar: true,
+     ...bounds,
+     minWidth: 1280,
+diff --git a/electron/main/windows/recorder-window.ts b/electron/main/windows/recorder-window.ts
+index 20c14f5..745fce1 100644
+--- a/electron/main/windows/recorder-window.ts
++++ b/electron/main/windows/recorder-window.ts
+@@ -17,7 +17,7 @@ export function createRecorderWindow() {
+   const y = Math.max(0, Math.round(screenHeight / 4))
+ 
+   appState.recorderWin = new BrowserWindow({
+-    icon: path.join(process.env.VITE_PUBLIC!, 'screenarc-appicon.png'),
++    icon: path.join(process.env.VITE_PUBLIC!, 'demothat-appicon.png'),
+     width: windowWidth,
+     height: windowHeight,
+     x,
+diff --git a/electron/main/windows/temporary-windows.ts b/electron/main/windows/temporary-windows.ts
+index 5dbe755..74f06b8 100644
+--- a/electron/main/windows/temporary-windows.ts
++++ b/electron/main/windows/temporary-windows.ts
+@@ -8,8 +8,8 @@ import { VITE_DEV_SERVER_URL, RENDERER_DIST, PRELOAD_SCRIPT } from '../lib/const
+ function createTemporaryWindow(options: Electron.BrowserWindowConstructorOptions, htmlPath: string) {
+   // Define the path to the icon, handling both development and production environments
+   const iconPath = VITE_DEV_SERVER_URL
+-    ? path.join(process.env.APP_ROOT!, 'public/screenarc-appicon.png')
+-    : path.join(RENDERER_DIST, 'screenarc-appicon.png')
++    ? path.join(process.env.APP_ROOT!, 'public/demothat-appicon.png')
++    : path.join(RENDERER_DIST, 'demothat-appicon.png')
+ 
+   const win = new BrowserWindow({
+     ...options,
+diff --git a/index.html b/index.html
+index 680222b..9709a3d 100644
+--- a/index.html
++++ b/index.html
+@@ -4,7 +4,7 @@
+     <meta charset="UTF-8" />
+     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+-    <title>ScreenArc</title>
++    <title>DemoThat</title>
+     <script>
+       // Apply the OS colour scheme before first paint so a dark-preferring user
+       // never sees a light flash. The persisted override (electron-store
+diff --git a/package-lock.json b/package-lock.json
+index a69896f..ccbdd8a 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -1,11 +1,11 @@
+ {
+-  "name": "screenarc",
++  "name": "demothat",
+   "version": "0.0.0-development",
+   "lockfileVersion": 3,
+   "requires": true,
+   "packages": {
+     "": {
+-      "name": "screenarc",
++      "name": "demothat",
+       "version": "0.0.0-development",
+       "hasInstallScript": true,
+       "dependencies": {
+@@ -40,6 +40,7 @@
+         "@typescript-eslint/eslint-plugin": "^7.1.1",
+         "@typescript-eslint/parser": "^7.1.1",
+         "@vitejs/plugin-react": "^4.2.1",
++        "conventional-changelog-conventionalcommits": "^8.0.0",
+         "electron": "^31.0.1",
+         "electron-builder": "^24.13.3",
+         "eslint": "^8.57.0",
+@@ -4790,6 +4791,19 @@
+         "node": ">=18"
+       }
+     },
++    "node_modules/conventional-changelog-conventionalcommits": {
++      "version": "8.0.0",
++      "resolved": "https://registry.npmjs.org/conventional-changelog-conventionalcommits/-/conventional-changelog-conventionalcommits-8.0.0.tgz",
++      "integrity": "sha512-eOvlTO6OcySPyyyk8pKz2dP4jjElYunj9hn9/s0OB+gapTO8zwS9UQWrZ1pmF2hFs3vw1xhonOLGcGjy/zgsuA==",
++      "dev": true,
++      "license": "ISC",
++      "dependencies": {
++        "compare-func": "^2.0.0"
++      },
++      "engines": {
++        "node": ">=18"
++      }
++    },
+     "node_modules/conventional-changelog-writer": {
+       "version": "8.4.0",
+       "dev": true,
+diff --git a/package.json b/package.json
+index a760f87..0ee25f3 100644
+--- a/package.json
++++ b/package.json
+@@ -1,7 +1,15 @@
+ {
+-  "name": "screenarc",
++  "name": "demothat",
+   "description": "Screen recording and editing app",
+-  "author": "Tam Nguyen",
++  "author": "Ashish Sam",
++  "homepage": "https://github.com/getwithashish/DemoThat#readme",
++  "repository": {
++    "type": "git",
++    "url": "git+https://github.com/getwithashish/DemoThat.git"
++  },
++  "bugs": {
++    "url": "https://github.com/getwithashish/DemoThat/issues"
++  },
+   "private": true,
+   "version": "0.0.0-development",
+   "type": "module",
+@@ -69,6 +77,7 @@
+     "@typescript-eslint/eslint-plugin": "^7.1.1",
+     "@typescript-eslint/parser": "^7.1.1",
+     "@vitejs/plugin-react": "^4.2.1",
++    "conventional-changelog-conventionalcommits": "^8.0.0",
+     "electron": "^31.0.1",
+     "electron-builder": "^24.13.3",
+     "eslint": "^8.57.0",
+@@ -94,8 +103,8 @@
+   },
+   "main": "dist-electron/index.cjs",
+   "build": {
+-    "appId": "com.screenarc.app",
+-    "productName": "ScreenArc",
++    "appId": "com.demothat.app",
++    "productName": "DemoThat",
+     "extraMetadata": {
+       "type": "commonjs"
+     },
+@@ -118,7 +127,7 @@
+       "target": [
+         "nsis"
+       ],
+-      "icon": "build/screenarc-appicon.ico",
++      "icon": "build/icon.ico",
+       "artifactName": "${productName} Setup ${version}.${ext}"
+     },
+     "mac": {
+@@ -132,10 +141,10 @@
+       "entitlements": "resources/entitlements.mac.plist",
+       "entitlementsInherit": "resources/entitlements.mac.plist",
+       "extendInfo": {
+-        "NSScreenCaptureUsageDescription": "ScreenArc needs to record your computer's screen to capture video.",
+-        "NSAudioCaptureUsageDescription": "ScreenArc captures system audio so you can include it in your screen recordings.",
+-        "NSMicrophoneUsageDescription": "ScreenArc records from the microphone when you enable it during a recording.",
+-        "NSCameraUsageDescription": "ScreenArc accesses the camera when you enable webcam capture during a recording."
++        "NSScreenCaptureUsageDescription": "DemoThat needs to record your computer's screen to capture video.",
++        "NSAudioCaptureUsageDescription": "DemoThat captures system audio so you can include it in your screen recordings.",
++        "NSMicrophoneUsageDescription": "DemoThat records from the microphone when you enable it during a recording.",
++        "NSCameraUsageDescription": "DemoThat accesses the camera when you enable webcam capture during a recording."
+       },
+       "target": [
+         {
+@@ -151,7 +160,7 @@
+           ]
+         }
+       ],
+-      "icon": "build/screenarc-appicon.icns"
++      "icon": "build/icon.icns"
+     },
+     "dmg": {
+       "sign": "false",
+@@ -175,11 +184,11 @@
+         "rpm",
+         "zip"
+       ],
+-      "maintainer": "Tam Nguyen tamnvhustcc@gmail.com",
+-      "icon": "build/screenarc-appicon.png",
++      "maintainer": "Ashish Sam <77051732+getwithashish@users.noreply.github.com>",
++      "icon": "build/icons/512x512.png",
+       "category": "Utility;AudioVideo;Recorder",
+       "synopsis": "Screen recording and editing app",
+-      "artifactName": "ScreenArc-${version}-linux-x64.${ext}",
++      "artifactName": "DemoThat-${version}-linux-x64.${ext}",
+       "description": "Free & Open Source Screen Recording and Editing App"
+     },
+     "nsis": {
+diff --git a/public/screenarc-appicon-tray.png b/public/demothat-appicon-tray.png
+similarity index 100%
+rename from public/screenarc-appicon-tray.png
+rename to public/demothat-appicon-tray.png
+diff --git a/public/screenarc-appicon.png b/public/demothat-appicon.png
+similarity index 100%
+rename from public/screenarc-appicon.png
+rename to public/demothat-appicon.png
+diff --git a/scripts/patch-electron-info-plist.mjs b/scripts/patch-electron-info-plist.mjs
+index 6d01de6..8440666 100755
+--- a/scripts/patch-electron-info-plist.mjs
++++ b/scripts/patch-electron-info-plist.mjs
+@@ -1,6 +1,6 @@
+ #!/usr/bin/env node
+ // Patches the dev Electron binary's Info.plist with the macOS TCC usage
+-// description keys ScreenArc relies on, then ad-hoc re-signs the bundle.
++// description keys DemoThat relies on, then ad-hoc re-signs the bundle.
+ //
+ // Why this exists:
+ // - On macOS, an app only appears in System Settings → Privacy & Security
+@@ -54,29 +54,29 @@ log(`Patching ${plistPath}`)
+ // builds behave identically.
+ const usageStrings = {
+   NSScreenCaptureUsageDescription:
+-    "ScreenArc needs to record your computer's screen to capture video.",
++    "DemoThat needs to record your computer's screen to capture video.",
+   NSAudioCaptureUsageDescription:
+-    'ScreenArc captures system audio so you can include it in your screen recordings.',
++    'DemoThat captures system audio so you can include it in your screen recordings.',
+   NSMicrophoneUsageDescription:
+-    'ScreenArc records from the microphone when you enable it during a recording.',
++    'DemoThat records from the microphone when you enable it during a recording.',
+   NSCameraUsageDescription:
+-    'ScreenArc accesses the camera when you enable webcam capture during a recording.',
++    'DemoThat accesses the camera when you enable webcam capture during a recording.',
+ }
+ 
+ // Identity overrides. Out of the box the dev Electron binary identifies
+ // itself as `Electron` with bundle id `com.github.Electron`, so it either
+ // (a) doesn't appear at all in System Settings → Privacy & Security under a
+ // recognizable name, or (b) collides with every other Electron-based dev
+-// tool the user has run. We rename it to "ScreenArc Dev" and give it a
++// tool the user has run. We rename it to "DemoThat Dev" and give it a
+ // project-specific bundle id so it shows up as its own entry — this lets
+ // the user revoke or grant Screen Recording / Microphone independently.
+ //
+ // Note: changing the bundle id means any prior TCC grant (under
+ // `com.github.Electron`) does NOT carry over. The user re-grants once.
+ const identityOverrides = {
+-  CFBundleIdentifier: 'com.screenarc.dev',
+-  CFBundleName: 'ScreenArc Dev',
+-  CFBundleDisplayName: 'ScreenArc Dev',
++  CFBundleIdentifier: 'com.demothat.dev',
++  CFBundleName: 'DemoThat Dev',
++  CFBundleDisplayName: 'DemoThat Dev',
+   CFBundleExecutable: 'Electron',
+ }
+ 
+@@ -115,4 +115,4 @@ try {
+   warn(err?.message ?? err)
+ }
+ 
+-log('Done. ScreenArc dev build should now register with macOS TCC on next launch.')
++log('Done. DemoThat dev build should now register with macOS TCC on next launch.')
+diff --git a/src/components/editor/ExportModal.tsx b/src/components/editor/ExportModal.tsx
+index 4129332..38ed81e 100644
+--- a/src/components/editor/ExportModal.tsx
++++ b/src/components/editor/ExportModal.tsx
+@@ -32,7 +32,7 @@ interface ExportModalProps {
+ const generateFilename = (format: 'mp4' | 'gif') => {
+   const now = new Date()
+   const timestamp = now.toISOString().replace(/[:.]/g, '-').replace('T', '-').slice(0, 19)
+-  return `ScreenArc-${timestamp}.${format}`
++  return `DemoThat-${timestamp}.${format}`
+ }
+ 
+ // --- Sub-components for different views ---
+diff --git a/src/components/editor/sidepanel/CameraMotionSettings.tsx b/src/components/editor/sidepanel/CameraMotionSettings.tsx
+index ce934d4..fed916c 100644
+--- a/src/components/editor/sidepanel/CameraMotionSettings.tsx
++++ b/src/components/editor/sidepanel/CameraMotionSettings.tsx
+@@ -17,7 +17,7 @@ const KINDS: { value: CameraMoveKind; label: string }[] = [
+   { value: 'entrance', label: 'Entrance' }, { value: 'orbit', label: 'Orbit' },
+   { value: 'reset', label: 'Reset move' }, { value: 'breathing', label: 'Breathing' }, { value: 'custom', label: 'Custom' },
+ ]
+-const PRESETS_KEY = 'screenarc.camera-motion-presets.v1'
++const PRESETS_KEY = 'demothat.camera-motion-presets.v1'
+ const copy = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T
+ const DEFAULT_POSE: CameraPose = { x: 0, y: 0, scale: 1, rotationX: 0, rotationY: 0, rotationZ: 0, perspective: 50 }
+ 
+@@ -65,7 +65,7 @@ export function CameraMotionSettings() {
+   const exportPresets = () => {
+     const blob = new Blob([JSON.stringify({ version: 1, presets }, null, 2)], { type: 'application/json' })
+     const url = URL.createObjectURL(blob); const anchor = document.createElement('a')
+-    anchor.href = url; anchor.download = 'screenarc-camera-presets.json'; anchor.click(); URL.revokeObjectURL(url)
++    anchor.href = url; anchor.download = 'demothat-camera-presets.json'; anchor.click(); URL.revokeObjectURL(url)
+   }
+   const importPresets = async (file?: File) => {
+     if (!file) return
+@@ -75,7 +75,7 @@ export function CameraMotionSettings() {
+       if (!Array.isArray(incoming) || incoming.some((item) => !item.from || !item.to || typeof item.name !== 'string')) throw new Error('Invalid preset file')
+       const next = [...presets, ...incoming.map((item) => ({ ...item, id: `camera-preset-${Date.now()}-${Math.random().toString(36).slice(2, 6)}` }))]
+       setPresets(next); localStorage.setItem(PRESETS_KEY, JSON.stringify(next))
+-    } catch { window.alert('Could not import this file. Choose a ScreenArc camera preset JSON file.') }
++    } catch { window.alert('Could not import this file. Choose a DemoThat camera preset JSON file.') }
+   }
+   const applyPreset = (preset: CameraMotionTrack) => {
+     if (!selected) return
+diff --git a/src/components/settings/AboutTab.tsx b/src/components/settings/AboutTab.tsx
+index 93ddf37..750735d 100644
+--- a/src/components/settings/AboutTab.tsx
++++ b/src/components/settings/AboutTab.tsx
+@@ -19,17 +19,18 @@ export function AboutTab() {
+ 
+   return (
+     <div className="relative flex h-full flex-col items-center justify-center p-8 text-center">
+-      <img src="media://screenarc-appicon.png" alt="ScreenArc logo" className="mb-4 h-24 w-24 rounded-2xl" />
+-      <h2 className="text-title font-semibold text-fg">ScreenArc</h2>
++      <img src="media://demothat-appicon.png" alt="DemoThat logo" className="mb-4 h-24 w-24 rounded-2xl" />
++      <h2 className="text-title font-semibold text-fg">DemoThat</h2>
+       <p className="mt-0.5 font-mono text-sm text-muted">Version {appVersion}</p>
+ 
+       <div className="mt-6 space-y-1.5 text-ui text-muted">
+-        <p>Created with ❤️ by Tam Nguyen.</p>
++        <p>Created with ❤️ by Ashish Sam.</p>
++        <p>Based on ScreenArc by Tam Nguyen. Licensed under GPL-3.0.</p>
+         <p>A modern screen recorder and editor designed to be simple and powerful.</p>
+       </div>
+ 
+       <div className="mt-6 flex items-center gap-3">
+-        <Button variant="secondary" onClick={() => openLink('https://github.com/tamnguyenvan/screenarc')}>
++        <Button variant="secondary" onClick={() => openLink('https://github.com/getwithashish/DemoThat')}>
+           <BrandGithub size={ICON_SIZE} strokeWidth={ICON_STROKE} className="mr-2" />
+           GitHub Repository
+         </Button>
+diff --git a/src/lib/constants.ts b/src/lib/constants.ts
+index 5c64743..808332c 100644
+--- a/src/lib/constants.ts
++++ b/src/lib/constants.ts
+@@ -44,7 +44,7 @@ export const COMPOSITION_LAYOUTS: { value: CompositionLayout; label: string }[]
+ 
+ // Application-wide constants
+ export const APP = {
+-  LAST_PRESET_ID_KEY: 'screenarc_lastActivePresetId',
++  LAST_PRESET_ID_KEY: 'demothat_lastActivePresetId',
+ }
+ 
+ // Timeline specific constants
+diff --git a/src/pages/EditorPage.tsx b/src/pages/EditorPage.tsx
+index c91d63e..b82c475 100644
+--- a/src/pages/EditorPage.tsx
++++ b/src/pages/EditorPage.tsx
+@@ -251,7 +251,7 @@ export function EditorPage() {
+             </div>
+           )}
+           <div className="pointer-events-none flex min-w-0 items-baseline gap-2 pl-1">
+-            <h1 className="truncate text-ui font-semibold tracking-tight text-fg">ScreenArc</h1>
++            <h1 className="truncate text-ui font-semibold tracking-tight text-fg">DemoThat</h1>
+             {metaLabel && <span className="truncate font-mono text-sm text-muted">{metaLabel}</span>}
+           </div>
+         </div>
+diff --git a/src/pages/RecorderPage.tsx b/src/pages/RecorderPage.tsx
+index 6a69160..9bcc728 100644
+--- a/src/pages/RecorderPage.tsx
++++ b/src/pages/RecorderPage.tsx
+@@ -315,7 +315,7 @@ export function RecorderPage() {
+           window.electronAPI.showMessageBox({
+             type: 'warning',
+             title: 'Screen Recording Permission Required',
+-            message: 'ScreenArc could not access the screen.',
++            message: 'DemoThat could not access the screen.',
+             detail:
+               'Go to System Settings → Privacy & Security → Screen Recording, enable the toggle next to "Electron" (the dev build), then restart the app and try again.',
+             buttons: ['OK'],
+@@ -346,7 +346,7 @@ export function RecorderPage() {
+           window.electronAPI.showMessageBox({
+             type: 'warning',
+             title: 'Microphone Unavailable',
+-            message: 'ScreenArc could not access the selected microphone.',
++            message: 'DemoThat could not access the selected microphone.',
+             detail: String(err instanceof Error ? err.message : err),
+             buttons: ['OK'],
+           })
+@@ -371,7 +371,7 @@ export function RecorderPage() {
+           window.electronAPI.showMessageBox({
+             type: 'warning',
+             title: 'System Audio Permission Required',
+-            message: 'ScreenArc could not access system audio.',
++            message: 'DemoThat could not access system audio.',
+             detail:
+               'Go to System Settings → Privacy & Security → Screen Recording (macOS 14.3 and earlier) or Microphone (macOS 14.4+) and enable the toggle next to "Electron". Then re-enable System audio in the recorder and try again.',
+             buttons: ['OK'],
+diff --git a/src/styles/tokens.css b/src/styles/tokens.css
+index 0bdb57b..20637ba 100644
+--- a/src/styles/tokens.css
++++ b/src/styles/tokens.css
+@@ -1,4 +1,4 @@
+-/* ScreenArc UI revamp: design tokens (Tailwind CSS v4)
++/* DemoThat UI revamp: design tokens (Tailwind CSS v4)
+    Imported from src/index.css, AFTER `@import "tailwindcss";`.
+    Theme switching: set data-theme="light" | "dark" on <html>.
+    Default it from Electron's nativeTheme (or prefers-color-scheme) and let the user override. */

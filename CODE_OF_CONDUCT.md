@@ -37,6 +37,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Initial public release of ScreenArc.
+- Initial public release of DemoThat.
 - Core recording engine for screen and mouse metadata.
 - Editing studio with timeline, frame customization, and auto-zoom.

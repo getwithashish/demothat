@@ -22,7 +22,7 @@
 │   ├── saving
 │   │   ├── index.html
 │   │   └── style.css
-│   ├── screenarc-appicon.png
+│   ├── demothat-appicon.png
 │   └── wallpapers
 │       ├── images
 │       └── thumbnails

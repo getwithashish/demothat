@@ -8,7 +8,7 @@ import { SystemAudioWriter } from './system-audio-writer'
 let scratchDir: string
 
 beforeEach(() => {
-  scratchDir = mkdtempSync(path.join(tmpdir(), 'screenarc-saw-'))
+  scratchDir = mkdtempSync(path.join(tmpdir(), 'demothat-saw-'))
 })
 
 afterEach(async () => {

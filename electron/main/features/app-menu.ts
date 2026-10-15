@@ -33,7 +33,7 @@ export function createEditorMenu() {
         {
           label: 'Learn More on GitHub',
           click: async () => {
-            await shell.openExternal('https://github.com/tamnguyenvan/screenarc')
+            await shell.openExternal('https://github.com/getwithashish/DemoThat')
           },
         },
       ],

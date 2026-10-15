@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  # --- JOB 1: Create Release using Semantic Release (KHÔNG THAY ĐỔI) ---
+  # --- JOB 1: Create Release using Semantic Release (runs on every push to main) ---
   release:
     name: Semantic Release
     runs-on: ubuntu-latest

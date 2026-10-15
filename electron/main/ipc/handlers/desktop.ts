@@ -99,7 +99,7 @@ export async function checkScreenRecordingPermission(_event: IpcMainInvokeEvent)
     const { response } = await dialog.showMessageBox({
       type: 'warning',
       title: 'Screen Recording Permission Required',
-      message: 'ScreenArc needs Screen Recording permission to capture system audio.',
+      message: 'DemoThat needs Screen Recording permission to capture system audio.',
       detail: 'Click "Open Settings" to go to System Settings → Privacy & Security → Screen Recording and enable "Electron". Then restart the app and try again.',
       buttons: ['Open Settings', 'Cancel'],
       defaultId: 0,

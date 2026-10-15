@@ -44,7 +44,7 @@ export const COMPOSITION_LAYOUTS: { value: CompositionLayout; label: string }[] 
 
 // Application-wide constants
 export const APP = {
-  LAST_PRESET_ID_KEY: 'screenarc_lastActivePresetId',
+  LAST_PRESET_ID_KEY: 'demothat_lastActivePresetId',
 }
 
 // Timeline specific constants

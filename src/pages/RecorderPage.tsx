@@ -315,7 +315,7 @@ export function RecorderPage() {
           window.electronAPI.showMessageBox({
             type: 'warning',
             title: 'Screen Recording Permission Required',
-            message: 'ScreenArc could not access the screen.',
+            message: 'DemoThat could not access the screen.',
             detail:
               'Go to System Settings → Privacy & Security → Screen Recording, enable the toggle next to "Electron" (the dev build), then restart the app and try again.',
             buttons: ['OK'],
@@ -346,7 +346,7 @@ export function RecorderPage() {
           window.electronAPI.showMessageBox({
             type: 'warning',
             title: 'Microphone Unavailable',
-            message: 'ScreenArc could not access the selected microphone.',
+            message: 'DemoThat could not access the selected microphone.',
             detail: String(err instanceof Error ? err.message : err),
             buttons: ['OK'],
           })
@@ -371,7 +371,7 @@ export function RecorderPage() {
           window.electronAPI.showMessageBox({
             type: 'warning',
             title: 'System Audio Permission Required',
-            message: 'ScreenArc could not access system audio.',
+            message: 'DemoThat could not access system audio.',
             detail:
               'Go to System Settings → Privacy & Security → Screen Recording (macOS 14.3 and earlier) or Microphone (macOS 14.4+) and enable the toggle next to "Electron". Then re-enable System audio in the recorder and try again.',
             buttons: ['OK'],

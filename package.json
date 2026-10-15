@@ -1,7 +1,15 @@
 {
-  "name": "screenarc",
+  "name": "demothat",
   "description": "Screen recording and editing app",
-  "author": "Tam Nguyen",
+  "author": "Ashish Sam",
+  "homepage": "https://github.com/getwithashish/DemoThat#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/getwithashish/DemoThat.git"
+  },
+  "bugs": {
+    "url": "https://github.com/getwithashish/DemoThat/issues"
+  },
   "private": true,
   "version": "0.0.0-development",
   "type": "module",
@@ -69,6 +77,7 @@
     "@typescript-eslint/eslint-plugin": "^7.1.1",
     "@typescript-eslint/parser": "^7.1.1",
     "@vitejs/plugin-react": "^4.2.1",
+    "conventional-changelog-conventionalcommits": "^8.0.0",
     "electron": "^31.0.1",
     "electron-builder": "^24.13.3",
     "eslint": "^8.57.0",
@@ -94,8 +103,8 @@
   },
   "main": "dist-electron/index.cjs",
   "build": {
-    "appId": "com.screenarc.app",
-    "productName": "ScreenArc",
+    "appId": "com.demothat.app",
+    "productName": "DemoThat",
     "extraMetadata": {
       "type": "commonjs"
     },
@@ -118,7 +127,7 @@
       "target": [
         "nsis"
       ],
-      "icon": "build/screenarc-appicon.ico",
+      "icon": "build/icon.ico",
       "artifactName": "${productName} Setup ${version}.${ext}"
     },
     "mac": {
@@ -132,10 +141,10 @@
       "entitlements": "resources/entitlements.mac.plist",
       "entitlementsInherit": "resources/entitlements.mac.plist",
       "extendInfo": {
-        "NSScreenCaptureUsageDescription": "ScreenArc needs to record your computer's screen to capture video.",
-        "NSAudioCaptureUsageDescription": "ScreenArc captures system audio so you can include it in your screen recordings.",
-        "NSMicrophoneUsageDescription": "ScreenArc records from the microphone when you enable it during a recording.",
-        "NSCameraUsageDescription": "ScreenArc accesses the camera when you enable webcam capture during a recording."
+        "NSScreenCaptureUsageDescription": "DemoThat needs to record your computer's screen to capture video.",
+        "NSAudioCaptureUsageDescription": "DemoThat captures system audio so you can include it in your screen recordings.",
+        "NSMicrophoneUsageDescription": "DemoThat records from the microphone when you enable it during a recording.",
+        "NSCameraUsageDescription": "DemoThat accesses the camera when you enable webcam capture during a recording."
       },
       "target": [
         {
@@ -151,7 +160,7 @@
           ]
         }
       ],
-      "icon": "build/screenarc-appicon.icns"
+      "icon": "build/icon.icns"
     },
     "dmg": {
       "sign": "false",
@@ -175,11 +184,11 @@
         "rpm",
         "zip"
       ],
-      "maintainer": "Tam Nguyen tamnvhustcc@gmail.com",
-      "icon": "build/screenarc-appicon.png",
+      "maintainer": "Ashish Sam <getwithashish@gmail.com>",
+      "icon": "build/icons/512x512.png",
       "category": "Utility;AudioVideo;Recorder",
       "synopsis": "Screen recording and editing app",
-      "artifactName": "ScreenArc-${version}-linux-x64.${ext}",
+      "artifactName": "DemoThat-${version}-linux-x64.${ext}",
       "description": "Free & Open Source Screen Recording and Editing App"
     },
     "nsis": {

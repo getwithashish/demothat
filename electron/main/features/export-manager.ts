@@ -198,7 +198,7 @@ export async function startExport(event: IpcMainInvokeEvent, { projectState, exp
     if (mappedClicks.length > 0) {
       let clickPath: string | null = projectState.mouseClickSoundPath ?? null
       if (!clickPath) {
-        const generatedClickPath = path.join(os.tmpdir(), `screenarc-click-${Date.now()}.wav`)
+        const generatedClickPath = path.join(os.tmpdir(), `demothat-click-${Date.now()}.wav`)
         clickPath = generatedClickPath
         await fsPromises.writeFile(generatedClickPath, createBuiltInClickWav())
         temporaryFiles.push(generatedClickPath)

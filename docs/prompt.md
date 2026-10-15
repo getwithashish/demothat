@@ -1,4 +1,4 @@
-tôi đang muốn làm 1 desktop app bằng electron (chủ yếu cho linux, sẽ mở rộng cho windows, macos sau) tên là ScreenArc - một screen recorder + edit studio như là Screen Studio. các tính năng:
+tôi đang muốn làm 1 desktop app bằng electron (chủ yếu cho linux, sẽ mở rộng cho windows, macos sau) tên là DemoThat - một screen recorder + edit studio như là Screen Studio. các tính năng:
 
 - ghi màn hình chất lượng cao (up to 2k): cho phép select custom area, window hoặc full screen
 - tự động theo dấu con trỏ chuột và auto zoom (phóng to con trỏ chuột và vùng click)
@@ -29,7 +29,7 @@ mô tả sơ lược user flow theo như ý kiến của tôi (tiếp thu từ S
 
 sơ lược về giao diện edit:
 
-- title bar: từ trái sang gồm có traffic lights -> ScreenArc -> Nút export
+- title bar: từ trái sang gồm có traffic lights -> DemoThat -> Nút export
 - vùng chính gồm bên trái là một vùng lớn hiển thị preview và bên dưới là tool bar, bên phải là side panel (background, padding, roundeness, etc). toolbar gồm có 1 thanh bar điều khiển (dropdown chọn aspect ratio, 3 nút prev, play/pause, next, nút thêm cut track, nút thêm zoom track, slider để phóng to/thu nhỏ tracks)
 - vùng chỉnh sửa video, tracks gồm có timeline, original video track, và track thứ hai để hiển thị các đoạn (rounded rectangle) cho zoom và cut
 

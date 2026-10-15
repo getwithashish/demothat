@@ -50,7 +50,7 @@ export function createEditorWindow(
   }
 
   appState.editorWin = new BrowserWindow({
-    icon: path.join(process.env.VITE_PUBLIC!, 'screenarc-appicon.png'),
+    icon: path.join(process.env.VITE_PUBLIC!, 'demothat-appicon.png'),
     autoHideMenuBar: true,
     ...bounds,
     minWidth: 1280,

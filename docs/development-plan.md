@@ -1,4 +1,4 @@
-# ScreenArc - Development Plan
+# DemoThat - Development Plan
 
 ...
 

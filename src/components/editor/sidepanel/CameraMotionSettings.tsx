@@ -17,7 +17,7 @@ const KINDS: { value: CameraMoveKind; label: string }[] = [
   { value: 'entrance', label: 'Entrance' }, { value: 'orbit', label: 'Orbit' },
   { value: 'reset', label: 'Reset move' }, { value: 'breathing', label: 'Breathing' }, { value: 'custom', label: 'Custom' },
 ]
-const PRESETS_KEY = 'screenarc.camera-motion-presets.v1'
+const PRESETS_KEY = 'demothat.camera-motion-presets.v1'
 const copy = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T
 const DEFAULT_POSE: CameraPose = { x: 0, y: 0, scale: 1, rotationX: 0, rotationY: 0, rotationZ: 0, perspective: 50 }
 
@@ -65,7 +65,7 @@ export function CameraMotionSettings() {
   const exportPresets = () => {
     const blob = new Blob([JSON.stringify({ version: 1, presets }, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob); const anchor = document.createElement('a')
-    anchor.href = url; anchor.download = 'screenarc-camera-presets.json'; anchor.click(); URL.revokeObjectURL(url)
+    anchor.href = url; anchor.download = 'demothat-camera-presets.json'; anchor.click(); URL.revokeObjectURL(url)
   }
   const importPresets = async (file?: File) => {
     if (!file) return
@@ -75,7 +75,7 @@ export function CameraMotionSettings() {
       if (!Array.isArray(incoming) || incoming.some((item) => !item.from || !item.to || typeof item.name !== 'string')) throw new Error('Invalid preset file')
       const next = [...presets, ...incoming.map((item) => ({ ...item, id: `camera-preset-${Date.now()}-${Math.random().toString(36).slice(2, 6)}` }))]
       setPresets(next); localStorage.setItem(PRESETS_KEY, JSON.stringify(next))
-    } catch { window.alert('Could not import this file. Choose a ScreenArc camera preset JSON file.') }
+    } catch { window.alert('Could not import this file. Choose a DemoThat camera preset JSON file.') }
   }
   const applyPreset = (preset: CameraMotionTrack) => {
     if (!selected) return

@@ -19,17 +19,18 @@ export function AboutTab() {
 
   return (
     <div className="relative flex h-full flex-col items-center justify-center p-8 text-center">
-      <img src="media://screenarc-appicon.png" alt="ScreenArc logo" className="mb-4 h-24 w-24 rounded-2xl" />
-      <h2 className="text-title font-semibold text-fg">ScreenArc</h2>
+      <img src="media://demothat-appicon.png" alt="DemoThat logo" className="mb-4 h-24 w-24 rounded-2xl" />
+      <h2 className="text-title font-semibold text-fg">DemoThat</h2>
       <p className="mt-0.5 font-mono text-sm text-muted">Version {appVersion}</p>
 
       <div className="mt-6 space-y-1.5 text-ui text-muted">
-        <p>Created with ❤️ by Tam Nguyen.</p>
+        <p>Created with ❤️ by Ashish Sam.</p>
+        <p>Based on ScreenArc by Tam Nguyen. Licensed under GPL-3.0.</p>
         <p>A modern screen recorder and editor designed to be simple and powerful.</p>
       </div>
 
       <div className="mt-6 flex items-center gap-3">
-        <Button variant="secondary" onClick={() => openLink('https://github.com/tamnguyenvan/screenarc')}>
+        <Button variant="secondary" onClick={() => openLink('https://github.com/getwithashish/DemoThat')}>
           <BrandGithub size={ICON_SIZE} strokeWidth={ICON_STROKE} className="mr-2" />
           GitHub Repository
         </Button>

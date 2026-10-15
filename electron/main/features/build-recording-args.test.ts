@@ -7,11 +7,11 @@ describe('buildFfmpegArgs', () => {
       ['-f', 'gdigrab', '-i', 'desktop'],
       false,
       false,
-      'ScreenArc-recording-screen.mp4',
+      'DemoThat-recording-screen.mp4',
     )
 
     expect(args[0]).toBe('-y')
-    expect(args).toContain('ScreenArc-recording-screen.mp4')
+    expect(args).toContain('DemoThat-recording-screen.mp4')
   })
 
   test('maps microphone audio into the same output as screen video', () => {

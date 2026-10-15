@@ -17,7 +17,7 @@ export function createRecorderWindow() {
   const y = Math.max(0, Math.round(screenHeight / 4))
 
   appState.recorderWin = new BrowserWindow({
-    icon: path.join(process.env.VITE_PUBLIC!, 'screenarc-appicon.png'),
+    icon: path.join(process.env.VITE_PUBLIC!, 'demothat-appicon.png'),
     width: windowWidth,
     height: windowHeight,
     x,

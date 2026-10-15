@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Patches the dev Electron binary's Info.plist with the macOS TCC usage
-// description keys ScreenArc relies on, then ad-hoc re-signs the bundle.
+// description keys DemoThat relies on, then ad-hoc re-signs the bundle.
 //
 // Why this exists:
 // - On macOS, an app only appears in System Settings → Privacy & Security
@@ -54,29 +54,29 @@ log(`Patching ${plistPath}`)
 // builds behave identically.
 const usageStrings = {
   NSScreenCaptureUsageDescription:
-    "ScreenArc needs to record your computer's screen to capture video.",
+    "DemoThat needs to record your computer's screen to capture video.",
   NSAudioCaptureUsageDescription:
-    'ScreenArc captures system audio so you can include it in your screen recordings.',
+    'DemoThat captures system audio so you can include it in your screen recordings.',
   NSMicrophoneUsageDescription:
-    'ScreenArc records from the microphone when you enable it during a recording.',
+    'DemoThat records from the microphone when you enable it during a recording.',
   NSCameraUsageDescription:
-    'ScreenArc accesses the camera when you enable webcam capture during a recording.',
+    'DemoThat accesses the camera when you enable webcam capture during a recording.',
 }
 
 // Identity overrides. Out of the box the dev Electron binary identifies
 // itself as `Electron` with bundle id `com.github.Electron`, so it either
 // (a) doesn't appear at all in System Settings → Privacy & Security under a
 // recognizable name, or (b) collides with every other Electron-based dev
-// tool the user has run. We rename it to "ScreenArc Dev" and give it a
+// tool the user has run. We rename it to "DemoThat Dev" and give it a
 // project-specific bundle id so it shows up as its own entry — this lets
 // the user revoke or grant Screen Recording / Microphone independently.
 //
 // Note: changing the bundle id means any prior TCC grant (under
 // `com.github.Electron`) does NOT carry over. The user re-grants once.
 const identityOverrides = {
-  CFBundleIdentifier: 'com.screenarc.dev',
-  CFBundleName: 'ScreenArc Dev',
-  CFBundleDisplayName: 'ScreenArc Dev',
+  CFBundleIdentifier: 'com.demothat.dev',
+  CFBundleName: 'DemoThat Dev',
+  CFBundleDisplayName: 'DemoThat Dev',
   CFBundleExecutable: 'Electron',
 }
 
@@ -115,4 +115,4 @@ try {
   warn(err?.message ?? err)
 }
 
-log('Done. ScreenArc dev build should now register with macOS TCC on next launch.')
+log('Done. DemoThat dev build should now register with macOS TCC on next launch.')

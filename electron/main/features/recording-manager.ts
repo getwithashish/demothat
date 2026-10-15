@@ -226,9 +226,9 @@ async function startActualRecording(
   recordingGeometry: RecordingGeometry,
   cleanDemo = false,
 ) {
-  const recordingDir = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.screenarc')
+  const recordingDir = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.demothat')
   await ensureDirectoryExists(recordingDir)
-  const baseName = `ScreenArc-recording-${Date.now()}`
+  const baseName = `DemoThat-recording-${Date.now()}`
 
   const screenVideoPath = path.join(recordingDir, `${baseName}-screen.mp4`)
   const webcamVideoPath = hasWebcam ? path.join(recordingDir, `${baseName}-webcam.mp4`) : undefined
@@ -422,7 +422,7 @@ function buildMacFfmpegArgs(
  * Creates the system tray icon and context menu for controlling an active recording.
  */
 function createTray() {
-  const icon = nativeImage.createFromPath(path.join(VITE_PUBLIC, 'screenarc-appicon-tray.png'))
+  const icon = nativeImage.createFromPath(path.join(VITE_PUBLIC, 'demothat-appicon-tray.png'))
   appState.tray = new Tray(icon)
   const contextMenu = Menu.buildFromTemplate([
     {
@@ -438,7 +438,7 @@ function createTray() {
       },
     },
   ])
-  appState.tray.setToolTip('ScreenArc is recording...')
+  appState.tray.setToolTip('DemoThat is recording...')
   appState.tray.setContextMenu(contextMenu)
 }
 
@@ -473,7 +473,7 @@ export async function startRecording(options: any) {
       const { response } = await dialog.showMessageBox({
         type: 'warning',
         title: 'Screen Recording Permission Required',
-        message: 'ScreenArc needs Screen Recording permission to record your screen.',
+        message: 'DemoThat needs Screen Recording permission to record your screen.',
         detail:
           'Go to System Settings → Privacy & Security → Screen Recording and enable the toggle next to "Electron" (the dev build). Then restart the app and try again.',
         buttons: ['Open System Settings', 'Cancel'],
@@ -1118,7 +1118,7 @@ export async function cleanupAndDiscard() {
  */
 export async function cleanupOrphanedRecordings() {
   log.info('[Cleanup] Starting orphaned recording cleanup...')
-  const recordingDir = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.screenarc')
+  const recordingDir = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.demothat')
   const protectedFiles = new Set<string>()
 
   // Protect files from the currently active editor or recording session
@@ -1131,7 +1131,7 @@ export async function cleanupOrphanedRecordings() {
 
   try {
     const allFiles = await fsPromises.readdir(recordingDir)
-    const filePattern = /^ScreenArc-recording-\d+(-screen\.mp4|-screen\.muxed\.mp4|-screen\.webm|-webcam\.mp4|-system\.webm|-mic\.m4a|\.json)$/
+    const filePattern = /^DemoThat-recording-\d+(-screen\.mp4|-screen\.muxed\.mp4|-screen\.webm|-webcam\.mp4|-system\.webm|-mic\.m4a|\.json)$/
     const filesToDelete = allFiles
       .filter((file) => filePattern.test(file))
       .map((file) => path.join(recordingDir, file))
@@ -1200,9 +1200,9 @@ export async function loadVideoFromFile() {
   createSavingWindow()
 
   try {
-    const recordingDir = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.screenarc')
+    const recordingDir = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.demothat')
     await ensureDirectoryExists(recordingDir)
-    const baseName = `ScreenArc-recording-${Date.now()}`
+    const baseName = `DemoThat-recording-${Date.now()}`
     const screenVideoPath = path.join(recordingDir, `${baseName}-screen.mp4`)
     const metadataPath = path.join(recordingDir, `${baseName}.json`)
 

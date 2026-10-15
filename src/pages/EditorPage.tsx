@@ -251,7 +251,7 @@ export function EditorPage() {
             </div>
           )}
           <div className="pointer-events-none flex min-w-0 items-baseline gap-2 pl-1">
-            <h1 className="truncate text-ui font-semibold tracking-tight text-fg">ScreenArc</h1>
+            <h1 className="truncate text-ui font-semibold tracking-tight text-fg">DemoThat</h1>
             {metaLabel && <span className="truncate font-mono text-sm text-muted">{metaLabel}</span>}
           </div>
         </div>

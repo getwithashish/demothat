@@ -1,6 +1,6 @@
-# ScreenArc - Technology Stack
+# DemoThat - Technology Stack
 
-This document outlines the primary technologies chosen for the development of ScreenArc. The stack is selected to facilitate rapid development, ensure cross-platform compatibility, and leverage the modern JavaScript/TypeScript ecosystem.
+This document outlines the primary technologies chosen for the development of DemoThat. The stack is selected to facilitate rapid development, ensure cross-platform compatibility, and leverage the modern JavaScript/TypeScript ecosystem.
 
 ## Core Framework
 

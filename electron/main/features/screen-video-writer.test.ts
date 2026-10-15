@@ -8,7 +8,7 @@ import { ScreenVideoWriter } from './screen-video-writer'
 let scratchDir: string
 
 beforeEach(() => {
-  scratchDir = mkdtempSync(path.join(tmpdir(), 'screenarc-svw-'))
+  scratchDir = mkdtempSync(path.join(tmpdir(), 'demothat-svw-'))
 })
 
 afterEach(async () => {

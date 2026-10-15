@@ -126,6 +126,11 @@
     font-size: 13px;
     line-height: 1.4;
   }
+  /* The recorder window is transparent and frameless: only the floating dock
+     should be visible, never an opaque page background. */
+  html[data-surface='recorder'] body {
+    background: transparent;
+  }
   :focus-visible {
     outline: 2px solid var(--sa-accent);
     outline-offset: 2px;

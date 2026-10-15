@@ -132,6 +132,8 @@ export const electronAPI = {
   },
 
   getDisplays: (): Promise<DisplayInfo[]> => ipcRenderer.invoke('desktop:get-displays'),
+  /** Resizes the frameless recorder window to fit its dock content. */
+  setRecorderWindowSize: (size: { width: number; height: number }): void => ipcRenderer.send('recorder:set-size', size),
   getDshowDevices: (): Promise<{ video: DshowDevice[]; audio: DshowDevice[] }> =>
     ipcRenderer.invoke('desktop:get-dshow-devices'),
 

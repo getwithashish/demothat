@@ -61,12 +61,19 @@ export function createRecorderWindow() {
     appState.recorderWin = null
   })
 
-  // This simple IPC handler can stay here as it's tightly coupled to this window.
+  // The renderer sizes the window to its dock content; keep it centred
+  // horizontally and never wider than the work area.
   ipcMain.on('recorder:set-size', (_event, { width, height }: { width: number; height: number }) => {
-    if (appState.recorderWin) {
-      log.info(`Resizing recorder window to ${width}x${height}`)
-      appState.recorderWin.setSize(width, height, true)
-    }
+    const win = appState.recorderWin
+    if (!win || win.isDestroyed()) return
+
+    const workArea = screen.getPrimaryDisplay().workAreaSize
+    const nextWidth = Math.max(320, Math.min(Math.round(width), workArea.width))
+    const nextHeight = Math.max(120, Math.min(Math.round(height), workArea.height))
+    const x = Math.max(0, Math.round((workArea.width - nextWidth) / 2))
+    const y = win.getBounds().y
+    log.info(`[RecorderWindow] Resizing to ${nextWidth}x${nextHeight} at x=${x}`)
+    win.setBounds({ x, y, width: nextWidth, height: nextHeight })
   })
 
   ipcMain.on('recorder:click-through', () => {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback, useLayoutEffect } from 'react'
 import { ICON_SIZE, ICON_STROKE } from '../components/ui/icons'
 import {
   Microphone,
@@ -28,6 +28,9 @@ import { startScreenCapture, type ScreenCaptureHandle } from '../lib/screen-capt
 import '../index.css'
 
 // --- Constants ---
+/** Transparent margin kept around the dock inside the recorder window. */
+const DOCK_MARGIN = 24
+
 const LINUX_SCALES = [
   { value: 2, label: '2x' },
   { value: 1.5, label: '1.5x' },
@@ -67,10 +70,14 @@ export function RecorderPage() {
   // Always points at the latest handleStart so the global-shortcut listener
   // (registered once) can invoke it without re-subscribing on every render.
   const startHandlerRef = useRef<() => void>(() => {})
+  // The dock (+ preview) whose measured size drives the transparent window size.
+  const contentRef = useRef<HTMLDivElement>(null)
+  const lastSizeRef = useRef({ width: 0, height: 0 })
 
   const supportsSystemAudio = platform === 'darwin'
   const usesRendererScreenCapture = platform === 'darwin'
   const isBusy = actionInProgress !== 'none'
+  const isWebcamPreviewVisible = selectedWebcamId !== 'none' && actionInProgress === 'none' && !isRecording
 
   const setActionState = useCallback((next: ActionInProgress) => {
     actionInProgressRef.current = next
@@ -276,6 +283,33 @@ export function RecorderPage() {
     return stopStream
   }, [selectedWebcamId, platform, recordingState])
 
+  // The recorder window is transparent and frameless, so paint no page
+  // background (see tokens.css) — only the dock should be visible.
+  useEffect(() => {
+    document.documentElement.setAttribute('data-surface', 'recorder')
+    return () => document.documentElement.removeAttribute('data-surface')
+  }, [])
+
+  // Size the window to the dock instead of a fixed box, so nothing is clipped
+  // and there is no large empty area around it.
+  useLayoutEffect(() => {
+    const element = contentRef.current
+    if (!element) return
+
+    const applySize = () => {
+      const width = Math.ceil(element.offsetWidth) + DOCK_MARGIN * 2
+      const height = Math.ceil(element.offsetHeight) + DOCK_MARGIN * 2
+      if (width === lastSizeRef.current.width && height === lastSizeRef.current.height) return
+      lastSizeRef.current = { width, height }
+      window.electronAPI?.setRecorderWindowSize?.({ width, height })
+    }
+
+    applySize()
+    const observer = new ResizeObserver(applySize)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [isWebcamPreviewVisible])
+
   const handleStart = async () => {
     if (isRecording || actionInProgressRef.current !== 'none') return
 
@@ -480,7 +514,7 @@ export function RecorderPage() {
   return (
     <div className="relative h-screen w-screen bg-transparent select-none">
       <div className="absolute top-0 left-0 right-0 flex flex-col items-center pt-6">
-        <div data-interactive="true" className="relative">
+        <div ref={contentRef} data-interactive="true" className="relative">
           {/* Main Control Bar */}
           <div
             className="relative flex items-center gap-3 rounded-pv border border-line bg-panel px-4 py-3 shadow-[var(--sa-popover-shadow)]"
@@ -769,13 +803,12 @@ export function RecorderPage() {
             </div>
           </div>
 
-          {/* Webcam Preview */}
+          {/* Webcam Preview — kept mounted so the preview stream stays attached,
+              but removed from the layout while hidden so it reserves no space. */}
           <div
             className={cn(
               'mx-auto mt-4 aspect-square w-48 overflow-hidden rounded-2xl bg-stage ring-1 ring-line',
-              selectedWebcamId !== 'none' && actionInProgress === 'none' && !isRecording
-                ? 'opacity-100 scale-100'
-                : 'opacity-0 scale-95 pointer-events-none',
+              !isWebcamPreviewVisible && 'hidden',
             )}
           >
             <video ref={webcamPreviewRef} autoPlay playsInline muted className="w-full h-full object-cover" />

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { CREDIT_PACKS } from '../../../../shared/license'
-import { priceLabel, recommendedPackIndex } from './credit-packs'
+import { priceLabel, pickNoteTarget, recommendedPackIndex } from './credit-packs'
 
 describe('recommendedPackIndex', () => {
   it('preselects the first pack when nothing is short', () => {
@@ -32,6 +32,22 @@ describe('priceLabel', () => {
 
   it('shows cents when there are any', () => {
     expect(priceLabel({ productId: 'p', label: 'Pro', credits: 900, priceUsd: 1.5 })).toBe('$1.50')
+  })
+})
+
+describe('pickNoteTarget', () => {
+  it('prefers 8K when the table prices it', () => {
+    expect(pickNoteTarget({ '1080p': 0.01, '4k': 0.05, '8k': 0.11 })).toBe('8k')
+  })
+
+  it('falls back to the largest priced target', () => {
+    expect(pickNoteTarget({ '1080p': 0.01, '4k': 0.05 })).toBe('4k')
+  })
+
+  it('ignores zero-priced entries and has no answer without a table', () => {
+    expect(pickNoteTarget({ '4k': 0, '1080p': 0.01 })).toBe('1080p')
+    expect(pickNoteTarget(undefined)).toBeNull()
+    expect(pickNoteTarget({})).toBeNull()
   })
 })
 

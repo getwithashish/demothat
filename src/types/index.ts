@@ -536,6 +536,8 @@ export interface LicenseActions {
 export interface PurchaseState {
   /** Buy credits dialog. */
   buyCreditsOpen: boolean
+  /** Credits still needed when the dialog was opened from an export shortfall. */
+  buyCreditsShortfall: number | null
   /** Waiting-for-payment dialog. */
   waitingForPayment: boolean
   /** The allow-listed checkout URL, offered as "Copy link". */
@@ -547,7 +549,8 @@ export interface PurchaseState {
 }
 
 export interface PurchaseActions {
-  openBuyCredits: () => void
+  /** Opens Buy credits; pass a shortfall to preselect the covering pack. */
+  openBuyCredits: (shortfall?: number | null) => void
   closeBuyCredits: () => void
   /** Starts checkout and shows the waiting dialog; returns true when it opened. */
   startPurchase: (productId: string) => Promise<boolean>

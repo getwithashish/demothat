@@ -60,6 +60,7 @@ export function EditorPage() {
     videoDimensions,
     currentProjectPath,
     buyCreditsOpen,
+    buyCreditsShortfall,
     waitingForPayment,
   } = useEditorStore(
     useShallow((state) => ({
@@ -69,6 +70,7 @@ export function EditorPage() {
       videoDimensions: state.videoDimensions,
       currentProjectPath: state.currentProjectPath,
       buyCreditsOpen: state.buyCreditsOpen,
+      buyCreditsShortfall: state.buyCreditsShortfall,
       waitingForPayment: state.waitingForPayment,
     })),
   )
@@ -533,7 +535,11 @@ export function EditorPage() {
         onGetPro={() => void startFirstPurchase()}
       />
       <DevicesDialog isOpen={isDevicesOpen} onClose={() => setDevicesOpen(false)} />
-      <BuyCreditsDialog isOpen={buyCreditsOpen} onClose={() => useEditorStore.getState().closeBuyCredits()} />
+      <BuyCreditsDialog
+        isOpen={buyCreditsOpen}
+        shortfall={buyCreditsShortfall}
+        onClose={() => useEditorStore.getState().closeBuyCredits()}
+      />
       <WaitingForPaymentDialog
         isOpen={waitingForPayment}
         onClose={() => useEditorStore.getState().cancelWaiting()}

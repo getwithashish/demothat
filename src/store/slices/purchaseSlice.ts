@@ -8,6 +8,7 @@ import type { PurchaseActions, PurchaseState, Slice } from '../../types'
 
 export const initialPurchaseState: PurchaseState = {
   buyCreditsOpen: false,
+  buyCreditsShortfall: null,
   waitingForPayment: false,
   checkoutUrl: null,
   purchaseError: null,
@@ -21,9 +22,10 @@ function bridge() {
 export const createPurchaseSlice: Slice<PurchaseState, PurchaseActions> = (set) => ({
   ...initialPurchaseState,
 
-  openBuyCredits: () => {
+  openBuyCredits: (shortfall?: number | null) => {
     set((state) => {
       state.buyCreditsOpen = true
+      state.buyCreditsShortfall = shortfall ?? null
       state.purchaseError = null
     })
   },
@@ -31,6 +33,7 @@ export const createPurchaseSlice: Slice<PurchaseState, PurchaseActions> = (set) 
   closeBuyCredits: () => {
     set((state) => {
       state.buyCreditsOpen = false
+      state.buyCreditsShortfall = null
     })
   },
 

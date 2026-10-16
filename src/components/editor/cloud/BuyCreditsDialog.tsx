@@ -8,12 +8,12 @@ import { useEffect, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { ExternalLink } from 'tabler-icons-react'
 import { useEditorStore } from '../../../store/editorStore'
-import { CREDIT_PACKS, formatCredits } from '../../../../shared/license'
+import { CREDIT_PACKS, formatCredits, packNote } from '../../../../shared/license'
 import { cn } from '../../../lib/utils'
 import { Button } from '../../ui/button'
 import { ICON_SIZE, ICON_STROKE } from '../../ui/icons'
 import { CloudDialog, CloudDialogSection } from './CloudDialog'
-import { priceLabel, recommendedPackIndex } from './credit-packs'
+import { priceLabel, pickNoteTarget, recommendedPackIndex } from './credit-packs'
 
 export interface BuyCreditsDialogProps {
   isOpen: boolean
@@ -21,6 +21,9 @@ export interface BuyCreditsDialogProps {
   /** Credits still needed (export shortfall): preselects the smallest covering pack. */
   shortfall?: number | null
 }
+
+/** Assumed project frame rate for the pack notes when the export dialog is not open. */
+const NOTE_FPS = 30
 
 export function BuyCreditsDialog({ isOpen, onClose, shortfall }: BuyCreditsDialogProps) {
   const { balance, startPurchase, purchaseError } = useEditorStore(
@@ -32,18 +35,25 @@ export function BuyCreditsDialog({ isOpen, onClose, shortfall }: BuyCreditsDialo
   )
   const [selected, setSelected] = useState(() => recommendedPackIndex(shortfall, CREDIT_PACKS))
   const [busy, setBusy] = useState(false)
+  // Pack notes come from the server's own pricing table, never from guesses.
+  const [creditsPerFrame, setCreditsPerFrame] = useState<Record<string, number> | undefined>(undefined)
 
   // Re-pick the pack each time the dialog opens for a new shortfall.
   useEffect(() => {
     if (!isOpen) return
     setSelected(recommendedPackIndex(shortfall, CREDIT_PACKS))
     setBusy(false)
+    window.electronAPI
+      .getCloudCapabilities?.()
+      .then((result) => setCreditsPerFrame(result?.capabilities?.creditsPerFrame))
+      .catch(() => setCreditsPerFrame(undefined))
   }, [isOpen, shortfall])
 
   if (!isOpen) return null
 
   const pack = CREDIT_PACKS[selected]
   const covers = shortfall != null && shortfall > 0 && pack.credits >= shortfall
+  const noteTarget = pickNoteTarget(creditsPerFrame)
 
   const continueToCheckout = async () => {
     setBusy(true)
@@ -102,6 +112,11 @@ export function BuyCreditsDialog({ isOpen, onClose, shortfall }: BuyCreditsDialo
                 </b>
                 <span className="whitespace-nowrap font-mono text-sm text-muted">{priceLabel(option)}</span>
                 <small className="text-sm text-muted">{option.label}</small>
+                {noteTarget && (
+                  <small className="text-sm text-muted">
+                    {packNote(option.credits, creditsPerFrame, noteTarget, NOTE_FPS)}
+                  </small>
+                )}
               </button>
             )
           })}

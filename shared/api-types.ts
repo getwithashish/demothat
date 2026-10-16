@@ -157,6 +157,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/products": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What is for sale, with live prices
+         * @description Public: the website renders its pricing from this rather than hard-coding a product id or an amount. `credits` is the server-side truth that checkout charges from; the money comes from the payment provider, so there is one source of truth for it. `price` is null when the provider could not be reached — the credits are still exact.
+         */
+        get: operations["listProducts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/jobs": {
         parameters: {
             query?: never;
@@ -378,6 +398,31 @@ export interface components {
             minChargeCredits: number;
             cloudEnabled: boolean;
             multipartThresholdBytes?: number;
+        };
+        /** @description A price as rendered, not as charged. `amountMinor` is an integer in the smallest denomination of `currency`, so divide by 10^`minorUnitExponent` — 2 for USD, but 0 for zero-decimal currencies such as JPY, which is why the exponent is published instead of assumed. */
+        ProductPrice: {
+            amountMinor: number;
+            /** @example USD */
+            currency: string;
+            minorUnitExponent: number;
+            /** @description true when `amountMinor` is a floor rather than the price, i.e. the product is pay-what-you-want. */
+            isMinimum: boolean;
+        };
+        Product: {
+            /** @description Pass this back to `POST /v1/checkout`. */
+            productId: string;
+            /** @enum {string} */
+            kind: "first_purchase" | "topup";
+            /** @description Credits granted by one unit. Server-side truth (0.8). */
+            credits: number;
+            name?: string;
+            description?: string;
+            isRecurring?: boolean;
+            /** @description null when the payment provider could not be reached. */
+            price: components["schemas"]["ProductPrice"] | null;
+        };
+        ProductList: {
+            products: components["schemas"]["Product"][];
         };
         CreateJobRequest: {
             sourceWidth: number;
@@ -711,6 +756,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Capabilities"];
+                };
+            };
+        };
+    };
+    listProducts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Products */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductList"];
                 };
             };
         };

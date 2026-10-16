@@ -1,0 +1,864 @@
+# contract/openapi.yaml
+# CONTRACT VERSION: 2.0.0
+#
+# OWNER: demothat-api. This file is the source of truth for the app -> API
+# contract. `demothat` vendors a pinned copy and its CI fails when the version
+# header drifts from the one it declares it targets.
+#
+# Any contract change is made HERE first, then re-pinned downstream.
+# See docs/SHARED_SPEC.md (Section 0) for the specification this implements.
+
+openapi: 3.1.0
+info:
+  title: DemoThat API
+  version: 2.0.0
+  description: >-
+    Pro licensing, credit ledger and cloud upscaling jobs for the DemoThat
+    desktop app. This file is the app-to-API contract; the API-to-worker contract
+    lives in contract/worker-protocol.md plus the JSON Schemas in contract/schemas/.
+  contact:
+    name: DemoThat
+  license:
+    name: Proprietary
+    identifier: LicenseRef-Proprietary
+servers:
+  - url: https://api.demothat.app
+    description: Production
+  - url: http://localhost:3000
+    description: Local development
+
+tags:
+  - name: meta
+    description: Health and capability discovery
+  - name: billing
+    description: Checkout, purchases and webhooks
+  - name: license
+    description: License activation, tokens and devices
+  - name: jobs
+    description: Cloud upscaling jobs
+  - name: internal
+    description: Worker callbacks and operator tasks
+
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      tags: [meta]
+      summary: Liveness probe
+      responses:
+        '200':
+          description: Service is up
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+
+  /v1/checkout:
+    post:
+      operationId: createCheckout
+      tags: [billing]
+      summary: Start a purchase (first purchase, or a top-up with a token)
+      security:
+        - {}
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CheckoutRequest'
+      responses:
+        '200':
+          description: Checkout session created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckoutResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /v1/purchases/{id}:
+    get:
+      operationId: getPurchase
+      tags: [billing]
+      summary: Poll a purchase; returns the license key exactly once
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: X-Poll-Token
+          in: header
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Purchase status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PurchaseStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /webhooks/dodo:
+    post:
+      operationId: dodoWebhook
+      tags: [billing]
+      summary: Dodo webhook (Standard Webhooks signature verified)
+      parameters:
+        - name: webhook-id
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: webhook-timestamp
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: webhook-signature
+          in: header
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Event accepted (may be ignored or a duplicate)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  received:
+                    type: boolean
+                  handled:
+                    type: boolean
+                  duplicate:
+                    type: boolean
+                  type:
+                    type: string
+                  detail:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /thanks:
+    get:
+      operationId: thanksPage
+      tags: [billing]
+      summary: Static post-payment page (grants nothing)
+      responses:
+        '200':
+          description: HTML page
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /v1/license/activate:
+    post:
+      operationId: activateLicense
+      tags: [license]
+      summary: Activate a device against a license key and receive a token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActivateRequest'
+      responses:
+        '200':
+          description: Activated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivateResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          description: License revoked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Device limit reached (returns the device list)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Too many activation attempts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1/license:
+    get:
+      operationId: getLicense
+      tags: [license]
+      summary: Current license, balance and devices
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: License view
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LicenseView'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/devices/{id}:
+    delete:
+      operationId: deactivateDevice
+      tags: [license]
+      summary: Deactivate a device (through Dodo and locally)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Updated license view
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LicenseView'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/capabilities:
+    get:
+      operationId: getCapabilities
+      tags: [meta]
+      summary: Pricing table, targets, limits and models
+      security: []
+      responses:
+        '200':
+          description: Capabilities
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Capabilities'
+
+  /v1/jobs:
+    post:
+      operationId: createJob
+      tags: [jobs]
+      summary: Credit preflight with the declared numbers, then upload URLs
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateJobRequest'
+      responses:
+        '200':
+          description: Job created, upload plan returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateJobResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '402':
+          description: Insufficient credits (carries estimatedCost and balance)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: A job is already running for this license
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Daily job limit reached
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Cloud upscaling disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1/jobs/{id}:
+    get:
+      operationId: getJob
+      tags: [jobs]
+      summary: Job status, progress and a fresh download URL
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Job view
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobView'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: cancelJob
+      tags: [jobs]
+      summary: Cancel a job, applying the settlement rules
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: >-
+            `canceling` while a running job winds down, `canceled` once it is
+            settled. If the job was already terminal when the request arrived, its
+            actual status is returned instead (`succeeded`, `failed`, `rejected`),
+            because claiming a cancel that never happened would be misleading.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    enum: [canceling, canceled, succeeded, failed, rejected]
+
+  /v1/jobs/{id}/upload/complete:
+    post:
+      operationId: completeJobUpload
+      tags: [jobs]
+      summary: Finish the source upload (required for multipart)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                parts:
+                  type: array
+                  items:
+                    type: object
+                    required: [partNumber, etag]
+                    properties:
+                      partNumber:
+                        type: integer
+                      etag:
+                        type: string
+      responses:
+        '200':
+          description: Uploaded
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /v1/jobs/{id}/start:
+    post:
+      operationId: startJob
+      tags: [jobs]
+      summary: Begin validation and hand the job to the worker; returns immediately
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Validating
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    enum: [validating]
+        '409':
+          description: Job is not uploaded, or another job is already active
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Cloud upscaling disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /internal/jobs/{id}/probe-result:
+    post:
+      operationId: workerProbeResult
+      tags: [internal]
+      summary: Worker reports probe findings (HMAC signed with the job secret)
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/WorkerSignature'
+        - $ref: '#/components/parameters/WorkerTimestamp'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /internal/jobs/{id}/heartbeat:
+    post:
+      operationId: workerHeartbeat
+      tags: [internal]
+      summary: Worker progress; the response carries the cancel flag
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/WorkerSignature'
+        - $ref: '#/components/parameters/WorkerTimestamp'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Cancel flag
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [cancel]
+                properties:
+                  cancel:
+                    type: boolean
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /internal/jobs/{id}/complete:
+    post:
+      operationId: workerComplete
+      tags: [internal]
+      summary: Worker reports the final outcome; the job is settled
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/WorkerSignature'
+        - $ref: '#/components/parameters/WorkerTimestamp'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Settled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /internal/reap:
+    post:
+      operationId: reapJobs
+      tags: [internal]
+      summary: Operator backstop; reaps stale jobs and expired cancels
+      security: []
+      parameters:
+        - name: X-Reap-Secret
+          in: header
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Counts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reaped:
+                    type: integer
+                  canceled:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  parameters:
+    WorkerSignature:
+      name: X-Signature
+      in: header
+      required: true
+      schema:
+        type: string
+      description: HMAC-SHA256 of `{timestamp}.{raw body}` with the per-job callback secret
+    WorkerTimestamp:
+      name: X-Timestamp
+      in: header
+      required: true
+      schema:
+        type: string
+      description: Unix seconds; stale requests are rejected
+  responses:
+    BadRequest:
+      description: Validation failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Authentication required or signature invalid
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Health:
+      type: object
+      required: [status, service, version, env, time]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+        service:
+          type: string
+          examples: [demothat-api]
+        version:
+          type: string
+        env:
+          type: string
+          enum: [development, test, production]
+        commit:
+          type: [string, 'null']
+        time:
+          type: string
+          format: date-time
+    CheckoutRequest:
+      type: object
+      required: [productId]
+      properties:
+        productId:
+          type: string
+          description: Dodo product id; the credit amount comes from the server-side PRODUCTS table
+        deviceIdHash:
+          type: string
+          description: Optional opaque device hash carried through for the app
+    CheckoutResponse:
+      type: object
+      required: [purchaseId, pollToken, checkoutUrl]
+      properties:
+        purchaseId:
+          type: string
+        pollToken:
+          type: string
+          description: Shown once; send it as X-Poll-Token when polling
+        checkoutUrl:
+          type: string
+          format: uri
+    PurchaseStatus:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [pending, succeeded, failed]
+        balance:
+          type: integer
+          description: License credit balance once the license exists
+        licenseKey:
+          type: string
+          description: Returned exactly once, on a first purchase, then removed
+    DeviceView:
+      type: object
+      required: [id, label, platform, active, activatedAt, lastSeenAt, current]
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        platform:
+          type: string
+        active:
+          type: boolean
+        activatedAt:
+          type: string
+          format: date-time
+        lastSeenAt:
+          type: string
+          format: date-time
+        current:
+          type: boolean
+          description: True for the device making the request
+    ActivateRequest:
+      type: object
+      required: [licenseKey, deviceIdHash, label, platform]
+      properties:
+        licenseKey:
+          type: string
+        deviceIdHash:
+          type: string
+          description: Client-computed hash of the device identifier
+        label:
+          type: string
+        platform:
+          type: string
+    ActivateResponse:
+      type: object
+      required: [token, balance, devices]
+      properties:
+        token:
+          type: string
+          description: EdDSA license token; send as Authorization Bearer
+        balance:
+          type: integer
+        devices:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeviceView'
+    LicenseView:
+      type: object
+      required: [plan, balance, devices]
+      properties:
+        plan:
+          type: string
+        balance:
+          type: integer
+        devices:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeviceView'
+    Capabilities:
+      type: object
+      required: [creditsPerFrame, targets, limits, models, minChargeCredits, cloudEnabled]
+      properties:
+        creditsPerFrame:
+          type: object
+          additionalProperties:
+            type: number
+        targets:
+          type: array
+          items:
+            type: string
+        limits:
+          type: object
+          properties:
+            maxDurationSeconds:
+              type: integer
+            maxTargetWidth:
+              type: integer
+            maxTargetHeight:
+              type: integer
+            maxFileSizeBytes:
+              type: integer
+            maxConcurrentJobs:
+              type: integer
+            dailyJobCap:
+              type: integer
+        models:
+          type: array
+          items:
+            type: string
+        minChargeCredits:
+          type: integer
+        cloudEnabled:
+          type: boolean
+        multipartThresholdBytes:
+          type: integer
+    CreateJobRequest:
+      type: object
+      required:
+        [sourceWidth, sourceHeight, fps, durationSec, fileSizeBytes, targetWidth, targetHeight]
+      properties:
+        sourceWidth:
+          type: integer
+        sourceHeight:
+          type: integer
+        fps:
+          type: number
+        durationSec:
+          type: number
+        fileSizeBytes:
+          type: integer
+        targetWidth:
+          type: integer
+        targetHeight:
+          type: integer
+    CreateJobResponse:
+      type: object
+      required: [jobId, estimatedCost, upload]
+      properties:
+        jobId:
+          type: string
+        estimatedCost:
+          type: integer
+        upload:
+          oneOf:
+            - type: object
+              required: [type, url]
+              properties:
+                type:
+                  type: string
+                  enum: [single]
+                url:
+                  type: string
+                  format: uri
+            - type: object
+              required: [type, uploadId, partSize, partUrls]
+              properties:
+                type:
+                  type: string
+                  enum: [multipart]
+                uploadId:
+                  type: string
+                partSize:
+                  type: integer
+                partUrls:
+                  type: array
+                  items:
+                    type: string
+                    format: uri
+    JobView:
+      type: object
+      required: [status, stage, progress, framesDone, totalFrames, reserved, consumed, cost]
+      properties:
+        status:
+          type: string
+          enum:
+            [
+              created,
+              uploading,
+              uploaded,
+              validating,
+              rejected,
+              queued,
+              running,
+              canceling,
+              canceled,
+              succeeded,
+              failed,
+              expired,
+            ]
+        stage:
+          type: string
+        progress:
+          type: number
+        framesDone:
+          type: integer
+        totalFrames:
+          type: integer
+        reserved:
+          type: integer
+        consumed:
+          type: integer
+        etaSeconds:
+          type: integer
+        cost:
+          type: integer
+        charge:
+          type: integer
+        refund:
+          type: integer
+        downloadUrl:
+          type: string
+          format: uri
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            class:
+              type: string
+              enum: [input, infra]
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              examples: [validation_error]
+            message:
+              type: string
+            details: {}

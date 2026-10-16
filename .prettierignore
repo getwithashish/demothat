@@ -16,3 +16,12 @@ pnpm-lock.yaml
 
 # Generated files
 CHANGELOG.md
+shared/api-types.ts
+
+# Vendored from demothat-api — reformatting it would make the pinned copy differ
+# from the owner's, so it is never touched by this repo's formatters.
+contract/openapi.yaml
+
+# Design references
+# Static hand-authored mockups the owner drops in; not source code.
+docs/design/*.html

@@ -11,6 +11,9 @@
     "url": "https://github.com/getwithashish/DemoThat/issues"
   },
   "private": true,
+  "demothat": {
+    "contractVersion": "2.0.0"
+  },
   "version": "0.0.0-development",
   "type": "module",
   "engines": {
@@ -39,6 +42,8 @@
     "lint:fix": "eslint . --ext ts,tsx --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "contract:check": "node scripts/check-contract-version.mjs",
+    "contract:types": "openapi-typescript contract/openapi.yaml -o shared/api-types.ts",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -92,6 +97,7 @@
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.5",
     "jsdom": "^30.1.2",
+    "openapi-typescript": "^7.13.0",
     "prettier": "^3.6.2",
     "semantic-release": "^24.2.9",
     "typescript": "^5.5.4",

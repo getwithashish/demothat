@@ -1,0 +1,62 @@
+name: Checks
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Lint, types, tests and contract
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        # 22, not 24: the postinstall (electron-builder install-app-deps) fails on 24.
+        # Matches `engines` ("^18 <=22") and the release workflow.
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # First, because it is the cheapest and it is the check that catches a
+      # half-finished re-vendor: a new contract/openapi.yaml with a stale pin.
+      - name: Contract version is pinned and consistent
+        run: npm run contract:check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Tests
+        run: npm test
+
+      # The committed types must match the pinned contract. Regenerating and diffing
+      # is the only way to know: a hand-edited or stale api-types.ts typechecks fine
+      # while describing an API that no longer exists.
+      - name: Generated types are up to date
+        run: |
+          npm run contract:types
+          if ! git diff --exit-code -- shared/api-types.ts; then
+            echo "::error::shared/api-types.ts is out of date — run 'npm run contract:types' and commit the result"
+            exit 1
+          fi

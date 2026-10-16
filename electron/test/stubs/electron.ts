@@ -39,6 +39,11 @@ export const systemPreferences = {
   askForMediaAccess: () => Promise.resolve(true),
 }
 export const nativeImage = { createFromPath: () => ({}) }
+export const safeStorage = {
+  isEncryptionAvailable: () => false,
+  encryptString: (value: string) => Buffer.from(value, 'utf8'),
+  decryptString: (buffer: Buffer) => buffer.toString('utf8'),
+}
 export const session = {
   defaultSession: {
     setDisplayMediaRequestHandler: () => {},

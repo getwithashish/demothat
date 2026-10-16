@@ -4,6 +4,7 @@ import * as cloudHandlers from './handlers/cloud'
 import * as desktopHandlers from './handlers/desktop'
 import * as exportHandlers from './handlers/export'
 import * as fsHandlers from './handlers/file-system'
+import * as licenseHandlers from './handlers/license'
 import * as recordingHandlers from './handlers/recording'
 import * as projectHandlers from './handlers/project'
 import * as settingsHandlers from './handlers/settings'
@@ -77,6 +78,9 @@ export function registerIpcHandlers() {
 
   // Cloud (AI) upscaling: status, consent, and the retry / fallback paths.
   cloudHandlers.registerCloudHandlers()
+
+  // License, credit balance and devices.
+  licenseHandlers.registerLicenseHandlers()
 
   // File System
   ipcMain.handle('fs:readFile', fsHandlers.handleReadFile)

@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron'
+import type { ActivationResult, DeactivationResult, DeviceView, LicenseSummary } from '../shared/license'
 
 // Define the type for the callback value
 type RecordingResult = {
@@ -290,6 +291,16 @@ export const electronAPI = {
   /** Local Pro state plus the URL the Unlock action should open. */
   getEntitlement: (): Promise<{ pro: boolean; credits: number; unlockUrl: string }> =>
     ipcRenderer.invoke('entitlement:get'),
+
+  // --- License, credits and devices ---
+  /** Plan, balance and devices for the header capsule and the Devices dialog. */
+  getLicenseSummary: (): Promise<LicenseSummary> => ipcRenderer.invoke('license:summary'),
+  /** Activates this device against a key; failures carry a friendly message. */
+  activateLicense: (licenseKey: string): Promise<ActivationResult> =>
+    ipcRenderer.invoke('license:activate', licenseKey),
+  listLicenseDevices: (): Promise<DeviceView[]> => ipcRenderer.invoke('license:devices'),
+  deactivateLicenseDevice: (deviceId: string): Promise<DeactivationResult> =>
+    ipcRenderer.invoke('license:deactivate', deviceId),
   /** Measured export throughput for the render-time estimates. */
   getExportPerfSamples: (): Promise<
     Array<{

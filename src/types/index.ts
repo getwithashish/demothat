@@ -1,4 +1,6 @@
 // --- Types ---
+import type { CreditStatus, DeviceView } from '../../shared/license'
+
 export type BackgroundType = 'color' | 'gradient' | 'image' | 'wallpaper'
 export type AspectRatio = '16:9' | '9:16' | '4:3' | '3:4' | '1:1'
 export type SidePanelTab = 'general' | 'camera' | 'cursor' | 'audio' | 'animation' | 'settings'
@@ -503,6 +505,34 @@ export interface AudioActions {
   setMouseClickSoundVolume: (volume: number) => void
 }
 
+export interface LicenseState {
+  /** Plan name, or null when this device is not activated. */
+  plan: string | null
+  /** Credit balance as last reported by the API (or the token while offline). */
+  balance: number
+  /** Derived from the balance and the low threshold; drives the capsule. */
+  creditStatus: CreditStatus
+  /** Devices on this license, as returned by the API. */
+  licenseDevices: DeviceView[]
+  /** True while a license call is in flight. */
+  licenseBusy: boolean
+  /** Message from the last failed activation; cleared when the dialog reopens. */
+  licenseError: string | null
+}
+
+export interface LicenseActions {
+  /** Re-reads the plan and balance from the main process. */
+  refreshBalance: () => Promise<void>
+  /** Activates this device; returns true when it succeeded. */
+  activateLicense: (licenseKey: string) => Promise<boolean>
+  /** Refreshes just the device list. */
+  refreshDevices: () => Promise<void>
+  /** Deactivates a device; returns true when it succeeded. */
+  deactivateDevice: (deviceId: string) => Promise<boolean>
+  /** Clears the stored activation error (called when the dialog opens). */
+  clearLicenseError: () => void
+}
+
 export type RenderableState = Pick<
   EditorState,
   | 'platform'
@@ -536,7 +566,8 @@ export type EditorState = ProjectState &
   PresetState &
   WebcamState &
   UIState &
-  AudioState
+  AudioState &
+  LicenseState
 
 // Combined actions type for the editor store
 export type EditorActions = ProjectActions &
@@ -546,7 +577,8 @@ export type EditorActions = ProjectActions &
   PresetActions &
   WebcamActions &
   UIActions &
-  AudioActions & {
+  AudioActions &
+  LicenseActions & {
     // Global reset action
     reset: () => void
   }

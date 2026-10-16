@@ -10,6 +10,9 @@ vi.mock('electron-store', () => ({
     set(key: string, value: unknown) {
       storeState.data.set(key, value)
     }
+    delete(key: string) {
+      storeState.data.delete(key)
+    }
   },
 }))
 
@@ -17,42 +20,25 @@ vi.mock('electron-log/main', () => ({
   default: { info: () => undefined, warn: () => undefined, error: () => undefined },
 }))
 
+// The real check lives in license-client; this module is a facade over it.
+vi.mock('./license-client', () => ({
+  getEntitlement: vi.fn(async () => ({ pro: true, credits: 4200 })),
+}))
+
 import { getEntitlement, getUnlockUrl } from './entitlement'
 
 describe('entitlement', () => {
   beforeEach(() => {
     storeState.data.clear()
-    delete process.env.DEMOTHAT_FORCE_PRO
     delete process.env.DEMOTHAT_UNLOCK_URL
   })
 
   afterEach(() => {
-    delete process.env.DEMOTHAT_FORCE_PRO
     delete process.env.DEMOTHAT_UNLOCK_URL
   })
 
-  it('is not Pro without a licence key', async () => {
-    expect(await getEntitlement()).toEqual({ pro: false, credits: 0 })
-  })
-
-  it('is not Pro for a key the placeholder verifier does not accept', async () => {
-    storeState.data.set('pro.licenseKey', 'DEMO-BASIC-123')
-    expect(await getEntitlement()).toEqual({ pro: false, credits: 0 })
-  })
-
-  it('accepts the placeholder key shape', async () => {
-    storeState.data.set('pro.licenseKey', 'DEMO-PRO-123')
-    expect(await getEntitlement()).toEqual({ pro: true, credits: 0 })
-  })
-
-  it('is forced on in development', async () => {
-    process.env.DEMOTHAT_FORCE_PRO = '1'
-    expect(await getEntitlement()).toEqual({ pro: true, credits: 0 })
-  })
-
-  it('ignores a blank stored key', async () => {
-    storeState.data.set('pro.licenseKey', '   ')
-    expect(await getEntitlement()).toEqual({ pro: false, credits: 0 })
+  it('reports what the license client says', async () => {
+    expect(await getEntitlement()).toEqual({ pro: true, credits: 4200 })
   })
 
   describe('unlock url', () => {

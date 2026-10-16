@@ -2,16 +2,17 @@
 //
 // HONEST NOTE: this app is GPL-3.0. Anyone can rebuild it with this file
 // removed or patched, so this local gate is a *soft convenience*, not a
-// security boundary. Only the cloud path (Phase 5) can actually enforce
-// payment, because the server checks credits before doing any work.
+// security boundary. Only the cloud path can actually enforce payment, because
+// the server checks credits before doing any work.
+//
+// The real check lives in features/license-client.ts (token verification against
+// the embedded public key); this module keeps the small surface the export modal
+// already uses and owns the "Unlock Pro" URL.
 
 import Store from 'electron-store'
-import log from 'electron-log/main'
+import { getEntitlement as getLicenseEntitlement, type Entitlement } from './license-client'
 
-export interface Entitlement {
-  pro: boolean
-  credits: number
-}
+export type { Entitlement }
 
 const LICENSE_KEY_SETTING = 'pro.licenseKey'
 const UNLOCK_URL_SETTING = 'pro.unlockUrl'
@@ -29,26 +30,17 @@ export function getUnlockUrl(): string {
 }
 
 /**
- * Reads the stored licence key and verifies it. Development escape hatch:
- * `DEMOTHAT_FORCE_PRO=1` unlocks everything without a key.
+ * Whether this device is Pro, and the balance it knows about. Development escape
+ * hatch: `DEMOTHAT_FORCE_PRO=1` unlocks everything without a key.
  */
 export async function getEntitlement(): Promise<Entitlement> {
-  if (process.env.DEMOTHAT_FORCE_PRO === '1' || process.env.DEMOTHAT_FORCE_PRO === 'true') {
-    return { pro: true, credits: 0 }
-  }
-
-  const key = store.get(LICENSE_KEY_SETTING)
-  if (typeof key !== 'string' || !key.trim()) return { pro: false, credits: 0 }
-
-  return verifyLicenseKey(key.trim())
+  return getLicenseEntitlement()
 }
 
 /**
- * TODO: replace this with real verification — a signed licence checked against
- * an embedded public key, or a call to the licensing server. It is deliberately
- * a shape check so the UI can be built and tested without a backend.
+ * The legacy plaintext setting is no longer written to. It is cleared on read so
+ * an old install does not keep a license key lying around in electron-store.
  */
-async function verifyLicenseKey(key: string): Promise<Entitlement> {
-  log.info('[Entitlement] Using the placeholder licence check (no backend yet).')
-  return { pro: key.startsWith('DEMO-PRO-'), credits: 0 }
+export function clearLegacyLicenseKeySetting(): void {
+  if (store.get(LICENSE_KEY_SETTING) !== undefined) store.delete(LICENSE_KEY_SETTING)
 }

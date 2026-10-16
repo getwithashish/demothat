@@ -13,6 +13,9 @@ import { ProjectMenu } from '../components/editor/ProjectMenu'
 import { ToastViewport } from '../components/ui/toast'
 import { PresetModal } from '../components/editor/PresetModal'
 import { SettingsModal } from '../components/settings/SettingsModal'
+import { CreditCapsule } from '../components/editor/cloud/CreditCapsule'
+import { ActivationDialog } from '../components/editor/cloud/ActivationDialog'
+import { DevicesDialog } from '../components/editor/cloud/DevicesDialog'
 import { Stack3, Loader2, Check, Settings } from 'tabler-icons-react'
 import { ICON_SIZE, ICON_STROKE } from '../components/ui/icons'
 import { cn, formatTime } from '../lib/utils'
@@ -20,6 +23,7 @@ import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
 import { useAutoSave } from '../hooks/useAutoSave'
 import { useSessionGuard } from '../hooks/useSessionGuard'
 import { useExportProcess } from '../hooks/useExportProcess'
+import { useLicenseSync } from '../hooks/useLicenseSync'
 import { Button } from '../components/ui/button'
 import { useShallow } from 'zustand/react/shallow'
 
@@ -75,11 +79,15 @@ export function EditorPage() {
   useAutoSave()
   // Answers the main process before a session is replaced (open / close / quit).
   useSessionGuard()
+  // Plan, balance and devices: refreshed on start and whenever the window regains focus.
+  useLicenseSync()
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const [isExportMinimized, setExportMinimized] = useState(false)
   const [isPresetModalOpen, setPresetModalOpen] = useState(false)
   const [isSettingsModalOpen, setSettingsModalOpen] = useState(false)
+  const [isActivateOpen, setActivateOpen] = useState(false)
+  const [isDevicesOpen, setDevicesOpen] = useState(false)
   const [updateInfo, setUpdateInfo] = useState<{ version: string; url: string } | null>(null)
   const [platform, setPlatform] = useState<NodeJS.Platform | null>(null)
   const openExportModal = () => {
@@ -316,6 +324,18 @@ export function EditorPage() {
     }
   }
 
+  /**
+   * Opens the purchase page in the system browser.
+   *
+   * TODO(C2): replace with `POST /v1/checkout` + host-allowlist validation, the
+   * WaitingForPaymentDialog and the purchase poll. Until then this reuses the
+   * existing "Unlock Pro" URL so the path is not dead.
+   */
+  const startCheckout = useCallback(async () => {
+    const { unlockUrl } = await window.electronAPI.getEntitlement()
+    if (unlockUrl) window.electronAPI.openExternal(unlockUrl)
+  }, [])
+
   const renderHeaderActions = () => {
     const isWindows = platform === 'win32'
     const actions = [
@@ -345,6 +365,14 @@ export function EditorPage() {
         <Settings size={ICON_SIZE} strokeWidth={ICON_STROKE} />
       </Button>,
       updateInfo && <UpdateNotification key="update" info={updateInfo} />,
+      // Appended last so the flex-row-reverse cluster shows it left-most, i.e.
+      // [capsule] [Presets] [Export] in the design reference §1.
+      <CreditCapsule
+        key="credits"
+        onBuyCredits={() => void startCheckout()}
+        onGetPro={() => void startCheckout()}
+        onEnterKey={() => setActivateOpen(true)}
+      />,
     ].filter(Boolean)
 
     if (isWindows) {
@@ -487,6 +515,12 @@ export function EditorPage() {
       />
       <PresetModal isOpen={isPresetModalOpen} onClose={() => setPresetModalOpen(false)} />
       <SettingsModal isOpen={isSettingsModalOpen} onClose={() => setSettingsModalOpen(false)} />
+      <ActivationDialog
+        isOpen={isActivateOpen}
+        onClose={() => setActivateOpen(false)}
+        onGetPro={() => void startCheckout()}
+      />
+      <DevicesDialog isOpen={isDevicesOpen} onClose={() => setDevicesOpen(false)} />
       {/* Kept clear of the minimised-export bubble in the same corner. */}
       <ToastViewport className={isExporting && isExportMinimized ? 'bottom-20' : 'bottom-5'} />
     </main>

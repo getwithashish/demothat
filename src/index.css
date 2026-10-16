@@ -65,6 +65,19 @@
   }
 }
 
+/* Dialog entrance (design motion table §9): rises 8px and scales from 0.98 over
+   180ms on the single shared easing. Backdrop fade uses sa-fade-in. */
+@keyframes sa-dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 .animate-status-in {
   animation: sa-fade-in 150ms ease-out;
 }
@@ -73,9 +86,29 @@
   animation: sa-fade-scale-in 120ms ease-out;
 }
 
+.animate-dialog-in {
+  animation: sa-dialog-in 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes sa-credit-pulse {
+  0% {
+    box-shadow: 0 0 0 0 var(--sa-accent);
+  }
+  100% {
+    box-shadow: 0 0 0 8px transparent;
+  }
+}
+
+/* One soft accent pulse when the balance turns empty (design motion table §9). */
+.animate-credit-pulse {
+  animation: sa-credit-pulse 700ms cubic-bezier(0.2, 0.8, 0.2, 1) 1;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-status-in,
-  .animate-menu-in {
+  .animate-menu-in,
+  .animate-dialog-in,
+  .animate-credit-pulse {
     animation: none;
   }
 }

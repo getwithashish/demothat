@@ -1,3 +1,13 @@
+## [1.8.0](https://github.com/getwithashish/DemoThat/compare/v1.7.0...v1.8.0) (2026-10-16)
+
+### Features
+
+* **cloud:** consent, progress, cancel and out-of-credits dialogs ([e143cd5](https://github.com/getwithashish/DemoThat/commit/e143cd5945b68964863bb02d9e591289436e8899))
+* **cloud:** job client and orchestrator against contract 2.0.0 ([22311db](https://github.com/getwithashish/DemoThat/commit/22311db3b43437bd162a75509ae33cb6e2ac1d43))
+* **cloud:** wire the export modal to the contract and add the mock API ([ae40550](https://github.com/getwithashish/DemoThat/commit/ae40550bafb61e924d791ad77649ea10b40bda0e))
+* **license:** activation, offline entitlement and the credit capsule ([10d7b90](https://github.com/getwithashish/DemoThat/commit/10d7b900a4860f5ea278596192de2d6c6d43103b))
+* **purchase:** checkout, poll and credit count-up ([5bb9c5e](https://github.com/getwithashish/DemoThat/commit/5bb9c5e74428a714e99eda1bc8978c0d413fca81))
+
 ## [1.7.0](https://github.com/getwithashish/DemoThat/compare/v1.6.0...v1.7.0) (2026-10-15)
 
 ### Features

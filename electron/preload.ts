@@ -39,6 +39,8 @@ type ProgressPayload = {
   /** Credits used so far, from the server (cloud). */
   consumed?: number
   etaSeconds?: number | null
+  /** The server's minimum charge once GPU work has begun (cloud). */
+  minChargeCredits?: number
 }
 // Payload when completed
 type CompletePayload = {
@@ -57,6 +59,8 @@ type CompletePayload = {
   /** The local render, kept so a failed cloud step needs no second render. */
   intermediatePath?: string
   canRetryCloud?: boolean
+  /** Everything a cloud retry needs (target size, fps, clip length). */
+  cloudRetry?: { targetWidth: number; targetHeight: number; fps: number; durationSec: number }
 }
 
 // Payload for worker render

@@ -21,11 +21,9 @@ import {
 } from '../../features/cloud-export'
 import { getStoredToken } from '../../features/license-client'
 import { runStandardFallback } from '../../features/export-manager'
+import { cancelActiveCloudWork, clearCloudCancellation, registerCloudCancellation } from '../../features/cloud-cancel'
 import { clearActiveJob, getActiveJob, hasCloudConsent, recordCloudConsent } from '../../lib/cloud-store'
 import { appState } from '../../state'
-
-/** The cancellation flag of whatever cloud work is currently running. */
-let activeCancellation: CloudCancellation | null = null
 
 function editorWindow(): BrowserWindow | null {
   const win = appState.editorWin
@@ -124,7 +122,9 @@ function reportOutcome(
 }
 
 export function handleCloudCancel(): void {
-  if (activeCancellation) activeCancellation.cancelled = true
+  // Reaches whichever cloud work is in flight: a retry, a resumed job, or the
+  // cloud stages of an export whose `export:cancel` listener is already gone.
+  cancelActiveCloudWork()
 }
 
 export interface CloudRetryRequest {
@@ -149,7 +149,7 @@ export async function handleCloudRetry(
 
   const render = applyRenderCap(request.targetWidth, request.targetHeight)
   const cancel: CloudCancellation = { cancelled: false }
-  activeCancellation = cancel
+  registerCloudCancellation(cancel)
 
   try {
     const preflight = await preflightCloudExport({
@@ -182,7 +182,7 @@ export async function handleCloudRetry(
     reportOutcome(window, outcome, request.outputPath)
     return { ok: outcome.ok, error: outcome.ok ? undefined : outcome.error }
   } finally {
-    activeCancellation = null
+    clearCloudCancellation(cancel)
   }
 }
 
@@ -201,7 +201,7 @@ export async function handleCloudResumeWatch(event: IpcMainInvokeEvent): Promise
 
   const window = BrowserWindow.fromWebContents(event.sender)
   const cancel: CloudCancellation = { cancelled: false }
-  activeCancellation = cancel
+  registerCloudCancellation(cancel)
 
   try {
     const outcome = await watchActiveJob({
@@ -214,7 +214,7 @@ export async function handleCloudResumeWatch(event: IpcMainInvokeEvent): Promise
     reportOutcome(window, outcome, record.outputPath)
     return { ok: outcome.ok, error: outcome.ok ? undefined : outcome.error }
   } finally {
-    activeCancellation = null
+    clearCloudCancellation(cancel)
   }
 }
 

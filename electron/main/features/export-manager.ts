@@ -29,6 +29,7 @@ import {
   runCloudExport,
   type CloudExportProgress,
 } from './cloud-export'
+import { clearCloudCancellation, registerCloudCancellation } from './cloud-cancel'
 import type { CloudCancellation, CloudJobCreated } from './cloud-client'
 import { isFormatAllowed, selectExportCodec } from '../../../shared/export-codec'
 import { maxCameraScale, maxZoomLevel, detectUpscale } from '../../../shared/export-upscale'
@@ -146,6 +147,7 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
   // A refusal (no credits, no consent, backend unreachable) must cost the user no
   // render time at all.
   const cloudCancellation: CloudCancellation = { cancelled: false }
+  registerCloudCancellation(cloudCancellation)
   let cloudJob: CloudJobCreated | null = null
   let cloudMinChargeCredits = 0
   let intermediatePath: string | null = null
@@ -265,6 +267,8 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
       reserved: progress.reserved,
       consumed: progress.consumed,
       etaSeconds: progress.etaSeconds ?? null,
+      // The cancel dialog needs the server's minimum charge once GPU work began.
+      minChargeCredits: cloudMinChargeCredits,
     })
   }
 
@@ -432,6 +436,7 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
             minChargeCredits: minCharge,
             onProgress: emitCloudProgress,
           }).then((outcome) => {
+            clearCloudCancellation(cloudCancellation)
             if (editorWindow.isDestroyed()) return
             if (outcome.ok) {
               editorWindow.webContents.send('export:complete', {
@@ -453,6 +458,13 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
               // Kept so retry / Standard fallback need no second render.
               intermediatePath: outcome.intermediatePath,
               canRetryCloud: outcome.canRetryCloud,
+              // Everything a retry needs to create a fresh job.
+              cloudRetry: {
+                targetWidth,
+                targetHeight,
+                fps: exportSettings.fps,
+                durationSec: exportDuration,
+              },
             })
           })
         }
@@ -484,7 +496,8 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
 
     // The cloud stages start only now, so the export slot is free again and a
     // cancel during the upload does not fight the render's cleanup.
-    cloudContinuation?.()
+    if (cloudContinuation) cloudContinuation()
+    else clearCloudCancellation(cloudCancellation)
   })
 
   ipcMain.once('render:ready', () => {

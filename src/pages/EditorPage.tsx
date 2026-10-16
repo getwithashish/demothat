@@ -18,6 +18,7 @@ import { ActivationDialog } from '../components/editor/cloud/ActivationDialog'
 import { DevicesDialog } from '../components/editor/cloud/DevicesDialog'
 import { BuyCreditsDialog } from '../components/editor/cloud/BuyCreditsDialog'
 import { WaitingForPaymentDialog } from '../components/editor/cloud/WaitingForPaymentDialog'
+import { ResumeCloudDialog } from '../components/editor/cloud/ResumeCloudDialog'
 import { CREDIT_PACKS } from '../../shared/license'
 import { Stack3, Loader2, Check, Settings } from 'tabler-icons-react'
 import { ICON_SIZE, ICON_STROKE } from '../components/ui/icons'
@@ -84,11 +85,17 @@ export function EditorPage() {
     isModalOpen: isExportModalOpen,
     isExporting,
     progress: exportProgress,
+    cloudProgress: exportCloudProgress,
     result: exportResult,
+    cloudResumeOffer,
     openExportModal: openExportModalBase,
     closeExportModal,
     startExport,
     cancelExport,
+    retryCloud,
+    fallbackToStandard,
+    resumeCloudWatch,
+    dismissCloudResume,
   } = useExportProcess()
 
   // Saves in the background while the project has unsaved changes.
@@ -525,7 +532,10 @@ export function EditorPage() {
         onCancelExport={cancelExport}
         isExporting={isExporting}
         progress={exportProgress}
+        cloudProgress={exportCloudProgress}
         result={exportResult}
+        onRetryCloud={(request) => void retryCloud(request)}
+        onFallbackStandard={(request) => void fallbackToStandard(request)}
       />
       <PresetModal isOpen={isPresetModalOpen} onClose={() => setPresetModalOpen(false)} />
       <SettingsModal isOpen={isSettingsModalOpen} onClose={() => setSettingsModalOpen(false)} />
@@ -535,6 +545,12 @@ export function EditorPage() {
         onGetPro={() => void startFirstPurchase()}
       />
       <DevicesDialog isOpen={isDevicesOpen} onClose={() => setDevicesOpen(false)} />
+      <ResumeCloudDialog
+        isOpen={cloudResumeOffer !== null}
+        outputPath={cloudResumeOffer?.outputPath ?? null}
+        onResume={() => void resumeCloudWatch()}
+        onDismiss={() => void dismissCloudResume()}
+      />
       <BuyCreditsDialog
         isOpen={buyCreditsOpen}
         shortfall={buyCreditsShortfall}

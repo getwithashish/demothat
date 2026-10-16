@@ -24,11 +24,12 @@ import { recordExportPerf } from './export-perf'
 import {
   cloudStagePercent,
   intermediatePathFor,
-  preflightCloudUpscale,
-  runCloudStages,
-  type CloudStage,
-} from './cloud-upscale-job'
-import type { CloudCancellation, CloudJobCreated, CloudSettings } from './cloud-upscale-client'
+  preflightCloudExport,
+  rememberActiveJob,
+  runCloudExport,
+  type CloudExportProgress,
+} from './cloud-export'
+import type { CloudCancellation, CloudJobCreated } from './cloud-client'
 import { isFormatAllowed, selectExportCodec } from '../../../shared/export-codec'
 import { maxCameraScale, maxZoomLevel, detectUpscale } from '../../../shared/export-upscale'
 import { applyRenderCap } from '../../../shared/export-render-cap'
@@ -146,28 +147,34 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
   // render time at all.
   const cloudCancellation: CloudCancellation = { cancelled: false }
   let cloudJob: CloudJobCreated | null = null
-  let cloudSettings: CloudSettings | null = null
+  let cloudMinChargeCredits = 0
   let intermediatePath: string | null = null
 
   if (request.cloud) {
-    const preflight = await preflightCloudUpscale({
-      editorWindow,
+    const preflight = await preflightCloudExport({
       targetWidth,
       targetHeight,
       renderWidth,
       renderHeight,
       fps: exportSettings.fps,
       durationSec: computeExportDuration(projectState),
-      model: request.cloud.model,
     })
     if (!preflight.ok) {
       log.warn(`[ExportManager] Cloud preflight refused: ${preflight.error}`)
-      editorWindow.webContents.send('export:complete', { success: false, error: preflight.error })
+      editorWindow.webContents.send('export:complete', {
+        success: false,
+        error: preflight.error,
+        cloudReason: preflight.code,
+        cost: preflight.cost,
+        balance: preflight.balance,
+      })
       return
     }
     cloudJob = preflight.job
-    cloudSettings = preflight.settings
+    cloudMinChargeCredits = preflight.capabilities.minChargeCredits ?? 0
     intermediatePath = intermediatePathFor(os.tmpdir(), Date.now())
+    // Recorded now, so a job still running when the app closes can be picked up.
+    rememberActiveJob(cloudJob.jobId, outputPath, intermediatePath, targetWidth, targetHeight)
     log.info(
       `[ExportManager] Cloud job ${cloudJob.jobId}: rendering the intermediate at ${renderWidth}x${renderHeight}.`,
     )
@@ -248,11 +255,16 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
   let renderFinished = false
 
   /** Cloud stage progress: the stage's own percent mapped onto the overall bar. */
-  const emitCloudProgress = (stage: CloudStage, stagePercent: number) => {
+  const emitCloudProgress = (progress: CloudExportProgress) => {
     if (!editorWindow || editorWindow.isDestroyed()) return
     editorWindow.webContents.send('export:progress', {
-      progress: cloudStagePercent(stage, stagePercent),
-      stage,
+      progress: cloudStagePercent(progress.stage, progress.stagePercent),
+      stage: progress.stage,
+      framesDone: progress.framesDone,
+      totalFrames: progress.totalFrames,
+      reserved: progress.reserved,
+      consumed: progress.consumed,
+      etaSeconds: progress.etaSeconds ?? null,
     })
   }
 
@@ -261,7 +273,7 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
     const percent = Math.min(100, Math.max(frameProgress, encodeProgress))
     if (request.cloud) {
       // The same render, reported against the cloud flow's own bar and label.
-      emitCloudProgress('Rendering locally', percent)
+      emitCloudProgress({ stage: 'Rendering locally', stagePercent: percent })
       return
     }
     editorWindow.webContents.send('export:progress', {
@@ -404,34 +416,43 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
       if (code === null) {
         // Cancelled by SIGKILL
         editorWindow.webContents.send('export:complete', { success: false, error: 'Export cancelled.' })
-      } else if (code === 0 && cloudJob && cloudSettings && intermediatePath) {
+      } else if (code === 0 && cloudJob && intermediatePath) {
         // The render is done. Hand the intermediate to the cloud *after* the
         // listeners below are cleaned up, so a second export can start while the
         // upload is still running.
         const job = cloudJob
-        const settings = cloudSettings
         const intermediate = intermediatePath
+        const minCharge = cloudMinChargeCredits
         cloudContinuation = () => {
-          void runCloudStages({
-            editorWindow,
-            settings,
+          void runCloudExport({
             job,
             intermediatePath: intermediate,
             outputPath,
             cancel: cloudCancellation,
+            minChargeCredits: minCharge,
             onProgress: emitCloudProgress,
           }).then((outcome) => {
             if (editorWindow.isDestroyed()) return
             if (outcome.ok) {
-              editorWindow.webContents.send('export:complete', { success: true, outputPath })
+              editorWindow.webContents.send('export:complete', {
+                success: true,
+                outputPath,
+                // The server's numbers, for the cancel/done toast.
+                charge: outcome.charge,
+                refund: outcome.refund,
+              })
               return
             }
             editorWindow.webContents.send('export:complete', {
               success: false,
-              error: outcome.error ?? 'The cloud upscale failed.',
+              error: outcome.error,
+              cloudReason: outcome.reason,
+              charge: outcome.charge,
+              refund: outcome.refund,
+              cost: outcome.cost,
               // Kept so retry / Standard fallback need no second render.
               intermediatePath: outcome.intermediatePath,
-              canRetryCloud: !cloudCancellation.cancelled,
+              canRetryCloud: outcome.canRetryCloud,
             })
           })
         }

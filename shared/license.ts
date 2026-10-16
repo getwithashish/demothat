@@ -84,16 +84,49 @@ export interface CreditPack {
  * ids, and keep the credit amounts in step with `PRODUCTS` in demothat-api. The
  * server is the source of truth: it ignores anything here that disagrees.
  *
- * NOTE: the design reference (§2) also offers a "choose your own amount" field
- * and slider. The contract only accepts a product id from the server-side
- * table, so arbitrary amounts are not purchasable without adding a contract
- * route first — packs only, for now.
+ * Packs only: the owner has dropped the design's custom-amount field and slider,
+ * because the contract prices a purchase from the server-side product table and
+ * an arbitrary amount is not purchasable without a new contract route.
  */
 export const CREDIT_PACKS: CreditPack[] = [
   { productId: 'pdt_pro_1800', label: 'Pro', credits: 1800, priceUsd: 3 },
   { productId: 'pdt_topup_5400', label: 'Top-up', credits: 5400, priceUsd: 9 },
   { productId: 'pdt_topup_9000', label: 'Top-up', credits: 9000, priceUsd: 15 },
 ]
+
+/** Display name for a capabilities target key ("8k" → "8K"). */
+export function targetLabel(targetKey: string): string {
+  return targetKey.toUpperCase()
+}
+
+/**
+ * How many minutes of a target a number of credits buys, straight from the
+ * server's `creditsPerFrame` table. Null when the table does not cover the
+ * target (better to show nothing than to invent a number).
+ */
+export function packMinutes(
+  credits: number,
+  creditsPerFrame: Record<string, number> | undefined,
+  targetKey: string,
+  fps: number,
+): number | null {
+  const rate = creditsPerFrame?.[targetKey]
+  if (typeof rate !== 'number' || rate <= 0 || fps <= 0 || credits <= 0) return null
+  return credits / rate / (fps * 60)
+}
+
+/** "About 9 min of 8K", or null when the capabilities cannot say. */
+export function packNote(
+  credits: number,
+  creditsPerFrame: Record<string, number> | undefined,
+  targetKey: string,
+  fps: number,
+): string | null {
+  const minutes = packMinutes(credits, creditsPerFrame, targetKey, fps)
+  if (minutes == null) return null
+  const rounded = Math.max(1, Math.round(minutes))
+  return `About ${rounded} min of ${targetLabel(targetKey)}`
+}
 
 /** Result of asking the main process to start a purchase. */
 export type CheckoutStartResult =

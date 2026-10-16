@@ -30,12 +30,33 @@ type ExportPayload = {
 type ProgressPayload = {
   progress: number // 0-100
   stage: string
+  /** Cloud stages: percent within the stage, before the overall mapping. */
+  stagePercent?: number
+  framesDone?: number
+  totalFrames?: number
+  /** Credits held for this job (cloud). */
+  reserved?: number
+  /** Credits used so far, from the server (cloud). */
+  consumed?: number
+  etaSeconds?: number | null
 }
 // Payload when completed
 type CompletePayload = {
   success: boolean
   outputPath?: string
   error?: string
+  /** The server's settled numbers after a cloud export. */
+  charge?: number
+  refund?: number
+  /** Why the cloud step ended, when it did not succeed. */
+  cloudReason?: string
+  /** The price the server quoted when it refused the job. */
+  cost?: number
+  /** Balance the server reported on a refusal. */
+  balance?: number
+  /** The local render, kept so a failed cloud step needs no second render. */
+  intermediatePath?: string
+  canRetryCloud?: boolean
 }
 
 // Payload for worker render
@@ -292,6 +313,17 @@ export const electronAPI = {
   cloudFallback: (payload: unknown) => ipcRenderer.invoke('cloud:fallback', payload),
   cloudRetry: (payload: unknown) => ipcRenderer.invoke('cloud:retry', payload),
   cancelCloudRetry: (): void => ipcRenderer.send('cloud:cancel'),
+  /** Pricing table for the credit estimates and the pack notes. */
+  getCloudCapabilities: (): Promise<{
+    capabilities: { creditsPerFrame?: Record<string, number>; minChargeCredits?: number; targets?: string[] } | null
+    error: string | null
+  }> => ipcRenderer.invoke('cloud:capabilities'),
+  /** A cloud job that outlived the last session, if there is one. */
+  getActiveCloudJob: (): Promise<{ jobId: string; outputPath: string } | null> =>
+    ipcRenderer.invoke('cloud:active-job'),
+  /** Keeps watching that job and downloads its result. */
+  resumeCloudWatch: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('cloud:resume-watch'),
+  forgetCloudJob: (): Promise<{ forgotten: boolean }> => ipcRenderer.invoke('cloud:forget-job'),
   /** Encoders the bundled FFmpeg has (a missing libx265 disables the 8K option). */
   getExportCapabilities: (): Promise<{ libx265: boolean; hevcEncoders: string[] }> =>
     ipcRenderer.invoke('export:capabilities'),

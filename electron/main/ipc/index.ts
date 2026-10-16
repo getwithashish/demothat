@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron'
 import * as appHandlers from './handlers/app'
+import * as checkoutHandlers from './handlers/checkout'
 import * as cloudHandlers from './handlers/cloud'
 import * as desktopHandlers from './handlers/desktop'
 import * as exportHandlers from './handlers/export'
@@ -81,6 +82,9 @@ export function registerIpcHandlers() {
 
   // License, credit balance and devices.
   licenseHandlers.registerLicenseHandlers()
+
+  // Purchases: checkout, poll, resume.
+  checkoutHandlers.registerCheckoutHandlers()
 
   // File System
   ipcMain.handle('fs:readFile', fsHandlers.handleReadFile)

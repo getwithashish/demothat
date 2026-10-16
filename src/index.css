@@ -104,11 +104,32 @@
   animation: sa-credit-pulse 700ms cubic-bezier(0.2, 0.8, 0.2, 1) 1;
 }
 
+/* The "+N" chip that rises from the balance after a purchase (design §3). */
+@keyframes sa-credit-chip {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 8px);
+  }
+  20% {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -18px);
+  }
+}
+
+.animate-credit-chip {
+  animation: sa-credit-chip 1.3s cubic-bezier(0.2, 0.8, 0.2, 1) 1;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-status-in,
   .animate-menu-in,
   .animate-dialog-in,
-  .animate-credit-pulse {
+  .animate-credit-pulse,
+  .animate-credit-chip {
     animation: none;
   }
 }

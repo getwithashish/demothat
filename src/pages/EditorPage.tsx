@@ -16,6 +16,9 @@ import { SettingsModal } from '../components/settings/SettingsModal'
 import { CreditCapsule } from '../components/editor/cloud/CreditCapsule'
 import { ActivationDialog } from '../components/editor/cloud/ActivationDialog'
 import { DevicesDialog } from '../components/editor/cloud/DevicesDialog'
+import { BuyCreditsDialog } from '../components/editor/cloud/BuyCreditsDialog'
+import { WaitingForPaymentDialog } from '../components/editor/cloud/WaitingForPaymentDialog'
+import { CREDIT_PACKS } from '../../shared/license'
 import { Stack3, Loader2, Check, Settings } from 'tabler-icons-react'
 import { ICON_SIZE, ICON_STROKE } from '../components/ui/icons'
 import { cn, formatTime } from '../lib/utils'
@@ -24,6 +27,7 @@ import { useAutoSave } from '../hooks/useAutoSave'
 import { useSessionGuard } from '../hooks/useSessionGuard'
 import { useExportProcess } from '../hooks/useExportProcess'
 import { useLicenseSync } from '../hooks/useLicenseSync'
+import { usePurchaseFlow } from '../hooks/usePurchaseFlow'
 import { Button } from '../components/ui/button'
 import { useShallow } from 'zustand/react/shallow'
 
@@ -49,13 +53,23 @@ export function EditorPage() {
     seekBackward,
     seekForward,
   } = useEditorStore.getState()
-  const { presetSaveStatus, duration, isPreviewFullScreen, videoDimensions, currentProjectPath } = useEditorStore(
+  const {
+    presetSaveStatus,
+    duration,
+    isPreviewFullScreen,
+    videoDimensions,
+    currentProjectPath,
+    buyCreditsOpen,
+    waitingForPayment,
+  } = useEditorStore(
     useShallow((state) => ({
       presetSaveStatus: state.presetSaveStatus,
       duration: state.duration,
       isPreviewFullScreen: state.isPreviewFullScreen,
       videoDimensions: state.videoDimensions,
       currentProjectPath: state.currentProjectPath,
+      buyCreditsOpen: state.buyCreditsOpen,
+      waitingForPayment: state.waitingForPayment,
     })),
   )
   // Top-bar meta (DESIGN_SPEC §5 shows "project | timecode · resolution"). Display only.
@@ -81,6 +95,8 @@ export function EditorPage() {
   useSessionGuard()
   // Plan, balance and devices: refreshed on start and whenever the window regains focus.
   useLicenseSync()
+  // Purchases: resumes a pending one, settles the dialogs, counts the credits in.
+  usePurchaseFlow({ onDeviceLimitReached: () => setDevicesOpen(true) })
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const [isExportMinimized, setExportMinimized] = useState(false)
@@ -325,15 +341,11 @@ export function EditorPage() {
   }
 
   /**
-   * Opens the purchase page in the system browser.
-   *
-   * TODO(C2): replace with `POST /v1/checkout` + host-allowlist validation, the
-   * WaitingForPaymentDialog and the purchase poll. Until then this reuses the
-   * existing "Unlock Pro" URL so the path is not dead.
+   * Opens the purchase page: the Pro pack for a first purchase, which activates
+   * this computer automatically when the payment settles (design §4).
    */
-  const startCheckout = useCallback(async () => {
-    const { unlockUrl } = await window.electronAPI.getEntitlement()
-    if (unlockUrl) window.electronAPI.openExternal(unlockUrl)
+  const startFirstPurchase = useCallback(async () => {
+    await useEditorStore.getState().startPurchase(CREDIT_PACKS[0].productId)
   }, [])
 
   const renderHeaderActions = () => {
@@ -369,8 +381,8 @@ export function EditorPage() {
       // [capsule] [Presets] [Export] in the design reference §1.
       <CreditCapsule
         key="credits"
-        onBuyCredits={() => void startCheckout()}
-        onGetPro={() => void startCheckout()}
+        onBuyCredits={() => useEditorStore.getState().openBuyCredits()}
+        onGetPro={() => void startFirstPurchase()}
         onEnterKey={() => setActivateOpen(true)}
       />,
     ].filter(Boolean)
@@ -518,9 +530,22 @@ export function EditorPage() {
       <ActivationDialog
         isOpen={isActivateOpen}
         onClose={() => setActivateOpen(false)}
-        onGetPro={() => void startCheckout()}
+        onGetPro={() => void startFirstPurchase()}
       />
       <DevicesDialog isOpen={isDevicesOpen} onClose={() => setDevicesOpen(false)} />
+      <BuyCreditsDialog isOpen={buyCreditsOpen} onClose={() => useEditorStore.getState().closeBuyCredits()} />
+      <WaitingForPaymentDialog
+        isOpen={waitingForPayment}
+        onClose={() => useEditorStore.getState().cancelWaiting()}
+        onEnterKey={() => {
+          useEditorStore.getState().cancelWaiting()
+          setActivateOpen(true)
+        }}
+        onTryAgain={() => {
+          useEditorStore.getState().cancelWaiting()
+          useEditorStore.getState().openBuyCredits()
+        }}
+      />
       {/* Kept clear of the minimised-export bubble in the same corner. */}
       <ToastViewport className={isExporting && isExportMinimized ? 'bottom-20' : 'bottom-5'} />
     </main>

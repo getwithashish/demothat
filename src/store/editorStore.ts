@@ -16,6 +16,7 @@ import { createWebcamSlice, initialWebcamState } from './slices/webcamSlice'
 import { createUISlice, initialUIState } from './slices/uiSlice'
 import { createAudioSlice, initialAudioState } from './slices/audioSlice'
 import { createLicenseSlice, initialLicenseState } from './slices/licenseSlice'
+import { createPurchaseSlice, initialPurchaseState } from './slices/purchaseSlice'
 
 // Combine all actions into one type for the final store
 type EditorStore = EditorState & AllActions
@@ -33,6 +34,7 @@ export const useEditorStore = create(
       ...initialUIState,
       ...initialAudioState,
       ...initialLicenseState,
+      ...initialPurchaseState,
 
       // Combine actions from all slices
       ...createProjectSlice(set, get),
@@ -44,6 +46,7 @@ export const useEditorStore = create(
       ...createUISlice(set, get),
       ...createAudioSlice(set, get),
       ...createLicenseSlice(set, get),
+      ...createPurchaseSlice(set, get),
 
       // Global reset action
       reset: () =>

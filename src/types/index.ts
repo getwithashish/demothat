@@ -533,6 +533,31 @@ export interface LicenseActions {
   clearLicenseError: () => void
 }
 
+export interface PurchaseState {
+  /** Buy credits dialog. */
+  buyCreditsOpen: boolean
+  /** Waiting-for-payment dialog. */
+  waitingForPayment: boolean
+  /** The allow-listed checkout URL, offered as "Copy link". */
+  checkoutUrl: string | null
+  /** Failure text shown inside the waiting dialog. */
+  purchaseError: string | null
+  /** Credits added by the last purchase; drives the count-up chip. */
+  creditsAddedChip: number | null
+}
+
+export interface PurchaseActions {
+  openBuyCredits: () => void
+  closeBuyCredits: () => void
+  /** Starts checkout and shows the waiting dialog; returns true when it opened. */
+  startPurchase: (productId: string) => Promise<boolean>
+  /** Stops waiting (the payment itself is untouched). */
+  cancelWaiting: () => void
+  /** Shows the "…credits added" chip on the capsule. */
+  showCreditsAdded: (credits: number) => void
+  dismissCreditsAdded: () => void
+}
+
 export type RenderableState = Pick<
   EditorState,
   | 'platform'
@@ -567,7 +592,8 @@ export type EditorState = ProjectState &
   WebcamState &
   UIState &
   AudioState &
-  LicenseState
+  LicenseState &
+  PurchaseState
 
 // Combined actions type for the editor store
 export type EditorActions = ProjectActions &
@@ -578,7 +604,8 @@ export type EditorActions = ProjectActions &
   WebcamActions &
   UIActions &
   AudioActions &
-  LicenseActions & {
+  LicenseActions &
+  PurchaseActions & {
     // Global reset action
     reset: () => void
   }

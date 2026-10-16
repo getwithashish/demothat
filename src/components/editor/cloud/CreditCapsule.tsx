@@ -15,6 +15,7 @@ import type { CreditStatus } from '../../../../shared/license'
 import { ICON_SIZE, ICON_STROKE } from '../../ui/icons'
 import { DevicesList } from './DevicesList'
 import { devicesSubtitle } from './device-copy'
+import { useCountUp } from './use-count-up'
 
 /** Grace period so the pointer can travel from the segment onto the card. */
 const HOVER_CLOSE_DELAY_MS = 150
@@ -31,15 +32,34 @@ export interface CreditCapsuleProps {
 }
 
 export function CreditCapsule({ onBuyCredits, onGetPro, onEnterKey }: CreditCapsuleProps) {
-  const { plan, balance, creditStatus, devices, deactivateDevice } = useEditorStore(
-    useShallow((state) => ({
-      plan: state.plan,
-      balance: state.balance,
-      creditStatus: state.creditStatus,
-      devices: state.licenseDevices,
-      deactivateDevice: state.deactivateDevice,
-    })),
-  )
+  const { plan, balance, creditStatus, devices, deactivateDevice, creditsAddedChip, dismissCreditsAdded } =
+    useEditorStore(
+      useShallow((state) => ({
+        plan: state.plan,
+        balance: state.balance,
+        creditStatus: state.creditStatus,
+        devices: state.licenseDevices,
+        deactivateDevice: state.deactivateDevice,
+        creditsAddedChip: state.creditsAddedChip,
+        dismissCreditsAdded: state.dismissCreditsAdded,
+      })),
+    )
+
+  // The balance counts to its new value after a purchase (design §3).
+  const displayedBalance = useCountUp(balance)
+  const [flash, setFlash] = useState(false)
+
+  useEffect(() => {
+    if (creditsAddedChip == null) return
+    setFlash(true)
+    // The chip rides for 1.3s; the outline holds the accent for 3s.
+    const hideChip = window.setTimeout(() => dismissCreditsAdded(), 1300)
+    const stopFlash = window.setTimeout(() => setFlash(false), 3000)
+    return () => {
+      window.clearTimeout(hideChip)
+      window.clearTimeout(stopFlash)
+    }
+  }, [creditsAddedChip, dismissCreditsAdded])
 
   const licensed = plan != null
   const [cardOpen, setCardOpen] = useState(false)
@@ -83,8 +103,9 @@ export function CreditCapsule({ onBuyCredits, onGetPro, onEnterKey }: CreditCaps
     <div className="relative inline-flex whitespace-nowrap" style={{ WebkitAppRegion: 'no-drag' }}>
       <div
         className={cn(
-          'inline-flex h-8 items-stretch overflow-hidden rounded-ctl border border-line bg-ctl',
+          'inline-flex h-8 items-stretch overflow-hidden rounded-ctl border border-line bg-ctl transition-colors duration-300',
           pulse && 'animate-credit-pulse',
+          flash && 'border-accent shadow-[0_0_0_1px_var(--sa-accent)]',
         )}
       >
         {licensed ? (
@@ -104,7 +125,7 @@ export function CreditCapsule({ onBuyCredits, onGetPro, onEnterKey }: CreditCaps
             >
               <Coin size={ICON_SIZE} strokeWidth={ICON_STROKE} />
               <span className={cn('whitespace-nowrap font-mono tabular-nums', low && 'text-danger')}>
-                {formatCredits(balance)}
+                {formatCredits(displayedBalance)}
               </span>
               {creditStatus === 'low' && <span className="text-muted">Low</span>}
             </button>
@@ -138,6 +159,15 @@ export function CreditCapsule({ onBuyCredits, onGetPro, onEnterKey }: CreditCaps
           </>
         )}
       </div>
+
+      {licensed && creditsAddedChip != null && (
+        <span
+          role="status"
+          className="animate-credit-chip pointer-events-none absolute left-1/2 top-[-12px] rounded-pv bg-accent px-1.5 py-0.5 text-[11px] font-semibold text-on-accent"
+        >
+          +{formatCredits(creditsAddedChip)}
+        </span>
+      )}
 
       {licensed && cardOpen && (
         <div

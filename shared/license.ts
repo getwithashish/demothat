@@ -63,3 +63,47 @@ export type ActivationResult =
 
 /** Outcome of a device deactivation, as it crosses IPC. */
 export type DeactivationResult = { ok: true; devices: DeviceView[] } | { ok: false; message: string }
+
+/** One credit pack as the Buy credits dialog offers it. */
+export interface CreditPack {
+  /**
+   * Dodo product id. The API maps it to the credits and price in its own
+   * server-side `PRODUCTS` table — the numbers here are display only.
+   */
+  productId: string
+  label: string
+  credits: number
+  /** Display-only price in USD. */
+  priceUsd: number
+}
+
+/**
+ * The packs the app offers.
+ *
+ * TODO(owner): replace the placeholder product ids with the real Dodo product
+ * ids, and keep the credit amounts in step with `PRODUCTS` in demothat-api. The
+ * server is the source of truth: it ignores anything here that disagrees.
+ *
+ * NOTE: the design reference (§2) also offers a "choose your own amount" field
+ * and slider. The contract only accepts a product id from the server-side
+ * table, so arbitrary amounts are not purchasable without adding a contract
+ * route first — packs only, for now.
+ */
+export const CREDIT_PACKS: CreditPack[] = [
+  { productId: 'pdt_pro_1800', label: 'Pro', credits: 1800, priceUsd: 3 },
+  { productId: 'pdt_topup_5400', label: 'Top-up', credits: 5400, priceUsd: 9 },
+  { productId: 'pdt_topup_9000', label: 'Top-up', credits: 9000, priceUsd: 15 },
+]
+
+/** Result of asking the main process to start a purchase. */
+export type CheckoutStartResult =
+  { ok: true; purchaseId: string; checkoutUrl: string } | { ok: false; code: string; message: string }
+
+/** Status pushed to the renderer while a purchase is being watched. */
+export type PurchaseEvent =
+  | { kind: 'pending' }
+  | { kind: 'cancelled' }
+  | { kind: 'succeeded'; balance: number; firstPurchase: boolean }
+  | { kind: 'failed'; message: string }
+  | { kind: 'timeout' }
+  | { kind: 'device_limit_reached'; message: string; devices: DeviceView[]; licenseKey: string }

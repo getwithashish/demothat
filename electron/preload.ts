@@ -1,6 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron'
-import type { ActivationResult, DeactivationResult, DeviceView, LicenseSummary } from '../shared/license'
+import type {
+  ActivationResult,
+  CheckoutStartResult,
+  DeactivationResult,
+  DeviceView,
+  LicenseSummary,
+  PurchaseEvent,
+} from '../shared/license'
 
 // Define the type for the callback value
 type RecordingResult = {
@@ -301,6 +308,25 @@ export const electronAPI = {
   listLicenseDevices: (): Promise<DeviceView[]> => ipcRenderer.invoke('license:devices'),
   deactivateLicenseDevice: (deviceId: string): Promise<DeactivationResult> =>
     ipcRenderer.invoke('license:deactivate', deviceId),
+
+  // --- Purchases (checkout + poll) ---
+  /** Starts checkout for a product id; the main process opens the browser. */
+  startCheckout: (productId: string): Promise<CheckoutStartResult> => ipcRenderer.invoke('checkout:start', productId),
+  /** Whether a purchase is still pending from an earlier session. */
+  getCheckoutStatus: (): Promise<{ pending: boolean; watching: boolean }> => ipcRenderer.invoke('checkout:status'),
+  /** Starts watching a pending purchase again. */
+  resumeCheckout: (): Promise<{ pending: boolean }> => ipcRenderer.invoke('checkout:resume'),
+  /** Drops the pending purchase record. */
+  forgetCheckout: (): Promise<{ forgotten: boolean }> => ipcRenderer.invoke('checkout:forget'),
+  /** Stops waiting without cancelling the payment itself. */
+  cancelCheckout: (): void => ipcRenderer.send('checkout:cancel'),
+  onCheckoutStatus: (callback: (event: PurchaseEvent) => void) => {
+    const listener = (_event: IpcRendererEvent, payload: PurchaseEvent) => callback(payload)
+    ipcRenderer.on('checkout:status', listener)
+    return () => {
+      ipcRenderer.removeListener('checkout:status', listener)
+    }
+  },
   /** Measured export throughput for the render-time estimates. */
   getExportPerfSamples: (): Promise<
     Array<{

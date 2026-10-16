@@ -188,6 +188,15 @@ Grab the latest version for your OS from the [**Releases Page**](https://github.
     npm run dev
     ```
 
+### ☁️ Working on the cloud / Pro work
+
+The Pro licensing, credits and cloud-upscaling work reads its specification from two files in this repo:
+
+- `docs/SHARED_SPEC.md` — **Section 0, the shared spec.** Applies to all three repos (`demothat`, `demothat-api`, `demothat-worker`).
+- `docs/AGENT_PROMPT.md` — the brief for this repo: ground rules, contract, and tasks C1 to C5.
+
+`demothat-api` owns the contract (`contract/openapi.yaml`, `contract/worker-protocol.md` plus JSON Schemas). This repo vendors a pinned copy with a version header. Contract changes are made in the API repo first.
+
 ## 💖 Sponsor This Project
 
 DemoThat is free and open source. If it saves you time, please consider [sponsoring the project](https://github.com/sponsors/getwithashish) to support continued development.

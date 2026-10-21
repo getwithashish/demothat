@@ -32,3 +32,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Rust helper build output (native/cursor-helper)
+native/cursor-helper/target/

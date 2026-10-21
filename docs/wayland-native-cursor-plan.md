@@ -48,10 +48,28 @@ native helper process, launched by the app:
 4. **Clicks**: Wayland exposes no portal for button events. The only practical
    source is the kernel's `evdev` (`/dev/input/event*`), which needs read access —
    either an `input` group membership or, better, a udev `uaccess` rule limited to
-   pointer devices (`ID_INPUT_MOUSE`, explicitly excluding keyboards). Without
-   that access every sample is a plain move and click effects stay unavailable.
-   The helper must read _only_ `BTN_LEFT`-class pointer events — never keystrokes —
-   and the app should say so in the recorder UI.
+   pointer devices and explicitly excluding keyboards. This is why "use udev" is
+   not a fix on its own: evdev yields button presses **and no coordinates**, so it
+   is only useful once step 3 supplies positions to attach them to. A click with no
+   position cannot drive the cursor overlay, the click ripple or auto-zoom. Without
+   the rule (or with the keyboard-inclusive `input` group) every sample stays a
+   plain move, and recording is unaffected either way.
+
+   The rule (OpenScreen's approach, which is the reference implementation here):
+
+   ```
+   # /etc/udev/rules.d/70-demothat-mouse.rules — pointer devices only, never keyboards
+   KERNEL=="event*", SUBSYSTEM=="input", ENV{ID_INPUT_MOUSE}=="1", ENV{ID_INPUT_KEYBOARD}!="1", TAG+="uaccess"
+   KERNEL=="event*", SUBSYSTEM=="input", ENV{ID_INPUT_TOUCHPAD}=="1", ENV{ID_INPUT_KEYBOARD}!="1", TAG+="uaccess"
+   ```
+
+   Then `sudo udevadm control --reload-rules && sudo udevadm trigger
+--subsystem-match=input` and check with `getfacl /dev/input/event*` (the user
+   needs `user::rw-` on the pointer nodes). The helper must read _only_
+   `BTN_LEFT`-class pointer events — never keystrokes — and the app should say so
+   in the recorder UI, with an opt-out for anyone who does not want the reader at
+   all.
+
 5. **Wiring in the app**: the helper's cursor events feed the same
    `appState.recordedMouseEvents` / `runtimeCursorImageMap` path the X11 tracker
    feeds, so the editor needs no changes at all. `CaptureTraits.cursorTelemetry`

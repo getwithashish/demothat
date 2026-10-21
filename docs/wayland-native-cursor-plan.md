@@ -1,8 +1,13 @@
 # Wayland cursor telemetry: the follow-up this change deliberately did not do
 
-Status: planned, not implemented. Everything else about Wayland support ships in
-the change that introduced `shared/session.ts`; this document is the one part
-held back.
+Status: the helper described here now exists — `native/cursor-helper/` compiles, has
+17 unit tests, and has been exercised against a real portal (negotiation, the
+metadata rejection, the embedded retry, and the clean failure path). What is
+**not** done yet is the app-side wiring: the helper is not spawned by the app, so
+a Wayland recording still goes through Chromium's capture, with the cursor in the
+pixels. That wiring, plus bundling the binary as an `extraResources` entry, is the
+next step; everything below is the design it will follow, including the udev rule
+that clicks need.
 
 ## What is missing, and why
 

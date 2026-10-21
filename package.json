@@ -204,6 +204,9 @@
         "rpm",
         "zip"
       ],
+      "executableArgs": [
+        "--ozone-platform-hint=auto"
+      ],
       "maintainer": "Ashish Sam <getwithashish@gmail.com>",
       "icon": "build/icons/512x512.png",
       "category": "Utility;AudioVideo;Recorder",

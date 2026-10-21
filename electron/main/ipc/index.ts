@@ -16,6 +16,7 @@ export function registerIpcHandlers() {
   ipcMain.handle('app:getPath', appHandlers.handleGetPath)
   ipcMain.handle('app:getVersion', appHandlers.handleGetVersion)
   ipcMain.handle('app:getPlatform', appHandlers.handleGetPlatform)
+  ipcMain.handle('app:getSessionInfo', appHandlers.handleGetSessionInfo)
   ipcMain.on('window:minimize', appHandlers.minimizeWindow)
   ipcMain.on('window:maximize', appHandlers.maximizeWindow)
   ipcMain.on('window:close', appHandlers.closeWindow)

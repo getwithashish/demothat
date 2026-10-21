@@ -9,6 +9,7 @@ import type {
   PurchaseEvent,
 } from '../shared/license'
 import type { Product } from '../shared/pricing'
+import type { SessionSummary } from '../shared/session'
 
 // Define the type for the callback value
 type RecordingResult = {
@@ -468,6 +469,11 @@ export const electronAPI = {
   // --- END OF CHANGES ---
   getVersion: (): Promise<string> => ipcRenderer.invoke('app:getVersion'),
   getPlatform: (): Promise<NodeJS.Platform> => ipcRenderer.invoke('app:getPlatform'),
+  /**
+   * Display-server facts: whether the app is on Wayland, and which capture
+   * backend the recorder will use because of it.
+   */
+  getSessionInfo: (): Promise<SessionSummary> => ipcRenderer.invoke('app:getSessionInfo'),
   getVideoFrame: (options: { videoPath: string; time: number }): Promise<string> =>
     ipcRenderer.invoke('video:get-frame', options),
   videoHasAudio: (videoPath: string): Promise<boolean> => ipcRenderer.invoke('video:has-audio', videoPath),

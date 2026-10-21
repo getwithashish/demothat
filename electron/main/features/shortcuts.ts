@@ -9,6 +9,7 @@ import log from 'electron-log/main'
 import { dialog, globalShortcut } from 'electron'
 import { appState } from '../state'
 import { RECORDING_SHORTCUTS } from '../lib/constants'
+import { requiresPortalCapture } from '../lib/capture-backend'
 import { stopRecording } from './recording-manager'
 import { createRecorderWindow } from '../windows/recorder-window'
 
@@ -23,18 +24,27 @@ function isRecordingInProgress(): boolean {
  * app.whenReady(); unregister on quit.
  */
 export function registerRecordingShortcuts(): void {
+  const wayland = requiresPortalCapture()
   const startRegistered = globalShortcut.register(RECORDING_SHORTCUTS.start, () => {
     handleStartShortcut()
   })
   if (!startRegistered) {
-    log.warn(`[Shortcuts] Could not register start shortcut ${RECORDING_SHORTCUTS.start} (already in use?)`)
+    log.warn(
+      wayland
+        ? `[Shortcuts] Could not register ${RECORDING_SHORTCUTS.start}. On Wayland this needs the desktop's shortcut portal (GNOME 46+, KDE 6+); the recorder's own buttons still work.`
+        : `[Shortcuts] Could not register start shortcut ${RECORDING_SHORTCUTS.start} (already in use?)`,
+    )
   }
 
   const stopRegistered = globalShortcut.register(RECORDING_SHORTCUTS.stop, () => {
     void handleStopShortcut()
   })
   if (!stopRegistered) {
-    log.warn(`[Shortcuts] Could not register stop shortcut ${RECORDING_SHORTCUTS.stop} (already in use?)`)
+    log.warn(
+      wayland
+        ? `[Shortcuts] Could not register ${RECORDING_SHORTCUTS.stop}. On Wayland this needs the desktop's shortcut portal (GNOME 46+, KDE 6+); the recorder's own buttons still work.`
+        : `[Shortcuts] Could not register stop shortcut ${RECORDING_SHORTCUTS.stop} (already in use?)`,
+    )
   }
 }
 

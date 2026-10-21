@@ -36,6 +36,17 @@ export interface RecordingSession {
   // after mux folds it into screenVideoPath.
   micAudioPath?: string
   recordingGeometry: RecordingGeometry
+  /**
+   * Wayland area recording only. The portal can only hand over a whole monitor,
+   * so the user's selection is carried here and cut out during the mux, once the
+   * captured video's real pixel size is known. Cleared after the crop is applied.
+   */
+  pendingCrop?: {
+    /** What the user drew, in CSS pixels of the selection overlay. */
+    selection: { x: number; y: number; width: number; height: number }
+    /** The overlay's own size in CSS pixels — the reference for the selection. */
+    overlay: { width: number; height: number }
+  }
 }
 
 interface AppState {

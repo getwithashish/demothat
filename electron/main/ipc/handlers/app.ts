@@ -1,4 +1,7 @@
 import { app, BrowserWindow, IpcMainEvent, IpcMainInvokeEvent } from 'electron'
+import type { SessionSummary } from '../../../../shared/session'
+import { usesRendererScreenCapture } from '../../lib/capture-backend'
+import { detectSession } from '../../../../shared/session'
 import { appState } from '../../state'
 import { createRecorderWindow } from '../../windows/recorder-window'
 
@@ -12,6 +15,20 @@ export function handleGetVersion() {
 
 export function handleGetPlatform() {
   return process.platform
+}
+
+/**
+ * The display-server facts the renderer needs to explain itself: whether the
+ * app is on Wayland, and which capture backend the recorder will therefore use.
+ */
+export function handleGetSessionInfo(): SessionSummary {
+  const session = detectSession()
+  return {
+    platform: process.platform,
+    wayland: session.wayland,
+    reason: session.reason,
+    capture: usesRendererScreenCapture() ? 'renderer' : 'ffmpeg',
+  }
 }
 
 export function minimizeWindow(event: IpcMainEvent) {

@@ -18,6 +18,7 @@ import {
   VolumeOff,
   Presentation,
   PresentationOff,
+  InfoCircle,
 } from 'tabler-icons-react'
 import { Button } from '../components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
@@ -25,6 +26,8 @@ import { useDeviceManager } from '../hooks/useDeviceManager'
 import { cn } from '../lib/utils'
 import { startSystemAudioCapture, type SystemAudioCaptureHandle } from '../lib/system-audio'
 import { startScreenCapture, type ScreenCaptureHandle } from '../lib/screen-capture'
+import { resolveCaptureBackend } from '../lib/capture-backend'
+import type { SessionSummary } from '../../shared/session'
 import '../index.css'
 
 // --- Constants ---
@@ -62,6 +65,10 @@ export function RecorderPage() {
   const [cursorScale, setCursorScale] = useState<number>(1)
 
   const { platform, webcams, mics, isInitializing, reload: reloadDevices } = useDeviceManager()
+  // Which display server we are on, and therefore which capture backend the
+  // recorder runs. Fetched in the same pass as the devices, so it is known by the
+  // time the Record button un-disables.
+  const [sessionInfo, setSessionInfo] = useState<SessionSummary | null>(null)
   const webcamPreviewRef = useRef<HTMLVideoElement>(null)
   const webcamStreamRef = useRef<MediaStream | null>(null)
   const systemAudioHandleRef = useRef<SystemAudioCaptureHandle | null>(null)
@@ -75,7 +82,8 @@ export function RecorderPage() {
   const lastSizeRef = useRef({ width: 0, height: 0 })
 
   const supportsSystemAudio = platform === 'darwin'
-  const usesRendererScreenCapture = platform === 'darwin'
+  const capture = useMemo(() => resolveCaptureBackend(platform, sessionInfo?.wayland ?? null), [platform, sessionInfo])
+  const usesRendererScreenCapture = capture.usesRendererCapture
   const isBusy = actionInProgress !== 'none'
   const isWebcamPreviewVisible = selectedWebcamId !== 'none' && actionInProgress === 'none' && !isRecording
 
@@ -90,18 +98,21 @@ export function RecorderPage() {
   useEffect(() => {
     const initialize = async () => {
       try {
-        const [savedWebcamId, savedMicId, savedCursorScale, fetchedDisplays] = await Promise.all([
+        const [savedWebcamId, savedMicId, savedCursorScale, fetchedDisplays, fetchedSession] = await Promise.all([
           window.electronAPI.getSetting<string>('recorder.selectedWebcamId'),
           window.electronAPI.getSetting<string>('recorder.selectedMicId'),
           window.electronAPI.getSetting<number>('recorder.cursorScale'),
           window.electronAPI.getDisplays(),
+          window.electronAPI.getSessionInfo(),
         ])
         console.info('[Recorder] Loaded saved settings:', {
           savedWebcamId,
           savedMicId,
           savedCursorScale,
           displayCount: fetchedDisplays.length,
+          session: fetchedSession,
         })
+        setSessionInfo(fetchedSession)
 
         setSelectedWebcamId(savedWebcamId || 'none')
         setSelectedMicId(savedMicId || 'none')
@@ -346,7 +357,9 @@ export function RecorderPage() {
         try {
           screenCaptureHandleRef.current = await startScreenCapture({
             displayId: source === 'fullscreen' ? Number(selectedDisplayId) : undefined,
-            includeSystemAudio: wantSystemAudio,
+            // Only the macOS backend folds system audio into the screen stream;
+            // elsewhere (Linux, Wayland included) it keeps its own writer.
+            includeSystemAudio: capture.systemAudioRidesInScreenStream && wantSystemAudio,
             onError: (err) => console.error('[Recorder] Screen capture failed mid-recording:', err),
           })
           systemAudioCarriedInScreenStream = screenCaptureHandleRef.current.hasSystemAudio()
@@ -555,33 +568,49 @@ export function RecorderPage() {
 
             {/* Device Selectors */}
             <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' }}>
-              <Select
-                value={selectedDisplayId}
-                onValueChange={setSelectedDisplayId}
-                disabled={source !== 'fullscreen' || isRecording || isBusy}
-              >
-                <SelectTrigger
-                  variant="minimal"
-                  className="w-auto min-w-[120px] max-w-[150px] h-9"
-                  aria-label="Select display"
+              {capture.displayPickerSupported ? (
+                <Select
+                  value={selectedDisplayId}
+                  onValueChange={setSelectedDisplayId}
+                  disabled={source !== 'fullscreen' || isRecording || isBusy}
                 >
-                  <SelectValue asChild>
-                    <div className="flex items-center gap-1.5 text-xs">
-                      <DeviceDesktop size={14} className="text-accent shrink-0" />
-                      <span className="truncate">
-                        {displays.find((d) => String(d.id) === selectedDisplayId)?.name || '...'}
-                      </span>
-                    </div>
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {displays.map((d) => (
-                    <SelectItem key={d.id} value={String(d.id)}>
-                      {d.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                  <SelectTrigger
+                    variant="minimal"
+                    className="w-auto min-w-[120px] max-w-[150px] h-9"
+                    aria-label="Select display"
+                  >
+                    <SelectValue asChild>
+                      <div className="flex items-center gap-1.5 text-xs">
+                        <DeviceDesktop size={14} className="text-accent shrink-0" />
+                        <span className="truncate">
+                          {displays.find((d) => String(d.id) === selectedDisplayId)?.name || '...'}
+                        </span>
+                      </div>
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {displays.map((d) => (
+                      <SelectItem key={d.id} value={String(d.id)}>
+                        {d.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                // Wayland: the portal's own dialog decides which screen is
+                // shared, so offering a display list here would be a lie.
+                <div
+                  className={cn(
+                    'flex h-9 items-center gap-1.5 rounded-ctl border border-line bg-ctl px-2.5 text-xs text-muted',
+                    source !== 'fullscreen' && 'opacity-45',
+                  )}
+                  title="Which screen is shared is chosen in the system dialog when recording starts."
+                  aria-label="Screen chosen by the system dialog"
+                >
+                  <DeviceDesktop size={14} className="text-accent shrink-0" />
+                  <span className="truncate">System dialog</span>
+                </div>
+              )}
 
               <Select
                 value={selectedWebcamId}
@@ -802,6 +831,13 @@ export function RecorderPage() {
               </div>
             </div>
           </div>
+
+          {capture.notice && (
+            <div className="mx-auto mt-2 flex max-w-[720px] items-start gap-2 rounded-ctl border border-line bg-panel px-3 py-2 text-xs text-muted">
+              <InfoCircle size={14} strokeWidth={ICON_STROKE} className="mt-px shrink-0 text-accent" />
+              <span>{capture.notice}</span>
+            </div>
+          )}
 
           {/* Webcam Preview — kept mounted so the preview stream stays attached,
               but removed from the layout while hidden so it reserves no space. */}

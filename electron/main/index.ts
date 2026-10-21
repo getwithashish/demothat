@@ -15,6 +15,7 @@ import { initMain as initAudioLoopback } from 'electron-audio-loopback'
 import log from 'electron-log/main'
 import path from 'node:path'
 import fsSync from 'node:fs'
+import { spawn } from 'node:child_process'
 import { VITE_PUBLIC } from './lib/constants'
 import { setupLogging } from './lib/logging'
 import { registerIpcHandlers } from './ipc'
@@ -25,6 +26,7 @@ import { findProjectArg, markAppReadyForProjects, promptOpenProject, requestOpen
 import { initializeMouseTrackerDependencies } from './features/mouse-tracker'
 import { confirmReplaceSession, isQuitApproved, markQuitApproved } from './features/session-guard'
 import { appState } from './state'
+import { detectSession, WAYLAND_CHROMIUM_FEATURES } from '../../shared/session'
 
 // --- Initialization ---
 setupLogging()
@@ -34,6 +36,53 @@ setupLogging()
 // `app.whenReady()` because it appends Chromium feature flags.
 // See: https://github.com/alectrocute/electron-audio-loopback
 initAudioLoopback({ forceCoreAudioTap: true })
+
+// --- Wayland (Linux) ---
+// Electron 31 starts life as a plain XWayland client on a Wayland session, and
+// under XWayland FFmpeg's x11grab only ever sees Xwayland's own X11 clients —
+// native Wayland windows come out blank, so the recording is mostly empty frames.
+//
+// The fix is to ask for the Wayland backend, but Chromium chooses it *before*
+// this script runs, so `app.commandLine.appendSwitch` is too late (verified: the
+// app still initialised X11). The platform can only be set on the real command
+// line, or through ELECTRON_OZONE_PLATFORM_HINT, so relaunch ourselves once with
+// it. The marker variable below is the loop guard: it is set for the child, so a
+// relaunch can never happen twice even if the flag somehow does not stick.
+//
+// Chromium features are passed on that command line too. Appending them from
+// here does work (that is what electron-audio-loopback relies on), but once we
+// are already re-executing there is no reason to leave any doubt.
+const session = detectSession()
+if (process.platform === 'linux' && session.wayland) {
+  const waylandFlags = ['--ozone-platform-hint=wayland', `--enable-features=${WAYLAND_CHROMIUM_FEATURES.join(',')}`]
+  const alreadyAsked = process.argv.some((arg) => arg.startsWith('--ozone-platform'))
+  const canRelaunch =
+    !alreadyAsked && !process.env.DEMOTHAT_WAYLAND_RELAUNCHED && !process.env.ELECTRON_OZONE_PLATFORM_HINT
+
+  if (canRelaunch) {
+    // APPIMAGE is set when running from an AppImage: respawn that file rather
+    // than the binary inside the mounted image, which would disappear with us.
+    const launchTarget = process.env.APPIMAGE || process.execPath
+    log.info(`[Wayland] Relaunching on the Wayland backend (${session.reason}): ${launchTarget}`)
+    try {
+      spawn(launchTarget, [...process.argv.slice(1), ...waylandFlags], {
+        detached: true,
+        stdio: 'ignore',
+        env: { ...process.env, DEMOTHAT_WAYLAND_RELAUNCHED: '1' },
+      }).unref()
+      app.exit(0)
+    } catch (error) {
+      // Falling through is better than not starting at all: the app still runs
+      // under XWayland, and the recorder will say the capture backend is X11.
+      log.error('[Wayland] Could not relaunch with the Wayland flags; continuing on X11.', error)
+    }
+  } else {
+    app.commandLine.appendSwitch('enable-features', WAYLAND_CHROMIUM_FEATURES.join(','))
+    log.info(`[Wayland] Native backend in use (${session.reason}); screen capture will use the portal.`)
+  }
+} else if (process.platform === 'linux') {
+  log.info(`[Wayland] Not in use (${session.reason}); screen capture stays on FFmpeg x11grab.`)
+}
 
 // --- Single instance ---
 // A second launch (for example from a `.dthat` file association) must hand the

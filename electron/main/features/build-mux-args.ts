@@ -70,10 +70,16 @@ export interface BuildMacMuxArgsOptions {
   micAudioInput: string | undefined
   output: string
   webmHasSystemAudio: boolean
+  /**
+   * Wayland area recording: the WebM holds the whole monitor, so the selection
+   * is cropped out here, in the one pass that already re-encodes the video.
+   * Omitted on macOS and for full-screen Wayland recordings.
+   */
+  crop?: { x: number; y: number; width: number; height: number } | null
 }
 
 export function buildMacMuxArgs(opts: BuildMacMuxArgsOptions): string[] {
-  const { screenWebmInput, micAudioInput, output, webmHasSystemAudio } = opts
+  const { screenWebmInput, micAudioInput, output, webmHasSystemAudio, crop } = opts
 
   const args: string[] = ['-y', '-i', screenWebmInput]
   if (micAudioInput) {
@@ -83,14 +89,22 @@ export function buildMacMuxArgs(opts: BuildMacMuxArgsOptions): string[] {
   // Common video encode settings — match the existing screen-capture profile.
   const videoEncode = ['-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p']
 
+  const cropFilter = crop ? `crop=${crop.width}:${crop.height}:${crop.x}:${crop.y}` : null
+  // FFmpeg refuses `-vf` alongside `-filter_complex` on one output, so when the
+  // audio graph is in play the crop joins it as its own link and the video is
+  // mapped from that label instead of straight off input 0.
+  const videoGraph = cropFilter ? `[0:v]${cropFilter}[v]` : null
+  const videoMap = cropFilter ? '[v]' : '0:v'
+  const withCrop = (graph: string): string => (videoGraph ? `${graph};${videoGraph}` : graph)
+
   if (webmHasSystemAudio && micAudioInput) {
     // Mix the two audio sources. duration=first keeps the output as long as
     // the screen video; aresample corrects clock drift between sources.
     args.push(
       '-filter_complex',
-      '[0:a][1:a]amix=inputs=2:duration=first:dropout_transition=0,aresample=async=1[a]',
+      withCrop('[0:a][1:a]amix=inputs=2:duration=first:dropout_transition=0,aresample=async=1[a]'),
       '-map',
-      '0:v',
+      videoMap,
       '-map',
       '[a]',
       ...videoEncode,
@@ -107,9 +121,9 @@ export function buildMacMuxArgs(opts: BuildMacMuxArgsOptions): string[] {
   if (webmHasSystemAudio) {
     args.push(
       '-filter_complex',
-      '[0:a]aresample=async=1[a]',
+      withCrop('[0:a]aresample=async=1[a]'),
       '-map',
-      '0:v',
+      videoMap,
       '-map',
       '[a]',
       ...videoEncode,
@@ -125,11 +139,31 @@ export function buildMacMuxArgs(opts: BuildMacMuxArgsOptions): string[] {
 
   if (micAudioInput) {
     // Mic file is already AAC — copy through to avoid double-encoding.
+    if (cropFilter) {
+      args.push(
+        '-filter_complex',
+        videoGraph as string,
+        '-map',
+        '[v]',
+        '-map',
+        '1:a',
+        ...videoEncode,
+        '-c:a',
+        'copy',
+        '-shortest',
+        output,
+      )
+      return args
+    }
     args.push('-map', '0:v', '-map', '1:a', ...videoEncode, '-c:a', 'copy', '-shortest', output)
     return args
   }
 
-  // No audio at all — re-encode video, drop audio explicitly.
+  // No audio at all — re-encode video (and crop if asked), drop audio explicitly.
+  if (cropFilter) {
+    args.push('-vf', cropFilter, '-map', '0:v', ...videoEncode, '-an', output)
+    return args
+  }
   args.push('-map', '0:v', ...videoEncode, '-an', output)
   return args
 }

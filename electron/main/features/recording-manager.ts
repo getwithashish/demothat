@@ -29,6 +29,13 @@ import { SystemAudioWriter } from './system-audio-writer'
 import { ScreenVideoWriter } from './screen-video-writer'
 import { buildMuxArgs, buildMacMuxArgs } from './build-mux-args'
 import { buildFfmpegArgs } from './build-recording-args'
+import {
+  usesRendererScreenCapture as backendCapturesScreen,
+  screenFileCarriesAudio,
+  requiresPortalCapture,
+} from '../lib/capture-backend'
+import { probeVideoSize } from '../lib/video-size'
+import { computeCrop } from '../../../shared/wayland-crop'
 import { applyCleanDemoMode, restoreCleanDemoMode } from './clean-demo-mode'
 
 const FFMPEG_PATH = getFFmpegPath()
@@ -219,10 +226,13 @@ async function validateRecordingFiles(session: RecordingSession): Promise<boolea
  * @param hasWebcam - Flag indicating if webcam recording is enabled.
  * @param hasMic - Flag indicating if microphone recording is enabled.
  * @param hasSystemAudio - Flag indicating if renderer-side system audio capture is enabled.
- * @param useRendererScreenCapture - macOS only: capture screen via the renderer's
- *                                    MediaRecorder instead of FFmpeg avfoundation.
- *                                    avfoundation's screen input is broken on macOS 14+.
+ * @param useRendererScreenCapture - The renderer records the screen instead of FFmpeg:
+ *                                    macOS (avfoundation's screen input is broken on 14+)
+ *                                    and Linux/Wayland (FFmpeg cannot see a Wayland screen).
  * @param recordingGeometry - The logical dimensions and position of the recording area.
+ * @param pendingCrop - Wayland area recording: the user's selection, to be cut out of the
+ *                      portal-captured monitor during the mux. Resolved against the real
+ *                      video size there, since the portal's output size is not known yet.
  */
 async function startActualRecording(
   inputArgs: string[],
@@ -232,6 +242,7 @@ async function startActualRecording(
   useRendererScreenCapture: boolean,
   recordingGeometry: RecordingGeometry,
   cleanDemo = false,
+  pendingCrop?: RecordingSession['pendingCrop'],
 ) {
   const recordingDir = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.demothat')
   await ensureDirectoryExists(recordingDir)
@@ -241,15 +252,16 @@ async function startActualRecording(
   const webcamVideoPath = hasWebcam ? path.join(recordingDir, `${baseName}-webcam.mp4`) : undefined
   const metadataPath = path.join(recordingDir, `${baseName}.json`)
 
-  // On macOS the renderer captures the screen (and folds in optional system
-  // audio) directly into one .webm file. On other platforms FFmpeg captures
-  // the screen as before, and the renderer only delivers a separate
-  // system-audio webm when the user enabled it.
+  // The renderer records the screen into one .webm file on macOS and on
+  // Linux/Wayland. macOS folds the optional system audio into it; Wayland does
+  // not — there the microphone and system audio keep the separate writer they
+  // have always used on Linux, which is why "who captures the screen" and "does
+  // the screen file carry the audio" are two different questions.
   const screenWebmPath = useRendererScreenCapture ? path.join(recordingDir, `${baseName}-screen.webm`) : undefined
-  const webmHasSystemAudio = useRendererScreenCapture && hasSystemAudio
+  const webmHasSystemAudio = useRendererScreenCapture && screenFileCarriesAudio() && hasSystemAudio
   const systemAudioPath =
-    !useRendererScreenCapture && hasSystemAudio ? path.join(recordingDir, `${baseName}-system.webm`) : undefined
-  const micAudioPath = useRendererScreenCapture && hasMic ? path.join(recordingDir, `${baseName}-mic.m4a`) : undefined
+    !webmHasSystemAudio && hasSystemAudio ? path.join(recordingDir, `${baseName}-system.webm`) : undefined
+  const micAudioPath = screenFileCarriesAudio() && hasMic ? path.join(recordingDir, `${baseName}-mic.m4a`) : undefined
 
   log.info('[RecordingManager] Resolved file paths for session:', {
     baseName,
@@ -275,6 +287,7 @@ async function startActualRecording(
     micAudioPath,
     metadataPath,
     recordingGeometry,
+    pendingCrop,
   }
 
   if (systemAudioPath) {
@@ -302,7 +315,18 @@ async function startActualRecording(
   appState.recordingStartTime = Date.now()
   appState.recordedMouseEvents = []
   appState.runtimeCursorImageMap = new Map()
-  appState.mouseTracker = createMouseTracker()
+  // Wayland: no global pointer coordinates exist to read. Electron's
+  // screen.getCursorScreenPoint() is unsupported there, and the X11 tracker
+  // would only see Xwayland's stale copy of the pointer — worse than nothing,
+  // because the samples that survive the geometry filter would draw a second,
+  // frozen cursor on top of the real one the compositor already recorded into
+  // the video. So no tracker, and a recording with no cursor samples.
+  if (requiresPortalCapture()) {
+    log.info('[RecordingManager] Wayland: no cursor tracker; the pointer is part of the captured video.')
+    appState.mouseTracker = null
+  } else {
+    appState.mouseTracker = createMouseTracker()
+  }
 
   if (appState.mouseTracker) {
     appState.mouseTracker.on('data', (data: any) => {
@@ -518,6 +542,7 @@ export async function startRecording(options: any) {
   const display = process.env.DISPLAY || ':0.0'
   const baseFfmpegArgs: string[] = []
   let recordingGeometry: RecordingGeometry
+  let pendingCrop: RecordingSession['pendingCrop']
 
   // --- Add Microphone and Webcam inputs first ---
   if (mic) {
@@ -563,6 +588,15 @@ export async function startRecording(options: any) {
     recordingGeometry = { x, y, width: safeWidth, height: safeHeight }
     switch (process.platform) {
       case 'linux':
+        if (backendCapturesScreen()) {
+          // Wayland: FFmpeg cannot see the compositor's screen, so the renderer
+          // records it through xdg-desktop-portal and main muxes the result. No
+          // FFmpeg screen input here.
+          log.info(
+            `[RecordingManager] Wayland fullscreen: deferring screen capture to the renderer (display.id=${targetDisplay.id}, ${safeWidth}x${safeHeight}).`,
+          )
+          break
+        }
         baseFfmpegArgs.push(
           '-f',
           'x11grab',
@@ -605,8 +639,12 @@ export async function startRecording(options: any) {
     createSelectionWindow()
     const selectedGeometry = await new Promise<any | undefined>((resolve) => {
       ipcMain.once('selection:complete', (_e, geo) => {
+        // Read the overlay's own size before it closes: the selection is in CSS
+        // pixels of that window, and its size is the only reference that maps the
+        // rectangle onto the monitor's physical pixels later (see shared/wayland-crop.ts).
+        const bounds = appState.selectionWin?.getBounds()
         appState.selectionWin?.close()
-        resolve(geo)
+        resolve({ ...geo, overlay: bounds ? { width: bounds.width, height: bounds.height } : undefined })
       })
       ipcMain.once('selection:cancel', () => {
         appState.selectionWin?.close()
@@ -620,8 +658,28 @@ export async function startRecording(options: any) {
     const safeHeight = Math.floor(selectedGeometry.height / 2) * 2
     recordingGeometry = { x: selectedGeometry.x, y: selectedGeometry.y, width: safeWidth, height: safeHeight }
 
+    // Wayland records the whole monitor, because the portal has no notion of a
+    // user-drawn region, so the selection becomes a crop applied during the mux.
+    if (backendCapturesScreen()) {
+      if (selectedGeometry.overlay) {
+        pendingCrop = {
+          selection: {
+            x: selectedGeometry.x,
+            y: selectedGeometry.y,
+            width: selectedGeometry.width,
+            height: selectedGeometry.height,
+          },
+          overlay: selectedGeometry.overlay,
+        }
+        log.info(`[RecordingManager] Wayland area: whole monitor will be cropped to ${safeWidth}x${safeHeight}.`)
+      } else {
+        log.warn('[RecordingManager] Wayland area: overlay size unavailable; recording the whole monitor uncropped.')
+      }
+    }
+
     switch (process.platform) {
       case 'linux':
+        if (backendCapturesScreen()) break
         baseFfmpegArgs.push(
           '-f',
           'x11grab',
@@ -658,7 +716,7 @@ export async function startRecording(options: any) {
   if (process.platform === 'linux') {
     appState.originalCursorScale = await getCursorScale()
   }
-  const useRendererScreenCapture = process.platform === 'darwin'
+  const useRendererScreenCapture = backendCapturesScreen()
   log.info('[RecordingManager] Starting actual recording with args:', baseFfmpegArgs, {
     hasWebcam: !!webcam,
     hasMic: !!mic,
@@ -673,6 +731,7 @@ export async function startRecording(options: any) {
     useRendererScreenCapture,
     recordingGeometry,
     !!cleanDemo,
+    pendingCrop,
   )
 }
 
@@ -921,11 +980,46 @@ async function muxMacScreenWebm(session: RecordingSession): Promise<void> {
     }
   }
 
+  // Wayland: the portal captured a whole monitor, so the user's area has to be
+  // cut out here. This pass already re-encodes the video, so the crop adds no
+  // extra encode. The captured file's real size is the only trustworthy
+  // reference — a 125%-scaled monitor does not produce the size the display
+  // reports — so probe it rather than assume.
+  let crop: { x: number; y: number; width: number; height: number } | null = null
+  if (requiresPortalCapture()) {
+    const videoSize = await probeVideoSize(session.screenWebmPath)
+    if (!videoSize) {
+      log.warn('[WaylandMux] Could not read the captured frame size; keeping the whole frame.')
+    } else {
+      crop = session.pendingCrop
+        ? computeCrop({
+            selection: session.pendingCrop.selection,
+            overlay: session.pendingCrop.overlay,
+            video: videoSize,
+          })
+        : null
+      if (session.pendingCrop && !crop) {
+        log.warn('[WaylandMux] Selection could not be mapped onto the captured frame; keeping the whole frame.')
+      }
+      // The editor derives its cursor and auto-zoom coordinates from
+      // recordingGeometry, so it must describe the frame we actually produce.
+      session.recordingGeometry = crop
+        ? { x: 0, y: 0, width: crop.width, height: crop.height }
+        : { x: 0, y: 0, width: videoSize.width, height: videoSize.height }
+      log.info(
+        `[WaylandMux] Frame ${videoSize.width}x${videoSize.height}; ${
+          crop ? `cropping to ${crop.width}x${crop.height} at ${crop.x},${crop.y}` : 'no crop'
+        }.`,
+      )
+    }
+  }
+
   const args = buildMacMuxArgs({
     screenWebmInput: session.screenWebmPath,
     micAudioInput: resolvedMicPath,
     output: session.screenVideoPath,
     webmHasSystemAudio: !!session.webmHasSystemAudio,
+    crop,
   })
   log.info(`[MacMux] Running ffmpeg ${args.join(' ')}`)
 
@@ -975,6 +1069,7 @@ async function muxMacScreenWebm(session: RecordingSession): Promise<void> {
   session.screenWebmPath = undefined
   session.micAudioPath = undefined
   session.webmHasSystemAudio = false
+  session.pendingCrop = undefined
   log.info('[MacMux] Cleanup complete.')
 }
 

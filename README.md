@@ -45,9 +45,12 @@ Grab the latest version for your OS from the [**Releases Page**](https://github.
 
 #### Prerequisites
 
-- **X11 Display Server Required** - DemoThat currently doesn't support Wayland.
+- **X11 and Wayland are both supported.** On X11 DemoThat records with FFmpeg, exactly as before.
+- On Wayland it records through the system screen-share dialog, which needs `xdg-desktop-portal` and a PipeWire-based desktop (default on Ubuntu 22.10+, Fedora 34+, Debian 13, and any recent GNOME/KDE/Sway install). Your desktop will ask which screen to share when a recording starts — that picker decides the screen, so the recorder's display list is not used.
   - Check your session type: `echo $XDG_SESSION_TYPE`
-  - If it shows `wayland`, switch to X11 from your login screen.
+  - Force the old X11 path if Wayland misbehaves: launch with `DEMOTHAT_OZONE_PLATFORM=x11 ./DemoThat-*-linux-x64.AppImage`
+- **Cursor effects are unavailable on Wayland recordings.** Wayland does not give applications global pointer coordinates, and the compositor records the pointer into the video itself. Cursor styling, click ripple, click scale, cursor zoom and cursor motion smoothing therefore apply to X11, Windows and macOS recordings only; the recorder tells you this before you start. See [docs/wayland-native-cursor-plan.md](docs/wayland-native-cursor-plan.md) for what closing that gap would take.
+- **Wayland recording needs a GPU-backed compositor.** The portal cannot serve frames from a software (pixman) compositor, so a GPU-less VM will fail to negotiate the capture.
 
 #### Installation Steps
 
@@ -74,6 +77,21 @@ Grab the latest version for your OS from the [**Releases Page**](https://github.
 
 - If you get permission errors, ensure the file is executable
 - For AppImage issues, try running with `--no-sandbox` flag
+- **`dlopen(): error loading libfuse.so.2` / "AppImages require FUSE to run"**: some distributions (Ubuntu 22.04+, Debian 13) ship FUSE 3 only, while AppImages need the FUSE 2 runtime. Either install it:
+
+  ```bash
+  sudo apt install libfuse2t64   # Debian 13 / Ubuntu 24.04+
+  sudo apt install libfuse2      # older releases
+  ```
+
+  or run the AppImage without FUSE at all:
+
+  ```bash
+  ./DemoThat-*-linux-x64.AppImage --appimage-extract-and-run
+  # or: APPIMAGE_EXTRACT_AND_RUN=1 ./DemoThat-*-linux-x64.AppImage
+  ```
+
+  The `.deb`, `.rpm` and `.zip` builds do not use FUSE and need nothing extra.
 
 ### 🪟 Windows Instructions
 
@@ -143,7 +161,7 @@ Grab the latest version for your OS from the [**Releases Page**](https://github.
 
 ### Prerequisites
 
-- **Linux:** Ensure you are on an X11 session, not Wayland.
+- **Linux:** Wayland and X11 both work. On a Wayland session the app relaunches itself once with `--ozone-platform-hint=wayland` (Electron 31 chooses its backend before the app's code runs, so the flag has to be on the real command line). Nothing extra to install for X11; for Wayland capture you need `xdg-desktop-portal` and PipeWire, as above.
 - **Windows:**
   1.  Install [Build Tools for Visual Studio 2022](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with the "Desktop development with C++" workload.
   2.  Install [Python 3.8](https://www.python.org/downloads/release/python-3810/) and add it to your PATH.

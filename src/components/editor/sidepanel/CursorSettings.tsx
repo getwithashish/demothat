@@ -125,6 +125,17 @@ export function CursorSettings() {
     }
   }
 
+  const handleResetMotion = () => {
+    updateCursorStyle({
+      smoothingEnabled: DEFAULTS.CURSOR.MOTION.SMOOTHING_ENABLED.defaultValue,
+      smoothing: DEFAULTS.CURSOR.MOTION.SMOOTHING.defaultValue,
+      motionBlurEnabled: DEFAULTS.CURSOR.MOTION.BLUR_ENABLED.defaultValue,
+      motionBlurShutterAngle: DEFAULTS.CURSOR.MOTION.BLUR_SHUTTER.defaultValue,
+      motionBlurSamples: DEFAULTS.CURSOR.MOTION.BLUR_SAMPLES.defaultValue,
+      motionBlurStrength: DEFAULTS.CURSOR.MOTION.BLUR_STRENGTH.defaultValue,
+    })
+  }
+
   const handleResetTheme = () => {
     if (isCustomizationSupported) handleThemeChange(DEFAULTS.CURSOR.THEME.defaultValue)
   }
@@ -158,6 +169,8 @@ export function CursorSettings() {
   const rippleOff = !cursorStyles.clickRippleEffect
   const scaleOff = !cursorStyles.clickScaleEffect
   const cursorOff = !cursorStyles.showCursor
+  const smoothingOff = !cursorStyles.smoothingEnabled || cursorOff
+  const blurOff = !cursorStyles.motionBlurEnabled || cursorOff
 
   return (
     <div className="flex h-full flex-col">
@@ -317,6 +330,62 @@ export function CursorSettings() {
                 </SelectContent>
               </Select>
             </div>
+          </div>
+        </Section>
+
+        <Section label="Motion" labelRight={<ResetButton onClick={handleResetMotion} label="cursor motion" />}>
+          <div className="space-y-3.5">
+            <ToggleRow
+              label="Path smoothing"
+              description="Turns erratic movement into a smooth glide"
+              checked={cursorStyles.smoothingEnabled}
+              onCheckedChange={(v) => updateCursorStyle({ smoothingEnabled: v })}
+            />
+            <Slider
+              label="Smoothing"
+              disabled={smoothingOff}
+              min={DEFAULTS.CURSOR.MOTION.SMOOTHING.min}
+              max={DEFAULTS.CURSOR.MOTION.SMOOTHING.max}
+              step={DEFAULTS.CURSOR.MOTION.SMOOTHING.step}
+              value={cursorStyles.smoothing}
+              onChange={(v) => updateCursorStyle({ smoothing: v })}
+              formatValue={(v) => `${Math.round(v * 100)}%`}
+            />
+            <ToggleRow
+              label="Motion blur"
+              description="Shutter-angle smear along the cursor's path"
+              checked={cursorStyles.motionBlurEnabled}
+              onCheckedChange={(v) => updateCursorStyle({ motionBlurEnabled: v })}
+            />
+            <Slider
+              label="Shutter angle"
+              disabled={blurOff}
+              min={DEFAULTS.CURSOR.MOTION.BLUR_SHUTTER.min}
+              max={DEFAULTS.CURSOR.MOTION.BLUR_SHUTTER.max}
+              step={DEFAULTS.CURSOR.MOTION.BLUR_SHUTTER.step}
+              value={cursorStyles.motionBlurShutterAngle}
+              onChange={(v) => updateCursorStyle({ motionBlurShutterAngle: v })}
+              formatValue={(v) => `${v}\u00b0`}
+            />
+            <Slider
+              label="Blur strength"
+              disabled={blurOff}
+              min={DEFAULTS.CURSOR.MOTION.BLUR_STRENGTH.min}
+              max={DEFAULTS.CURSOR.MOTION.BLUR_STRENGTH.max}
+              step={DEFAULTS.CURSOR.MOTION.BLUR_STRENGTH.step}
+              value={cursorStyles.motionBlurStrength}
+              onChange={(v) => updateCursorStyle({ motionBlurStrength: v })}
+              formatValue={(v) => `${v.toFixed(2)}\u00d7`}
+            />
+            <Slider
+              label="Samples"
+              disabled={blurOff}
+              min={DEFAULTS.CURSOR.MOTION.BLUR_SAMPLES.min}
+              max={DEFAULTS.CURSOR.MOTION.BLUR_SAMPLES.max}
+              step={DEFAULTS.CURSOR.MOTION.BLUR_SAMPLES.step}
+              value={cursorStyles.motionBlurSamples}
+              onChange={(v) => updateCursorStyle({ motionBlurSamples: v })}
+            />
           </div>
         </Section>
 

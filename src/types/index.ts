@@ -42,6 +42,19 @@ export interface CursorStyles {
   clickScaleAmount: number
   clickScaleDuration: number
   clickScaleEasing: string
+  // Cursor motion (path smoothing and optics-based motion blur)
+  /** Smooth the recorded path so erratic movements become a glide. */
+  smoothingEnabled: boolean
+  /** 0..1; scales the averaging window. */
+  smoothing: number
+  /** Draw the shutter-angle smear. */
+  motionBlurEnabled: boolean
+  /** Shutter angle in degrees: 360 covers the whole frame interval. */
+  motionBlurShutterAngle: number
+  /** How many ghosts the smear is drawn with. */
+  motionBlurSamples: number
+  /** Scales the smear length (1 = physically derived from speed). */
+  motionBlurStrength: number
 }
 
 export interface Preset {

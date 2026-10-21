@@ -33,6 +33,12 @@ const initialCursorStyles: CursorStyles = {
   clickScaleAmount: DEFAULTS.CURSOR.CLICK_SCALE.AMOUNT.defaultValue,
   clickScaleDuration: DEFAULTS.CURSOR.CLICK_SCALE.DURATION.defaultValue,
   clickScaleEasing: DEFAULTS.CURSOR.CLICK_SCALE.EASING.defaultValue,
+  smoothingEnabled: DEFAULTS.CURSOR.MOTION.SMOOTHING_ENABLED.defaultValue,
+  smoothing: DEFAULTS.CURSOR.MOTION.SMOOTHING.defaultValue,
+  motionBlurEnabled: DEFAULTS.CURSOR.MOTION.BLUR_ENABLED.defaultValue,
+  motionBlurShutterAngle: DEFAULTS.CURSOR.MOTION.BLUR_SHUTTER.defaultValue,
+  motionBlurSamples: DEFAULTS.CURSOR.MOTION.BLUR_SAMPLES.defaultValue,
+  motionBlurStrength: DEFAULTS.CURSOR.MOTION.BLUR_STRENGTH.defaultValue,
 }
 
 export const initialUIState: UIState = {

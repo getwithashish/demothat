@@ -126,6 +126,17 @@ export const DEFAULTS = {
     THEME: { defaultValue: 'Default' },
     SCALE: { defaultValue: 2 },
     SHOW_CURSOR: { defaultValue: true },
+    // Both motion features ship on at a moderate strength, so the improvement is
+    // visible without the user hunting for it. Turning either off reproduces the
+    // pre-feature render exactly (see lib/cursor-path.ts).
+    MOTION: {
+      SMOOTHING_ENABLED: { defaultValue: true },
+      SMOOTHING: { min: 0, max: 1, step: 0.01, defaultValue: 0.45 },
+      BLUR_ENABLED: { defaultValue: true },
+      BLUR_SHUTTER: { min: 0, max: 360, step: 5, defaultValue: 180 },
+      BLUR_SAMPLES: { min: 2, max: 8, step: 1, defaultValue: 4 },
+      BLUR_STRENGTH: { min: 0, max: 2, step: 0.05, defaultValue: 1 },
+    },
     SHADOW: {
       BLUR: { min: 0, max: 20, step: 1, defaultValue: 6 },
       OFFSET_X: { min: -20, max: 20, step: 1, defaultValue: 3 },

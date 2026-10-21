@@ -5,6 +5,8 @@ import { DEFAULTS } from './constants'
 import { isTiltActive } from './perspective'
 import { drawTiltedLayer } from './tilt-renderer'
 import { getCameraPoseAtTime } from './camera-motion'
+import { estimateEventInterval, sampleCursorPath } from './cursor-path'
+import { motionBlurGhosts, motionBlurVelocityAt } from './cursor-blur'
 
 type Rect = { x: number; y: number; width: number; height: number }
 
@@ -269,15 +271,35 @@ const drawFrameLayer = (
   const lastEventIndex = findLastMetadataIndex(state.metadata, currentTime)
 
   if (state.cursorStyles.showCursor && lastEventIndex > -1 && state.recordingGeometry) {
-    const event = state.metadata[lastEventIndex]
-    if (event && currentTime - event.timestamp < 0.1) {
-      const cursorData = state.cursorBitmapsToRender.get(event.cursorImageKey!)
+    // Smoothing turns the recorded samples into a continuous glide (see
+    // lib/cursor-path.ts); with it off this is the raw last sample, as before.
+    const pathOptions = {
+      enabled: state.cursorStyles.smoothingEnabled,
+      smoothing: state.cursorStyles.smoothing,
+    }
+    const sample = sampleCursorPath(state.metadata, currentTime, pathOptions)
+
+    if (sample?.visible) {
+      const cursorData = state.cursorBitmapsToRender.get(sample.cursorImageKey!)
 
       if (cursorData && cursorData.imageBitmap && cursorData.width > 0) {
-        const cursorX = (event.x / state.recordingGeometry.width) * frameContentWidth
-        const cursorY = (event.y / state.recordingGeometry.height) * frameContentHeight
-        const drawX = Math.round(cursorX - cursorData.xhot)
-        const drawY = Math.round(cursorY - cursorData.yhot)
+        const cursorX = (sample.x / state.recordingGeometry.width) * frameContentWidth
+        const cursorY = (sample.y / state.recordingGeometry.height) * frameContentHeight
+        const baseDrawX = Math.round(cursorX - cursorData.xhot)
+        const baseDrawY = Math.round(cursorY - cursorData.yhot)
+
+        // Optics-based motion blur: ghosts smeared back along the path, scaled by
+        // the cursor's own speed and the recording's sampling cadence.
+        const ghosts = motionBlurGhosts(
+          motionBlurVelocityAt(state.metadata, currentTime, pathOptions),
+          estimateEventInterval(state.metadata, currentTime),
+          {
+            enabled: state.cursorStyles.motionBlurEnabled,
+            shutterAngle: state.cursorStyles.motionBlurShutterAngle,
+            samples: state.cursorStyles.motionBlurSamples,
+            strength: state.cursorStyles.motionBlurStrength,
+          },
+        )
 
         ctx.save()
 
@@ -306,20 +328,29 @@ const drawFrameLayer = (
 
         // Apply drop shadow
         const { shadowBlur, shadowOffsetX, shadowOffsetY, shadowColor } = state.cursorStyles
-        if (shadowBlur > 0 || shadowOffsetX !== 0 || shadowOffsetY !== 0) {
-          ctx.filter = `drop-shadow(${shadowOffsetX}px ${shadowOffsetY}px ${shadowBlur}px ${shadowColor})`
-        }
+        const shadowFilter =
+          shadowBlur > 0 || shadowOffsetX !== 0 || shadowOffsetY !== 0
+            ? `drop-shadow(${shadowOffsetX}px ${shadowOffsetY}px ${shadowBlur}px ${shadowColor})`
+            : ''
 
         // Apply scale transform if needed
         if (cursorScale !== 1) {
-          const scaleCenterX = drawX + cursorData.xhot
-          const scaleCenterY = drawY + cursorData.yhot
+          const scaleCenterX = baseDrawX + cursorData.xhot
+          const scaleCenterY = baseDrawY + cursorData.yhot
           ctx.translate(scaleCenterX, scaleCenterY)
           ctx.scale(cursorScale, cursorScale)
           ctx.translate(-scaleCenterX, -scaleCenterY)
         }
 
-        ctx.drawImage(cursorData.imageBitmap, drawX, drawY)
+        for (const ghost of ghosts) {
+          const filter = [ghost.blurPx > 0 ? `blur(${ghost.blurPx.toFixed(2)}px)` : '', shadowFilter]
+            .filter(Boolean)
+            .join(' ')
+          ctx.globalAlpha = ghost.alpha
+          ctx.filter = filter
+          ctx.drawImage(cursorData.imageBitmap, baseDrawX + ghost.dx, baseDrawY + ghost.dy)
+        }
+
         ctx.restore()
       }
     }

@@ -32,6 +32,20 @@ export interface CursorSample {
   type: 'move' | 'click'
   button?: string
   pressed?: boolean
+  /** The bitmap this sample points at: see `CursorShape`. */
+  cursorImageKey?: string
+}
+
+/** The pointer's bitmap, as the compositor draws it. */
+export interface CursorShape {
+  key: string
+  width: number
+  height: number
+  /** Hotspot inside the bitmap: the editor draws at `(x - xhot, y - yhot)`. */
+  xhot: number
+  yhot: number
+  /** RGBA bytes, the order `ImageData` takes. */
+  image: number[]
 }
 
 export interface HelperStartInfo {
@@ -109,6 +123,8 @@ export function normaliseFps(value: number): number {
 export interface ParserHandlers {
   onStart: (info: HelperStartInfo) => void
   onSample: (sample: CursorSample) => void
+  /** Optional: a caller with no use for the bitmap simply does not ask for it. */
+  onShape?: (shape: CursorShape) => void
   onWarning: (message: string) => void
   onError: (message: string) => void
   onEnd: (frames: number, dropped: number) => void
@@ -161,6 +177,30 @@ export function createEventParser(handlers: ParserHandlers) {
           type: event.type,
           button: typeof event.button === 'string' ? event.button : undefined,
           pressed: event.pressed === true,
+          cursorImageKey: typeof event.cursor_image_key === 'string' ? event.cursor_image_key : undefined,
+        })
+        return
+      }
+      case 'cursor_shape': {
+        // The pointer's bitmap. Everything about it is checked, because the failure
+        // it guards against is silent: an image the editor cannot build produces a
+        // recording with no cursor at all, which reads as the app being broken
+        // rather than as one unreadable buffer.
+        const key = typeof event.key === 'string' ? event.key : ''
+        const width = Number(event.width)
+        const height = Number(event.height)
+        const rgba = typeof event.rgba_base64 === 'string' ? Buffer.from(event.rgba_base64, 'base64') : null
+        if (!key || !rgba) return
+        if (!Number.isInteger(width) || !Number.isInteger(height)) return
+        if (width <= 0 || height <= 0 || width > 512 || height > 512) return
+        if (rgba.length !== width * height * 4) return
+        handlers.onShape?.({
+          key,
+          width,
+          height,
+          xhot: Number(event.hot_x) || 0,
+          yhot: Number(event.hot_y) || 0,
+          image: Array.from(rgba),
         })
         return
       }
@@ -205,8 +245,16 @@ let active: ChildProcess | null = null
 export async function startCursorHelper(options: {
   fps: number
   onSample: (sample: CursorSample) => void
+  /** The pointer's bitmap, sent whenever the cursor changes shape. */
+  onShape?: (shape: CursorShape) => void
   onWarning?: (message: string) => void
-  /** Set when the user drew an area: the frames are cropped to it later. */
+  /**
+   * This desktop told us it cannot report the pointer separately. Called before the
+   * fallback so the answer can be remembered — otherwise every recording on such a
+   * desktop costs the user two screen-share dialogs.
+   */
+  onEmbeddedOnly?: () => void
+  /** How long to wait for the compositor's picker and the first frame. */
   timeoutMs?: number
 }): Promise<CursorHelperSession | null> {
   const binary = helperBinaryPath()
@@ -249,6 +297,7 @@ export async function startCursorHelper(options: {
         startInfo = info
       },
       onSample: options.onSample,
+      onShape: options.onShape,
       onWarning: (message) => {
         log.warn(`[CursorHelper] ${message}`)
         options.onWarning?.(message)
@@ -300,6 +349,7 @@ export async function startCursorHelper(options: {
         // browser path does too, and the browser path is the one in production, so
         // hand the recording back to it rather than taking over for no gain.
         log.info('[CursorHelper] Desktop cannot report the pointer separately; falling back.')
+        options.onEmbeddedOnly?.()
         child.kill('SIGTERM')
         cleanup()
         finish(null)

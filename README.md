@@ -45,12 +45,12 @@ Grab the latest version for your OS from the [**Releases Page**](https://github.
 
 #### Prerequisites
 
-- **X11 and Wayland both work.** On Wayland your desktop asks which screen to share when you start recording — that dialog decides it, so the recorder's display list is not used. Requires `xdg-desktop-portal` and PipeWire, which are default on Ubuntu 22.10+, Fedora 34+, Debian 13 and any recent GNOME, KDE or Sway install.
+- **X11 and Wayland both work.** On Wayland your desktop asks which screen to share when you start recording. Requires `xdg-desktop-portal` and PipeWire, which are default on Ubuntu 22.10+, Fedora 34+, Debian 13 and any recent GNOME, KDE or Sway install.
   - Check your session type: `echo $XDG_SESSION_TYPE`
   - If Wayland gives you trouble, force the X11 path: `DEMOTHAT_OZONE_PLATFORM=x11 ./DemoThat-*-linux-x64.AppImage`
-- **Cursor effects on Wayland** need a desktop that tracks the pointer separately — GNOME and KDE do, and everything works there. Where the desktop cannot (Sway and other wlroots-based sessions), the pointer is recorded into the video and cursor effects are unavailable; the recorder tells you which you are getting.
+- **Cursor effects on Wayland** need a desktop that tracks the pointer separately — GNOME and KDE do, and everything works there. Where the desktop cannot (Sway and other wlroots-based sessions), the pointer is recorded into the video and cursor effects are unavailable; DemoThat notices this once and goes straight to that path from then on.
   - Click effects need one-time read access to your mouse: see the note under Troubleshooting.
-- **Wayland screen recording needs a desktop compositor that can serve frames.** Software-rendered Wayland sessions often cannot share the screen at all — that is the desktop's doing, not DemoThat's. X11 recordings work on any of these machines.
+- **Wayland screen recording needs a desktop compositor that can serve frames.** Software-rendered Wayland sessions often cannot share the screen at all — that is the desktop's doing, not DemoThat's, and it affects every recorder. X11 recordings work on any of these machines.
 
 #### Installation Steps
 

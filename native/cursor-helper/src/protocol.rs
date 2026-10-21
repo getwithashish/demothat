@@ -38,14 +38,37 @@ pub enum Event {
         pid: u32,
     },
     /// A cursor sample. `x`/`y` are in the captured stream's pixels, which is the
-    /// same space the app records geometry in.
-    Move { timestamp: u64, x: f64, y: f64 },
+    /// same space the app records geometry in, and point at the cursor's hotspot —
+    /// the same thing the X11 tracker reports.
+    Move {
+        timestamp: u64,
+        x: f64,
+        y: f64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        cursor_image_key: Option<String>,
+    },
     Click {
         timestamp: u64,
         x: f64,
         y: f64,
         button: String,
         pressed: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        cursor_image_key: Option<String>,
+    },
+    /// The pointer's bitmap, sent once per distinct cursor.
+    ///
+    /// Positions alone can animate a cursor but cannot draw the one the user
+    /// actually has; this is what lets the editor show the desktop's own pointer
+    /// rather than a substitute. `rgba_base64` is RGBA bytes, row-major, which is
+    /// the shape the editor's bitmap loader takes.
+    CursorShape {
+        key: String,
+        width: u32,
+        height: u32,
+        hot_x: i32,
+        hot_y: i32,
+        rgba_base64: String,
     },
     /// Something the user should know about but which does not stop the capture.
     Warning { message: String },
@@ -65,6 +88,36 @@ impl Event {
         line.push('\n');
         line
     }
+}
+
+/// Base64, for the cursor bitmaps.
+///
+/// Hand-rolled rather than pulled in as a dependency: it is twenty lines, and the
+/// only thing it ever encodes is a 32x32 pointer.
+pub fn base64_encode(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+
+    for chunk in bytes.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = *chunk.get(1).unwrap_or(&0) as u32;
+        let b2 = *chunk.get(2).unwrap_or(&0) as u32;
+        let triple = (b0 << 16) | (b1 << 8) | b2;
+
+        out.push(ALPHABET[((triple >> 18) & 0x3f) as usize] as char);
+        out.push(ALPHABET[((triple >> 12) & 0x3f) as usize] as char);
+        out.push(if chunk.len() > 1 {
+            ALPHABET[((triple >> 6) & 0x3f) as usize] as char
+        } else {
+            '='
+        });
+        out.push(if chunk.len() > 2 {
+            ALPHABET[(triple & 0x3f) as usize] as char
+        } else {
+            '='
+        });
+    }
+    out
 }
 
 /// Writes events to stdout, one flushed line at a time: the app reads this
@@ -124,6 +177,7 @@ mod tests {
                 timestamp: 1_700_000_000_000,
                 x: 10.5,
                 y: 20.25,
+                cursor_image_key: None,
             },
             Event::Click {
                 timestamp: 1_700_000_000_001,
@@ -131,6 +185,15 @@ mod tests {
                 y: 20.25,
                 button: "left".into(),
                 pressed: true,
+                cursor_image_key: Some("portal-3".into()),
+            },
+            Event::CursorShape {
+                key: "portal-3".into(),
+                width: 2,
+                height: 2,
+                hot_x: 1,
+                hot_y: 1,
+                rgba_base64: base64_encode(&[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]),
             },
             Event::Warning {
                 message: "clicks unavailable".into(),
@@ -162,6 +225,7 @@ mod tests {
             timestamp: 7,
             x: 1.0,
             y: 2.0,
+            cursor_image_key: None,
         }
         .to_line();
         let value: serde_json::Value = serde_json::from_str(move_line.trim_end()).unwrap();
@@ -202,6 +266,62 @@ mod tests {
         }
         let text = String::from_utf8(buffer).unwrap();
         assert_eq!(text.lines().count(), 2);
+    }
+
+    #[test]
+    fn base64_matches_the_standard_encoding() {
+        // The vectors from RFC 4648, including the padding cases.
+        assert_eq!(base64_encode(b""), "");
+        assert_eq!(base64_encode(b"f"), "Zg==");
+        assert_eq!(base64_encode(b"fo"), "Zm8=");
+        assert_eq!(base64_encode(b"foo"), "Zm9v");
+        assert_eq!(base64_encode(b"foob"), "Zm9vYg==");
+        assert_eq!(base64_encode(b"fooba"), "Zm9vYmE=");
+        assert_eq!(base64_encode(b"foobar"), "Zm9vYmFy");
+    }
+
+    #[test]
+    fn a_cursor_shape_carries_everything_the_editor_draws_with() {
+        let line = Event::CursorShape {
+            key: "portal-7".into(),
+            width: 32,
+            height: 24,
+            hot_x: 4,
+            hot_y: 5,
+            rgba_base64: base64_encode(&[1, 2, 3, 4]),
+        }
+        .to_line();
+        let value: serde_json::Value = serde_json::from_str(line.trim_end()).unwrap();
+        assert_eq!(value["type"], "cursor_shape");
+        assert_eq!(value["key"], "portal-7");
+        assert_eq!(value["width"], 32);
+        assert_eq!(value["height"], 24);
+        assert_eq!(value["hot_x"], 4);
+        assert_eq!(value["hot_y"], 5);
+        assert_eq!(value["rgba_base64"], "AQIDBA==");
+    }
+
+    #[test]
+    fn samples_without_a_bitmap_omit_the_key_rather_than_nulling_it() {
+        // The app treats an absent key as "no bitmap yet"; a null would travel
+        // through its parser as a value it has to special-case.
+        let line = Event::Move {
+            timestamp: 1,
+            x: 1.0,
+            y: 2.0,
+            cursor_image_key: None,
+        }
+        .to_line();
+        assert!(!line.contains("cursor_image_key"));
+
+        let line = Event::Move {
+            timestamp: 1,
+            x: 1.0,
+            y: 2.0,
+            cursor_image_key: Some("portal-1".into()),
+        }
+        .to_line();
+        assert!(line.contains("\"cursor_image_key\":\"portal-1\""));
     }
 
     #[test]

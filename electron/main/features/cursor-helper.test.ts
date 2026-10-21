@@ -10,12 +10,14 @@ import {
   helperBinaryPath,
   helperConfig,
   type CursorSample,
+  type CursorShape,
   type HelperStartInfo,
 } from './cursor-helper'
 
 function collect() {
   const starts: HelperStartInfo[] = []
   const samples: CursorSample[] = []
+  const shapes: CursorShape[] = []
   const warnings: string[] = []
   const errors: string[] = []
   const ends: Array<[number, number]> = []
@@ -23,12 +25,13 @@ function collect() {
   const parser = createEventParser({
     onStart: (info) => starts.push(info),
     onSample: (sample) => samples.push(sample),
+    onShape: (shape) => shapes.push(shape),
     onWarning: (message) => warnings.push(message),
     onError: (message) => errors.push(message),
     onEnd: (frames, dropped) => ends.push([frames, dropped]),
   })
 
-  return { parser, starts, samples, warnings, errors, ends }
+  return { parser, starts, samples, shapes, warnings, errors, ends }
 }
 
 describe('helperConfig', () => {
@@ -92,6 +95,66 @@ describe('the event stream', () => {
     const { parser, samples } = collect()
     parser.push('{"type":"click","timestamp":9,"x":5,"y":6,"button":"left","pressed":true}\n')
     expect(samples[0]).toMatchObject({ type: 'click', button: 'left', pressed: true })
+  })
+
+  it('reads the pointer bitmap, with the hotspot the editor draws from', () => {
+    // Four RGBA pixels — red, green, blue, half-transparent white — which is the
+    // order `ImageData` takes and therefore the order the helper sends.
+    const rgba = Buffer.from([255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 128])
+    const { parser, shapes } = collect()
+    parser.push(
+      JSON.stringify({
+        type: 'cursor_shape',
+        key: 'portal-7',
+        width: 2,
+        height: 2,
+        hot_x: 1,
+        hot_y: 0,
+        rgba_base64: rgba.toString('base64'),
+      }) + '\n',
+    )
+
+    expect(shapes).toHaveLength(1)
+    expect(shapes[0]).toMatchObject({ key: 'portal-7', width: 2, height: 2, xhot: 1, yhot: 0 })
+    expect(shapes[0].image).toEqual([...rgba])
+  })
+
+  it('refuses a bitmap it cannot turn into an image', () => {
+    // A bitmap of the wrong length would build an ImageData the editor cannot draw,
+    // and the visible result is a recording with no cursor at all.
+    const fourBytes = Buffer.from([1, 2, 3, 4]).toString('base64')
+    const { parser, shapes } = collect()
+    const shape = (overrides: Record<string, unknown>) =>
+      JSON.stringify({
+        type: 'cursor_shape',
+        key: 'k',
+        width: 1,
+        height: 1,
+        hot_x: 0,
+        hot_y: 0,
+        rgba_base64: fourBytes,
+        ...overrides,
+      }) + '\n'
+
+    parser.push(shape({ width: 2, height: 2 })) // 16 bytes promised, 4 sent
+    parser.push(shape({ width: 0 }))
+    parser.push(shape({ width: 4096, height: 4096 }))
+    parser.push(shape({ key: '' }))
+    parser.push(shape({ rgba_base64: undefined }))
+    parser.push(shape({ width: 'two' }))
+
+    expect(shapes).toHaveLength(0)
+  })
+
+  it('carries the bitmap key on the samples that refer to it', () => {
+    const { parser, samples } = collect()
+    parser.push('{"type":"move","timestamp":5,"x":10,"y":20,"cursor_image_key":"portal-7"}\n')
+    parser.push('{"type":"move","timestamp":6,"x":11,"y":21}\n')
+
+    expect(samples[0].cursorImageKey).toBe('portal-7')
+    // Absent stays absent rather than becoming an empty key: the editor keeps
+    // drawing the last shape it was handed.
+    expect(samples[1].cursorImageKey).toBeUndefined()
   })
 
   it('reports warnings, errors and the closing tally separately', () => {

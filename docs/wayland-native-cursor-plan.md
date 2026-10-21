@@ -3,14 +3,17 @@
 Status: implemented and wired in. `native/cursor-helper/` is built by
 `npm run build:helper`, staged into `build/cursor-helper/`, shipped as an
 `extraResources` entry in the same single AppImage, and started by the recorder on
-Wayland (see `electron/main/features/cursor-helper.ts`). When it cannot deliver —
-not bundled, portal without cursor metadata, missing permissions — the app falls
-back to the browser capture path on its own, so every machine still records.
+Wayland (see `electron/main/features/cursor-helper.ts`). It reports the pointer's
+position, its clicks and its bitmap, so the editor draws the user's own cursor.
+When it cannot deliver — not bundled, portal without cursor metadata, missing
+permissions — the app falls back to the browser capture path on its own, so every
+machine still records. A desktop that answers "embedded cursor only" is remembered
+by name (`cursor-helper-preference.ts`), so the answer costs one extra screen-share
+dialog once rather than on every recording.
 
-What remains: real-desktop verification (only a machine with a GPU-backed
-compositor can prove capture end to end), and the cursor _shape/bitmap_: positions
-and clicks come back, but the portal's cursor bitmap is not extracted yet, so the
-editor draws its own cursor rather than the desktop's.
+What remains: real-desktop verification. Only a machine whose compositor can serve
+frames can prove capture end to end — the headless session used here cannot, and
+neither can any other capture client on it, including the browser's.
 
 ## What is missing, and why
 

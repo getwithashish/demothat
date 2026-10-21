@@ -35,6 +35,25 @@ use std::sync::{Arc, Mutex};
 /// does not emit for us.
 const SPA_META_CURSOR: u32 = 5;
 
+// The 32-bit pixel formats a cursor bitmap can arrive in, as their ordinal in
+// `enum spa_video_format`. Each name is the memory byte order, so this is a plain
+// lookup and not a question of endianness: RGBA really does start with red and ARGB
+// really does start with alpha. Anything not listed here (planar formats, `ENCODED`)
+// is not something a cursor can be drawn from, so it is reported as "no bitmap"
+// rather than converted into nonsense.
+const SPA_VIDEO_FORMAT_RGBX: u32 = 7;
+const SPA_VIDEO_FORMAT_BGRX: u32 = 8;
+const SPA_VIDEO_FORMAT_XRGB: u32 = 9;
+const SPA_VIDEO_FORMAT_XBGR: u32 = 10;
+const SPA_VIDEO_FORMAT_RGBA: u32 = 11;
+const SPA_VIDEO_FORMAT_BGRA: u32 = 12;
+const SPA_VIDEO_FORMAT_ARGB: u32 = 13;
+const SPA_VIDEO_FORMAT_ABGR: u32 = 14;
+
+/// A cursor bitmap this big is not a cursor. Guards against a malformed or hostile
+/// buffer making us allocate hundreds of megabytes.
+const MAX_BITMAP_DIMENSION: u32 = 512;
+
 #[repr(C)]
 #[derive(Clone, Copy)]
 struct SpaPoint {
@@ -61,6 +80,40 @@ struct SpaMetaCursor {
     position: SpaPoint,
     hotspot: SpaPoint,
     bitmap_offset: u32,
+}
+
+/// `struct spa_meta_bitmap`, which sits inside the cursor meta's own memory at
+/// `bitmap_offset`. `struct spa_rectangle size` is two `uint32_t`s, spelled out here
+/// so the layout is visible.
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct SpaMetaBitmap {
+    format: u32,
+    width: u32,
+    height: u32,
+    stride: i32,
+    offset: u32,
+}
+
+/// The pointer's bitmap as the portal described it.
+pub struct CursorBitmap {
+    pub format: u32,
+    pub width: u32,
+    pub height: u32,
+    pub stride: i32,
+    pub bytes: Vec<u8>,
+}
+
+/// One buffer's cursor meta: where the pointer is, and (when it changed) its shape.
+pub struct CursorMeta {
+    /// The pointer tip: bitmap top-left plus the hotspot inside it. This is the same
+    /// point the X11 tracker reports, so the editor's drawing maths is identical.
+    pub x: f64,
+    pub y: f64,
+    pub id: u32,
+    pub hot_x: i32,
+    pub hot_y: i32,
+    pub bitmap: Option<CursorBitmap>,
 }
 
 /// Cursor state as the last frame reported it, plus the clicks waiting to be
@@ -94,6 +147,12 @@ struct UserData {
     main_loop: pw::main_loop::MainLoop,
     cursor_is_metadata: bool,
     clicks_available: bool,
+    /// The bitmap the current samples refer to, sent to the app once. `None` until
+    /// the compositor hands one over.
+    cursor_image_key: Option<String>,
+    /// The cursor id whose bitmap we last announced, so a shape goes out once per
+    /// distinct cursor rather than once per frame.
+    last_cursor_id: u32,
     /// What the compositor negotiated, which is what FFmpeg has to be told; the
     /// rate we asked for is only a hint.
     fps: u32,
@@ -114,6 +173,7 @@ impl UserData {
                 timestamp: now_ms(),
                 x: position.0,
                 y: position.1,
+                cursor_image_key: self.cursor_image_key.clone(),
             });
         }
 
@@ -126,6 +186,7 @@ impl UserData {
                     y: position.1,
                     button,
                     pressed,
+                    cursor_image_key: self.cursor_image_key.clone(),
                 }),
                 Err(TryRecvError::Empty) | Err(TryRecvError::Disconnected) => break,
             }
@@ -133,12 +194,70 @@ impl UserData {
     }
 }
 
-/// Reads the pointer position out of a raw `spa_buffer`.
+/// Converts a cursor bitmap to the RGBA bytes the editor draws with.
+///
+/// `spa_video_format` names the memory byte order, so this is a straight swizzle
+/// table rather than anything clever. Alpha is forced opaque for the `x` formats,
+/// which carry no alpha at all. Rows are followed by `stride` (compositors pad
+/// them); a stride of 0 is read as tightly packed, and one too small to hold a row
+/// is rejected rather than read past the end of the bitmap.
+fn to_rgba(format: u32, bytes: &[u8], width: u32, height: u32, stride: i32) -> Option<Vec<u8>> {
+    if width == 0 || height == 0 || width > MAX_BITMAP_DIMENSION || height > MAX_BITMAP_DIMENSION {
+        return None;
+    }
+    let row_bytes = (width as usize).checked_mul(4)?;
+    let stride = if stride <= 0 {
+        row_bytes
+    } else {
+        let stride = stride as usize;
+        if stride < row_bytes {
+            return None;
+        }
+        stride
+    };
+    let needed = row_bytes + stride * (height as usize - 1);
+    if bytes.len() < needed {
+        return None;
+    }
+
+    // (red, green, blue, alpha) byte positions, relative to each pixel. Alpha is -1
+    // for the `x` formats, which do not carry one.
+    let (r, g, b, a): (usize, usize, usize, isize) = match format {
+        SPA_VIDEO_FORMAT_RGBA => (0, 1, 2, 3),
+        SPA_VIDEO_FORMAT_BGRA => (2, 1, 0, 3),
+        SPA_VIDEO_FORMAT_ARGB => (1, 2, 3, 0),
+        SPA_VIDEO_FORMAT_ABGR => (3, 2, 1, 0),
+        SPA_VIDEO_FORMAT_RGBX => (0, 1, 2, -1),
+        SPA_VIDEO_FORMAT_BGRX => (2, 1, 0, -1),
+        SPA_VIDEO_FORMAT_XRGB => (1, 2, 3, -1),
+        SPA_VIDEO_FORMAT_XBGR => (3, 2, 1, -1),
+        _ => return None,
+    };
+
+    let mut out = vec![0u8; row_bytes * height as usize];
+    for row in 0..height as usize {
+        let src_row = &bytes[row * stride..row * stride + row_bytes];
+        let dst_row = &mut out[row * row_bytes..(row + 1) * row_bytes];
+        for (pixel, chunk) in src_row.chunks_exact(4).enumerate() {
+            let out = &mut dst_row[pixel * 4..pixel * 4 + 4];
+            out[0] = chunk[r];
+            out[1] = chunk[g];
+            out[2] = chunk[b];
+            out[3] = if a < 0 { 255 } else { chunk[a as usize] };
+        }
+    }
+    Some(out)
+}
+
+/// Reads the pointer out of a raw `spa_buffer`.
 ///
 /// The compositor puts a `spa_meta_cursor` in the buffer's meta region. Its
 /// `position` is the cursor bitmap's top-left and `hotspot` the offset of the
-/// actual pointer tip inside it, so the pointer sits at their sum.
-unsafe fn read_cursor_meta(buffer: *mut spa::sys::spa_buffer) -> Option<(f64, f64)> {
+/// actual pointer tip inside it, so the pointer sits at their sum. When the cursor
+/// meta points at a `spa_meta_bitmap` (any offset at or past the bitmap struct
+/// itself), the bitmap is copied out too — that is what lets the recording show the
+/// user's real pointer.
+unsafe fn read_cursor_meta(buffer: *mut spa::sys::spa_buffer) -> Option<CursorMeta> {
     if buffer.is_null() {
         return None;
     }
@@ -161,12 +280,77 @@ unsafe fn read_cursor_meta(buffer: *mut spa::sys::spa_buffer) -> Option<(f64, f6
             // so report nothing and let the caller keep its previous sample.
             return None;
         }
-        return Some((
-            f64::from((*cursor).position.x + (*cursor).hotspot.x),
-            f64::from((*cursor).position.y + (*cursor).hotspot.y),
-        ));
+        let hot_x = (*cursor).hotspot.x;
+        let hot_y = (*cursor).hotspot.y;
+        return Some(CursorMeta {
+            x: f64::from((*cursor).position.x + hot_x),
+            y: f64::from((*cursor).position.y + hot_y),
+            id: (*cursor).id,
+            hot_x,
+            hot_y,
+            bitmap: unsafe { read_cursor_bitmap(meta, cursor) },
+        });
     }
     None
+}
+
+/// Copies the bitmap the cursor meta points at, if it points at one.
+///
+/// The bitmap struct lives inside the same meta region, at `bitmap_offset`; the
+/// pixels live inside the bitmap struct, at its own `offset`. An offset of 0 (or one
+/// that does not clear the struct) means the compositor is telling us the image is
+/// unchanged, so there is nothing to copy.
+unsafe fn read_cursor_bitmap(
+    meta: *const SpaMeta,
+    cursor: *const SpaMetaCursor,
+) -> Option<CursorBitmap> {
+    let bitmap_offset = (*cursor).bitmap_offset as usize;
+    let meta_size = (*meta).size as usize;
+    if bitmap_offset < std::mem::size_of::<SpaMetaBitmap>() || bitmap_offset >= meta_size {
+        return None;
+    }
+
+    let base = (*meta).data as *const u8;
+    let bitmap = unsafe { base.add(bitmap_offset) } as *const SpaMetaBitmap;
+    let width = (*bitmap).width;
+    let height = (*bitmap).height;
+    let stride = (*bitmap).stride;
+    let pixel_offset = (*bitmap).offset as usize;
+
+    if width == 0 || height == 0 || width > MAX_BITMAP_DIMENSION || height > MAX_BITMAP_DIMENSION {
+        return None;
+    }
+    // The pixels start at the bitmap struct's own offset from the bitmap base, and
+    // must stay inside the meta region we were handed.
+    let data_start = bitmap_offset.checked_add(pixel_offset)?;
+    if pixel_offset < std::mem::size_of::<SpaMetaBitmap>() || data_start >= meta_size {
+        return None;
+    }
+    let row_bytes = (width as usize).checked_mul(4)?;
+    let stride_bytes = if stride <= 0 {
+        row_bytes
+    } else {
+        stride as usize
+    };
+    if stride_bytes < row_bytes {
+        return None;
+    }
+    let needed = row_bytes.checked_add(stride_bytes.checked_mul(height as usize - 1)?)?;
+    if data_start.checked_add(needed)? > meta_size {
+        return None;
+    }
+
+    let mut bytes = vec![0u8; needed];
+    unsafe {
+        std::ptr::copy_nonoverlapping(base.add(data_start), bytes.as_mut_ptr(), needed);
+    }
+    Some(CursorBitmap {
+        format: (*bitmap).format,
+        width,
+        height,
+        stride,
+        bytes,
+    })
 }
 
 /// The frame rate to report to FFmpeg: what the compositor negotiated, falling back
@@ -253,6 +437,8 @@ pub fn run(
         stop: stop.clone(),
         main_loop: mainloop.clone(),
         cursor_is_metadata,
+        cursor_image_key: None,
+        last_cursor_id: 0,
         clicks_available,
         fps: 0,
         requested_fps,
@@ -314,11 +500,44 @@ pub fn run(
             }
 
             let spa_buffer = unsafe { (*raw).buffer };
-            if let Some((x, y)) = unsafe { read_cursor_meta(spa_buffer) } {
-                let mut cursor = data.cursor.lock().unwrap();
-                cursor.x = x;
-                cursor.y = y;
-                cursor.have_position = true;
+            if let Some(meta) = unsafe { read_cursor_meta(spa_buffer) } {
+                {
+                    let mut cursor = data.cursor.lock().unwrap();
+                    cursor.x = meta.x;
+                    cursor.y = meta.y;
+                    cursor.have_position = true;
+                }
+                // A new cursor's bitmap is sent once, and every sample that follows
+                // refers to it by key. Sending the pixels with each sample would be
+                // kilobytes per frame for something that changes when the pointer
+                // changes shape — which is to say, rarely.
+                if let Some(bitmap) = meta.bitmap {
+                    let is_new_cursor =
+                        data.cursor_image_key.is_none() || meta.id != data.last_cursor_id;
+                    if is_new_cursor {
+                        if let Some(rgba) = to_rgba(
+                            bitmap.format,
+                            &bitmap.bytes,
+                            bitmap.width,
+                            bitmap.height,
+                            bitmap.stride,
+                        ) {
+                            let key = format!("portal-{}", meta.id);
+                            data.events.emit(Event::CursorShape {
+                                key: key.clone(),
+                                width: bitmap.width,
+                                height: bitmap.height,
+                                hot_x: meta.hot_x,
+                                hot_y: meta.hot_y,
+                                rgba_base64: crate::protocol::base64_encode(&rgba),
+                            });
+                            data.cursor_image_key = Some(key);
+                        }
+                        // The id is remembered even when the pixels are unusable, so
+                        // an unreadable bitmap is not retried sixty times a second.
+                        data.last_cursor_id = meta.id;
+                    }
+                }
             } else {
                 data.frames_without_cursor += 1;
                 // A compositor that promised cursor metadata and never sends any is
@@ -542,6 +761,179 @@ mod tests {
         assert_eq!(ffmpeg_format_name(VideoFormat::BGRx), "bgr0");
         assert_eq!(ffmpeg_format_name(VideoFormat::RGBA), "rgba");
         assert_eq!(ffmpeg_format_name(VideoFormat::RGBx), "rgb0");
+    }
+
+    #[test]
+    fn a_bitmap_is_swizzled_to_the_byte_order_the_editor_draws_in() {
+        // Every one of the eight 32-bit formats, by its actual byte order: the SPA
+        // names describe memory, so ARGB begins with alpha rather than needing any
+        // endianness reasoning. Getting this table wrong is invisible on a screenshot
+        // and obvious to a user (reds and blues swapped), which is why it is pinned.
+        assert_eq!(
+            to_rgba(SPA_VIDEO_FORMAT_RGBA, &[0x33, 0x22, 0x11, 0x80], 1, 1, 4).unwrap(),
+            vec![0x33, 0x22, 0x11, 0x80]
+        );
+        assert_eq!(
+            to_rgba(SPA_VIDEO_FORMAT_BGRA, &[0x11, 0x22, 0x33, 0xff], 1, 1, 4).unwrap(),
+            vec![0x33, 0x22, 0x11, 0xff]
+        );
+        assert_eq!(
+            to_rgba(SPA_VIDEO_FORMAT_ARGB, &[0xff, 0x33, 0x22, 0x11], 1, 1, 4).unwrap(),
+            vec![0x33, 0x22, 0x11, 0xff]
+        );
+        assert_eq!(
+            to_rgba(SPA_VIDEO_FORMAT_ABGR, &[0x80, 0x11, 0x22, 0x33], 1, 1, 4).unwrap(),
+            vec![0x33, 0x22, 0x11, 0x80]
+        );
+        // The x-formats carry no alpha, and must come out opaque rather than
+        // transparent: a fully transparent cursor is an invisible one.
+        assert_eq!(
+            to_rgba(SPA_VIDEO_FORMAT_RGBX, &[0x33, 0x22, 0x11, 0x00], 1, 1, 4).unwrap(),
+            vec![0x33, 0x22, 0x11, 0xff]
+        );
+        assert_eq!(
+            to_rgba(SPA_VIDEO_FORMAT_BGRX, &[0x11, 0x22, 0x33, 0x00], 1, 1, 4).unwrap(),
+            vec![0x33, 0x22, 0x11, 0xff]
+        );
+        assert_eq!(
+            to_rgba(SPA_VIDEO_FORMAT_XRGB, &[0x00, 0x33, 0x22, 0x11], 1, 1, 4).unwrap(),
+            vec![0x33, 0x22, 0x11, 0xff]
+        );
+        assert_eq!(
+            to_rgba(SPA_VIDEO_FORMAT_XBGR, &[0x00, 0x11, 0x22, 0x33], 1, 1, 4).unwrap(),
+            vec![0x33, 0x22, 0x11, 0xff]
+        );
+    }
+
+    #[test]
+    fn bitmap_rows_are_read_with_their_stride_and_bad_input_is_refused() {
+        // Two rows of one pixel, with two bytes of padding between them.
+        let padded = [1u8, 2, 3, 4, 0xff, 0xff, 5, 6, 7, 8];
+        assert_eq!(
+            to_rgba(SPA_VIDEO_FORMAT_RGBA, &padded, 1, 2, 6).unwrap(),
+            vec![1, 2, 3, 4, 5, 6, 7, 8]
+        );
+        // A stride too small to hold a row, a buffer that stops short, a size that
+        // is not a cursor, and a format that is not a bitmap: refused rather than
+        // guessed at, because the alternative is reading past the end.
+        assert!(to_rgba(SPA_VIDEO_FORMAT_RGBA, &padded, 2, 1, 4).is_none());
+        assert!(to_rgba(SPA_VIDEO_FORMAT_RGBA, &[1, 2, 3], 1, 1, 4).is_none());
+        assert!(to_rgba(
+            SPA_VIDEO_FORMAT_RGBA,
+            &[0; 16],
+            MAX_BITMAP_DIMENSION + 1,
+            1,
+            0
+        )
+        .is_none());
+        assert!(to_rgba(0, &padded, 1, 2, 6).is_none());
+        // A zero stride means tightly packed, which is what some compositors send.
+        assert_eq!(
+            to_rgba(SPA_VIDEO_FORMAT_RGBA, &[9, 8, 7, 6], 1, 1, 0).unwrap(),
+            vec![9, 8, 7, 6]
+        );
+    }
+
+    /// One meta region, aligned, so the offsets can be laid out the way a
+    /// compositor lays them out.
+    #[repr(align(8))]
+    struct Region([u8; 256]);
+
+    /// Builds a buffer whose cursor meta sits at `bitmap_offset`, with a bitmap at
+    /// that offset when one is asked for. Returns the buffer plus the pieces that
+    /// have to stay alive for it to be readable.
+    fn buffer_with_cursor_meta(
+        bitmap_offset: u32,
+        with_bitmap: bool,
+    ) -> (Box<Region>, Box<[SpaMeta; 1]>, spa::sys::spa_buffer) {
+        const META_SIZE: usize = 128;
+        const BITMAP_OFFSET: usize = 32;
+
+        let mut region = Box::new(Region([0u8; 256]));
+        let base = region.0.as_mut_ptr();
+        unsafe {
+            let cursor = base as *mut SpaMetaCursor;
+            (*cursor).id = 7;
+            (*cursor).position = SpaPoint { x: 100, y: 200 };
+            (*cursor).hotspot = SpaPoint { x: 3, y: 4 };
+            (*cursor).bitmap_offset = bitmap_offset;
+
+            if with_bitmap && bitmap_offset as usize == BITMAP_OFFSET {
+                let bitmap = base.add(BITMAP_OFFSET) as *mut SpaMetaBitmap;
+                (*bitmap).format = SPA_VIDEO_FORMAT_BGRA;
+                (*bitmap).width = 2;
+                (*bitmap).height = 1;
+                (*bitmap).stride = 8;
+                (*bitmap).offset = std::mem::size_of::<SpaMetaBitmap>() as u32;
+                let pixels = base.add(BITMAP_OFFSET + std::mem::size_of::<SpaMetaBitmap>());
+                std::ptr::copy_nonoverlapping(
+                    [0x11u8, 0x22, 0x33, 0xff, 0x44, 0x55, 0x66, 0x80].as_ptr(),
+                    pixels,
+                    8,
+                );
+            }
+        }
+
+        let metas = Box::new([SpaMeta {
+            type_: SPA_META_CURSOR,
+            size: META_SIZE as u32,
+            data: base as *mut std::ffi::c_void,
+        }]);
+        let mut buffer: spa::sys::spa_buffer = unsafe { std::mem::zeroed() };
+        buffer.n_metas = 1;
+        buffer.metas = metas.as_ptr() as *mut _;
+        (region, metas, buffer)
+    }
+
+    #[test]
+    fn the_bitmap_is_found_at_the_offsets_the_portal_uses() {
+        // The offsets in the SPA cursor ABI are the part most likely to be silently
+        // wrong, so they are pinned here rather than by whichever desktop happens to
+        // work first.
+        let (region, metas, mut buffer) = buffer_with_cursor_meta(32, true);
+        let meta = unsafe { read_cursor_meta(&mut buffer) }.expect("a cursor meta");
+        assert_eq!(
+            (meta.x, meta.y),
+            (103.0, 204.0),
+            "position + hotspot is the tip"
+        );
+        assert_eq!(meta.id, 7);
+        assert_eq!((meta.hot_x, meta.hot_y), (3, 4));
+
+        let bitmap = meta.bitmap.expect("the bitmap");
+        assert_eq!((bitmap.width, bitmap.height), (2, 1));
+        assert_eq!(bitmap.format, SPA_VIDEO_FORMAT_BGRA);
+        assert_eq!(
+            to_rgba(
+                bitmap.format,
+                &bitmap.bytes,
+                bitmap.width,
+                bitmap.height,
+                bitmap.stride
+            )
+            .unwrap(),
+            vec![0x33, 0x22, 0x11, 0xff, 0x66, 0x55, 0x44, 0x80]
+        );
+        drop((region, metas));
+    }
+
+    #[test]
+    fn a_cursor_meta_without_a_bitmap_reports_the_position_alone() {
+        // `bitmap_offset` 0 is how a compositor says the image has not changed; the
+        // position is still good, and the samples keep referring to the last shape.
+        let (_region, _metas, mut buffer) = buffer_with_cursor_meta(0, false);
+        let meta = unsafe { read_cursor_meta(&mut buffer) }.expect("a cursor meta");
+        assert!(meta.bitmap.is_none());
+        assert_eq!((meta.x, meta.y), (103.0, 204.0));
+    }
+
+    #[test]
+    fn a_bitmap_offset_that_points_nowhere_is_ignored() {
+        // Past the end of the meta region: refuse rather than read another buffer's
+        // memory as a pointer image.
+        let (_region, _metas, mut buffer) = buffer_with_cursor_meta(4096, false);
+        let meta = unsafe { read_cursor_meta(&mut buffer) }.expect("a cursor meta");
+        assert!(meta.bitmap.is_none());
     }
 
     #[test]

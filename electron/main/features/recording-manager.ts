@@ -26,6 +26,7 @@ import { createEditorWindow, cleanupEditorFiles } from '../windows/editor-window
 import { createSavingWindow, createSelectionWindow } from '../windows/temporary-windows'
 import type { RecordingSession, RecordingGeometry } from '../state'
 import { isCursorHelperAvailable, startCursorHelper, stopCursorHelper, type CursorSample } from './cursor-helper'
+import { isEmbeddedOnlyDesktop, rememberEmbeddedOnlyDesktop } from './cursor-helper-preference'
 import { SystemAudioWriter } from './system-audio-writer'
 import { ScreenVideoWriter } from './screen-video-writer'
 import { buildMuxArgs, buildMacMuxArgs } from './build-mux-args'
@@ -258,8 +259,15 @@ function handleHelperSample(sample: CursorSample, geometry: RecordingGeometry): 
           type: 'click',
           button: sample.button,
           pressed: sample.pressed,
+          cursorImageKey: sample.cursorImageKey,
         }
-      : { timestamp: sample.timestamp, x: sample.x, y: sample.y, type: 'move' },
+      : {
+          timestamp: sample.timestamp,
+          x: sample.x,
+          y: sample.y,
+          type: 'move',
+          cursorImageKey: sample.cursorImageKey,
+        },
     geometry,
   )
 }
@@ -764,10 +772,30 @@ export async function startRecording(options: any) {
   // recording: if it cannot capture, the caller is told and asks again for the
   // renderer's browser capture, which is the path that was already working.
   let screenFilter: string | undefined
-  if (requiresPortalCapture() && options.screenCapture !== 'renderer' && isCursorHelperAvailable()) {
+  const helperAllowed =
+    requiresPortalCapture() &&
+    options.screenCapture !== 'renderer' &&
+    isCursorHelperAvailable() &&
+    // Asked and answered on a previous recording: this desktop records the pointer
+    // into the pixels, so trying again would only cost the user a second dialog.
+    !isEmbeddedOnlyDesktop()
+  if (helperAllowed) {
     const session = await startCursorHelper({
       fps: 30,
       onSample: (sample) => handleHelperSample(sample, recordingGeometry),
+      onShape: (shape) => {
+        // The pointer's bitmap, kept in the same map the X11 tracker fills: the
+        // metadata writer turns it into `cursorImages`, and the editor draws the
+        // user's real cursor from it rather than a stand-in.
+        appState.runtimeCursorImageMap.set(shape.key, {
+          width: shape.width,
+          height: shape.height,
+          xhot: shape.xhot,
+          yhot: shape.yhot,
+          image: shape.image,
+        })
+      },
+      onEmbeddedOnly: () => rememberEmbeddedOnlyDesktop(),
       onWarning: (message) => log.warn(`[RecordingManager] Cursor helper: ${message}`),
     })
     if (!session) {

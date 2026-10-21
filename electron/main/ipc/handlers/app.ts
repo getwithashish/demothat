@@ -2,6 +2,7 @@ import { app, BrowserWindow, IpcMainEvent, IpcMainInvokeEvent } from 'electron'
 import type { SessionSummary } from '../../../../shared/session'
 import { usesRendererScreenCapture } from '../../lib/capture-backend'
 import { isCursorHelperAvailable } from '../../features/cursor-helper'
+import { isEmbeddedOnlyDesktop } from '../../features/cursor-helper-preference'
 import { detectSession } from '../../../../shared/session'
 import { appState } from '../../state'
 import { createRecorderWindow } from '../../windows/recorder-window'
@@ -24,7 +25,10 @@ export function handleGetPlatform() {
  */
 export function handleGetSessionInfo(): SessionSummary {
   const session = detectSession()
-  const helperAvailable = isCursorHelperAvailable()
+  // Both have to hold: the helper has to exist, and this desktop has to be one that
+  // has not already told us it cannot report the pointer. Otherwise the renderer
+  // captures, which is what would happen anyway — one dialog instead of two.
+  const helperAvailable = isCursorHelperAvailable() && !isEmbeddedOnlyDesktop()
   return {
     platform: process.platform,
     wayland: session.wayland,

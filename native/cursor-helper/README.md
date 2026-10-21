@@ -81,9 +81,10 @@ and the pointer is in the video instead.
 
 ## Status
 
-- Built and tested: 19 unit tests (protocol framing, the SPA cursor ABI, the frame
-  rate reported to FFmpeg, evdev device classification, the cursor-mode retry
-  decision), plus a clean `cargo build --release`.
+- Built and tested: 27 unit tests (protocol framing and base64, the SPA cursor ABI
+  including the bitmap offsets, the pixel-format swizzle, the frame rate reported to
+  FFmpeg, evdev device classification, the cursor-mode retry decision), plus a clean
+  `cargo build --release`.
 - Exercised against a real portal in a headless session: negotiation runs, the
   metadata rejection is detected and retried with the embedded cursor, and failures
   are reported as one NDJSON `error` line with exit code 2 rather than a crash.
@@ -91,6 +92,10 @@ and the pointer is in the video instead.
   bundled FFmpeg; if it cannot deliver, the app falls back to the browser capture
   path by itself. It ships as an `extraResources` entry, so a Linux release is still
   a single AppImage — build it with `npm run build:helper` before packaging.
-- **Not yet verified on a real desktop** (that needs a GPU-backed compositor), and
-  the cursor _bitmap_ is not extracted, so the editor draws its own cursor rather
-  than the desktop's.
+- **The cursor bitmap is extracted.** Each new pointer image is converted to RGBA and
+  sent once, keyed by the cursor id; samples then refer to it by key, and the editor
+  draws the user's own pointer instead of a stand-in. A desktop whose portal refuses
+  metadata cursor mode is remembered, so it is not asked twice.
+- **Not yet verified on a real desktop.** That needs a compositor which can actually
+  serve frames — the headless session here (wlroots with the pixman software
+  renderer, no `/dev/dri`) cannot, for any capture client, the browser's included.

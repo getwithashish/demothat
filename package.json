@@ -24,17 +24,17 @@
     "clean": "rimraf dist dist-electron",
     "build:helper": "bash scripts/build-cursor-helper.sh",
     "build": "npm run clean && tsc && vite build",
-    "dist": "tsc && npm run build && electron-builder",
-    "dist:appimage": "tsc && npm run build && electron-builder build -l AppImage --publish never",
+    "dist": "npm run build:helper && tsc && npm run build && electron-builder",
+    "dist:appimage": "npm run build:helper && tsc && npm run build && electron-builder build -l AppImage --publish never",
     "dist:flatpak": "tsc && npm run build && electron-builder build -l flatpak --publish never",
-    "dist:deb": "tsc && npm run build && electron-builder build -l deb --publish never",
-    "dist:rpm": "tsc && npm run build && electron-builder build -l rpm --publish never",
-    "dist:zip": "tsc && npm run build && electron-builder build -l zip --publish never",
-    "dist:linux": "tsc && npm run build && electron-builder --linux --publish never",
+    "dist:deb": "npm run build:helper && tsc && npm run build && electron-builder build -l deb --publish never",
+    "dist:rpm": "npm run build:helper && tsc && npm run build && electron-builder build -l rpm --publish never",
+    "dist:zip": "npm run build:helper && tsc && npm run build && electron-builder build -l zip --publish never",
+    "dist:linux": "npm run build:helper && tsc && npm run build && electron-builder --linux --publish never",
     "dist:win": "tsc && npm run build && electron-builder --win --publish never",
     "dist:mac": "tsc && npm run build && electron-builder --mac --universal --publish never",
     "dist:mac-arm64": "tsc && npm run build && electron-builder --mac --arm64 --publish never",
-    "publish-linux-app": "tsc && npm run build && electron-builder -l --publish always",
+    "publish-linux-app": "npm run build:helper && tsc && npm run build && electron-builder -l --publish always",
     "publish-win-app": "tsc && npm run build && electron-builder -w --publish always",
     "publish-mac-universal-app": "tsc && npm run build && electron-builder --mac --universal --publish always",
     "publish-mac-app": "tsc && npm run build && electron-builder --mac --x64 --publish always",
@@ -230,6 +230,7 @@
           "**/*"
         ]
       }
-    ]
+    ],
+    "npmRebuild": false
   }
 }

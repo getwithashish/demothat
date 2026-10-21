@@ -16,17 +16,27 @@ if [ "$(uname -s)" != "Linux" ]; then
   exit 0
 fi
 
+# A packager without Rust still gets a working release: the helper is an extra, and
+# without it Wayland recordings use the browser capture (with the pointer in the
+# video). Set DEMOTHAT_REQUIRE_CURSOR_HELPER=1 to make its absence a build failure —
+# that is what a release pipeline should do.
+require_helper() {
+  if [ "${DEMOTHAT_REQUIRE_CURSOR_HELPER:-0}" = "1" ]; then
+    echo "error: $1 (DEMOTHAT_REQUIRE_CURSOR_HELPER=1)" >&2
+    exit 1
+  fi
+  echo "warning: $1"
+  echo "         Packaging without the cursor helper: Wayland recordings will use the"
+  echo "         browser capture, with the pointer recorded into the video."
+  exit 0
+}
+
 if ! command -v cargo >/dev/null 2>&1; then
-  echo "cargo is not installed, so the cursor helper cannot be built." >&2
-  echo "Install Rust (https://rustup.rs), or package without it: the app falls back to" >&2
-  echo "the browser capture path on Wayland, with the pointer recorded into the video." >&2
-  exit 1
+  require_helper "cargo is not installed, so the cursor helper cannot be built (https://rustup.rs)"
 fi
 
 if ! pkg-config --exists libpipewire-0.3 2>/dev/null; then
-  echo "libpipewire-0.3 headers are missing (needed by the helper's PipeWire client)." >&2
-  echo "On Debian/Ubuntu: sudo apt install libpipewire-0.3-dev libclang-dev pkg-config" >&2
-  exit 1
+  require_helper "libpipewire-0.3 headers are missing (sudo apt install libpipewire-0.3-dev libclang-dev)"
 fi
 
 echo "Building the cursor helper..."

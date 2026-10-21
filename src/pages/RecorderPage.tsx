@@ -384,10 +384,12 @@ export function RecorderPage() {
           setIsRecording(false)
           window.electronAPI.showMessageBox({
             type: 'warning',
-            title: 'Screen Recording Permission Required',
+            title: platform === 'darwin' ? 'Screen Recording Permission Required' : 'Could not access the screen',
             message: 'DemoThat could not access the screen.',
             detail:
-              'Go to System Settings → Privacy & Security → Screen Recording, enable the toggle next to "Electron" (the dev build), then restart the app and try again.',
+              platform === 'darwin'
+                ? 'Go to System Settings → Privacy & Security → Screen Recording, enable the toggle next to "Electron" (the dev build), then restart the app and try again.'
+                : 'Your desktop did not hand over the screen. If a screen-sharing dialog appeared, accept it and try again. Some Wayland desktops cannot provide a screen recording at all, in which case recording from an X11 session works.',
             buttons: ['OK'],
           })
           return

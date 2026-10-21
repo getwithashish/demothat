@@ -92,5 +92,5 @@ and the pointer is in the video instead.
   path by itself. It ships as an `extraResources` entry, so a Linux release is still
   a single AppImage — build it with `npm run build:helper` before packaging.
 - **Not yet verified on a real desktop** (that needs a GPU-backed compositor), and
-  the cursor *bitmap* is not extracted, so the editor draws its own cursor rather
+  the cursor _bitmap_ is not extracted, so the editor draws its own cursor rather
   than the desktop's.

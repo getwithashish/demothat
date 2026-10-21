@@ -40,10 +40,11 @@ describe('resolveCaptureBackend', () => {
     expect(traits.cursorTelemetry).toBe(false)
   })
 
-  it('on Wayland says so up front, in the user\u2019s terms', () => {
+  it('on Wayland without a helper, says in one line what is missing', () => {
     const notice = resolveCaptureBackend('linux', true).notice
-    expect(notice).toContain('system dialog')
     expect(notice).toContain('pointer')
+    expect(notice).toContain('cursor effects')
+    expect(notice!.length).toBeLessThan(100)
   })
 
   it('assumes nothing before the platform is known', () => {
@@ -88,10 +89,11 @@ describe('when the native cursor helper is capturing', () => {
     expect(traits.usesRendererCapture).toBe(false)
   })
 
-  it('reports that the pointer is available as data, so the notice is not a limitation', () => {
+  it('says nothing at all when everything works', () => {
+    // A notice here would be noise: the system dialog explains itself, and the
+    // pointer is captured properly.
     expect(traits.cursorTelemetry).toBe(true)
-    expect(traits.notice).toContain('pointer is captured as data')
-    expect(traits.notice).not.toContain('cannot be restyled')
+    expect(traits.notice).toBeNull()
   })
 
   it('still lets the system dialog choose the screen', () => {

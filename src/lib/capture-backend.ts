@@ -48,14 +48,15 @@ export function resolveCaptureBackend(
     // The native helper captures. It owns the screen-cast session, so the renderer
     // must not open one of its own — and the pointer is data rather than pixels,
     // which is what makes the editor's cursor work at all on Wayland.
+    //
+    // No notice: everything the user cares about works, and the system dialog
+    // explains itself. A note here would only be noise.
     return {
       usesRendererCapture: false,
       systemAudioRidesInScreenStream: false,
       displayPickerSupported: false,
       cursorTelemetry: true,
-      notice:
-        'Wayland: the screen is shared through the system dialog. The pointer is captured as data, so ' +
-        'cursors can be restyled and click effects work.',
+      notice: null,
     }
   }
 
@@ -75,11 +76,9 @@ export function resolveCaptureBackend(
       systemAudioRidesInScreenStream: false,
       displayPickerSupported: false,
       cursorTelemetry: false,
-      // Said before recording starts, not after: on Wayland the pointer is part
-      // of the captured pixels, so none of the editor's cursor work applies.
-      notice:
-        'Wayland: the screen is shared through the system dialog, so you pick the screen there. ' +
-        'The pointer is recorded into the video, so cursors cannot be restyled or animated afterwards.',
+      // One short sentence, only when something the user might expect is missing.
+      // The screen-share dialog explains the rest by itself.
+      notice: 'This desktop records the pointer into the video, so cursor effects are unavailable.',
     }
   }
 

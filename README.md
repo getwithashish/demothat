@@ -45,14 +45,12 @@ Grab the latest version for your OS from the [**Releases Page**](https://github.
 
 #### Prerequisites
 
-- **X11 and Wayland are both supported.** On X11 DemoThat records with FFmpeg, exactly as before.
-- On Wayland it records through the system screen-share dialog, which needs `xdg-desktop-portal` and a PipeWire-based desktop (default on Ubuntu 22.10+, Fedora 34+, Debian 13, and any recent GNOME/KDE/Sway install). Your desktop will ask which screen to share when a recording starts — that picker decides the screen, so the recorder's display list is not used.
+- **X11 and Wayland both work.** On Wayland your desktop asks which screen to share when you start recording — that dialog decides it, so the recorder's display list is not used. Requires `xdg-desktop-portal` and PipeWire, which are default on Ubuntu 22.10+, Fedora 34+, Debian 13 and any recent GNOME, KDE or Sway install.
   - Check your session type: `echo $XDG_SESSION_TYPE`
-  - Force the old X11 path if Wayland misbehaves: launch with `DEMOTHAT_OZONE_PLATFORM=x11 ./DemoThat-*-linux-x64.AppImage`
-- **Cursor effects on Wayland** work when the native helper is present *and* the desktop can report the pointer separately (GNOME, KDE and other portal backends that support cursor metadata). If the helper is not bundled, or the desktop cannot (Sway and anything else backed by `xdg-desktop-portal-wlr`), DemoThat records through the browser's screen share instead: the recording is made with the pointer baked into the video, and cursor styling, click ripple, click scale and cursor-follow zooms do not apply. The recorder tells you which of the two you are getting before you start.
-  - Building the helper is the packager's step: `npm run build:helper` (needs Rust and `libpipewire-0.3-dev`). It is staged into `build/cursor-helper/` and bundled by electron-builder; without it everything else still works.
-  - **Clicks on Wayland need read access to your pointer devices.** The portal has no button events, so the helper reads the left button from `/dev/input` — pointer devices only, never keyboards. Without permission, recording is unaffected and clicks are simply not reported. The rule and how to verify it are in [docs/wayland-native-cursor-plan.md](docs/wayland-native-cursor-plan.md).
-- **Wayland recording needs a GPU-backed compositor.** The portal cannot serve frames from a software (pixman) compositor, so a GPU-less VM will fail to negotiate the capture.
+  - If Wayland gives you trouble, force the X11 path: `DEMOTHAT_OZONE_PLATFORM=x11 ./DemoThat-*-linux-x64.AppImage`
+- **Cursor effects on Wayland** need a desktop that tracks the pointer separately — GNOME and KDE do, and everything works there. Where the desktop cannot (Sway and other wlroots-based sessions), the pointer is recorded into the video and cursor effects are unavailable; the recorder tells you which you are getting.
+  - Click effects need one-time read access to your mouse: see the note under Troubleshooting.
+- **Wayland screen recording needs a desktop compositor that can serve frames.** Software-rendered Wayland sessions often cannot share the screen at all — that is the desktop's doing, not DemoThat's. X11 recordings work on any of these machines.
 
 #### Installation Steps
 
@@ -94,6 +92,8 @@ Grab the latest version for your OS from the [**Releases Page**](https://github.
   ```
 
   The `.deb`, `.rpm` and `.zip` builds do not use FUSE and need nothing extra.
+
+- **Click effects on Wayland** need read access to your mouse, because Wayland has no portal for button events. Recording works without it; clicks are simply not detected. The one-time setup (a udev rule for pointer devices only — never keyboards) is in [docs/wayland-native-cursor-plan.md](docs/wayland-native-cursor-plan.md).
 
 ### 🪟 Windows Instructions
 

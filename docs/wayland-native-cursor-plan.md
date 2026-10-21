@@ -8,7 +8,7 @@ not bundled, portal without cursor metadata, missing permissions — the app fal
 back to the browser capture path on its own, so every machine still records.
 
 What remains: real-desktop verification (only a machine with a GPU-backed
-compositor can prove capture end to end), and the cursor *shape/bitmap*: positions
+compositor can prove capture end to end), and the cursor _shape/bitmap_: positions
 and clicks come back, but the portal's cursor bitmap is not extracted yet, so the
 editor draws its own cursor rather than the desktop's.
 

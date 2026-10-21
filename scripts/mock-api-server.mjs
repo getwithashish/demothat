@@ -246,6 +246,38 @@ export async function createMockApiServer(options = {}) {
         return res.end(publicPem)
       }
 
+      if (req.method === 'GET' && url.pathname === '/v1/products') {
+        // The catalogue the app renders its Buy credits dialog from; the product
+        // ids are the same ones POST /v1/checkout accepts.
+        const price = (amountMinor) => ({ amountMinor, currency: 'USD', minorUnitExponent: 2, isMinimum: false })
+        return json(res, 200, {
+          products: [
+            {
+              productId: 'pdt_pro_1800',
+              kind: 'first_purchase',
+              credits: PRODUCTS.pdt_pro_1800.credits,
+              name: 'Pro',
+              description: 'Pro plus 1,800 credits',
+              price: price(300),
+            },
+            {
+              productId: 'pdt_topup_5400',
+              kind: 'topup',
+              credits: PRODUCTS.pdt_topup_5400.credits,
+              name: 'Top-up',
+              price: price(900),
+            },
+            {
+              productId: 'pdt_topup_9000',
+              kind: 'topup',
+              credits: PRODUCTS.pdt_topup_9000.credits,
+              name: 'Top-up',
+              price: price(1500),
+            },
+          ],
+        })
+      }
+
       // --- billing ---
       if (req.method === 'POST' && url.pathname === '/v1/checkout') {
         const body = await readBody(req)

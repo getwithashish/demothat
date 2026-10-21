@@ -9,11 +9,12 @@ import { useShallow } from 'zustand/react/shallow'
 import { ExternalLink } from 'tabler-icons-react'
 import { useEditorStore } from '../../../store/editorStore'
 import { CREDIT_PACKS, formatCredits, packNote } from '../../../../shared/license'
+import { toCreditPackViews, type CreditPackView } from '../../../../shared/pricing'
 import { cn } from '../../../lib/utils'
 import { Button } from '../../ui/button'
 import { ICON_SIZE, ICON_STROKE } from '../../ui/icons'
 import { CloudDialog, CloudDialogSection } from './CloudDialog'
-import { priceLabel, pickNoteTarget, recommendedPackIndex } from './credit-packs'
+import { fallbackPackViews, pickNoteTarget, recommendedPackIndex } from './credit-packs'
 
 export interface BuyCreditsDialogProps {
   isOpen: boolean
@@ -37,6 +38,9 @@ export function BuyCreditsDialog({ isOpen, onClose, shortfall }: BuyCreditsDialo
   const [busy, setBusy] = useState(false)
   // Pack notes come from the server's own pricing table, never from guesses.
   const [creditsPerFrame, setCreditsPerFrame] = useState<Record<string, number> | undefined>(undefined)
+  // The catalogue the server says it sells; null until it answers, and empty
+  // when it could not be reached (then the offline packs stand in).
+  const [packs, setPacks] = useState<CreditPackView[] | null>(null)
 
   // Re-pick the pack each time the dialog opens for a new shortfall.
   useEffect(() => {
@@ -47,11 +51,22 @@ export function BuyCreditsDialog({ isOpen, onClose, shortfall }: BuyCreditsDialo
       .getCloudCapabilities?.()
       .then((result) => setCreditsPerFrame(result?.capabilities?.creditsPerFrame))
       .catch(() => setCreditsPerFrame(undefined))
+    window.electronAPI
+      .listProducts?.()
+      .then((result) => {
+        const views = toCreditPackViews(result?.products)
+        setPacks(views.length > 0 ? views : fallbackPackViews())
+      })
+      .catch(() => setPacks(fallbackPackViews()))
   }, [isOpen, shortfall])
 
   if (!isOpen) return null
 
-  const pack = CREDIT_PACKS[selected]
+  // The server's catalogue while it is loading too: it is the real answer.
+  const catalogue = packs ?? toCreditPackViews(null)
+  const options: CreditPackView[] = catalogue.length > 0 ? catalogue : fallbackPackViews()
+  const safeIndex = Math.min(selected, options.length - 1)
+  const pack = options[safeIndex]
   const covers = shortfall != null && shortfall > 0 && pack.credits >= shortfall
   const noteTarget = pickNoteTarget(creditsPerFrame)
 
@@ -86,7 +101,7 @@ export function BuyCreditsDialog({ isOpen, onClose, shortfall }: BuyCreditsDialo
       <CloudDialogSection>
         <span className="mb-1.5 block text-sm text-muted">Recommended packs</span>
         <div className="grid grid-cols-3 gap-2">
-          {CREDIT_PACKS.map((option, index) => {
+          {options.map((option, index) => {
             const active = index === selected
             const badge = covers && option.productId === pack.productId ? 'Covers this export' : null
             return (
@@ -110,7 +125,9 @@ export function BuyCreditsDialog({ isOpen, onClose, shortfall }: BuyCreditsDialo
                 <b className="whitespace-nowrap font-mono text-title font-semibold tabular-nums text-fg">
                   {formatCredits(option.credits)}
                 </b>
-                <span className="whitespace-nowrap font-mono text-sm text-muted">{priceLabel(option)}</span>
+                {option.priceLabel && (
+                  <span className="whitespace-nowrap font-mono text-sm text-muted">{option.priceLabel}</span>
+                )}
                 <small className="text-sm text-muted">{option.label}</small>
                 {noteTarget && (
                   <small className="text-sm text-muted">
@@ -126,7 +143,7 @@ export function BuyCreditsDialog({ isOpen, onClose, shortfall }: BuyCreditsDialo
       <CloudDialogSection className="space-y-3">
         <div className="flex items-start justify-between gap-3">
           <span className="text-ui text-fg">Price</span>
-          <span className="whitespace-nowrap font-mono text-sm tabular-nums text-muted">{priceLabel(pack)}</span>
+          <span className="whitespace-nowrap font-mono text-sm tabular-nums text-muted">{pack.priceLabel ?? '—'}</span>
         </div>
         <div className="flex items-start justify-between gap-3">
           <span className="text-ui text-fg">Balance after</span>

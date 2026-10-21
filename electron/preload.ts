@@ -8,6 +8,7 @@ import type {
   LicenseSummary,
   PurchaseEvent,
 } from '../shared/license'
+import type { Product } from '../shared/pricing'
 
 // Define the type for the callback value
 type RecordingResult = {
@@ -356,6 +357,9 @@ export const electronAPI = {
   forgetCheckout: (): Promise<{ forgotten: boolean }> => ipcRenderer.invoke('checkout:forget'),
   /** Stops waiting without cancelling the payment itself. */
   cancelCheckout: (): void => ipcRenderer.send('checkout:cancel'),
+  /** The catalogue (GET /v1/products); null means "use the offline fallback". */
+  listProducts: (): Promise<{ products: Product[] | null; error: string | null }> =>
+    ipcRenderer.invoke('products:list'),
   onCheckoutStatus: (callback: (event: PurchaseEvent) => void) => {
     const listener = (_event: IpcRendererEvent, payload: PurchaseEvent) => callback(payload)
     ipcRenderer.on('checkout:status', listener)

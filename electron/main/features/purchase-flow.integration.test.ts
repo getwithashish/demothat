@@ -104,6 +104,41 @@ describe('a payment that fails', () => {
   })
 })
 
+describe('the catalogue', () => {
+  beforeEach(async () => {
+    await setupServer({ scenario: 'topup', credits: 0 })
+  })
+
+  it('lists what checkout accepts, priced from the server', async () => {
+    const { fetchProducts } = await import('./products')
+    const { toCreditPackViews } = await import('../../../shared/pricing')
+
+    const products = await fetchProducts(true)
+    expect(products).not.toBeNull()
+
+    const packs = toCreditPackViews(products)
+    expect(packs.map((pack) => pack.credits)).toEqual([1800, 5400, 9000])
+    expect(packs[0]).toMatchObject({
+      productId: 'pdt_pro_1800',
+      kind: 'first_purchase',
+      priceLabel: '$3',
+    })
+
+    // The id the dialog would send back is one the API really sells.
+    const session = await startCheckout(packs[0].productId)
+    expect(session.checkoutUrl.startsWith('https://checkout.dodopayments.com/')).toBe(true)
+  })
+
+  it('reports the catalogue as unavailable rather than throwing', async () => {
+    const { fetchProducts, clearProductsCache } = await import('./products')
+    await server.close()
+    // A dead local port: no external DNS, just a refused connection.
+    process.env.DEMOTHAT_API_BASE_URL = 'http://127.0.0.1:1'
+    clearProductsCache()
+    expect(await fetchProducts(true)).toBeNull()
+  })
+})
+
 describe('resuming', () => {
   beforeEach(async () => {
     // The payment stays pending for a fixed 3s: the first poll cannot beat that

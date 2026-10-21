@@ -6,8 +6,10 @@
 import { BrowserWindow, ipcMain, shell } from 'electron'
 import log from 'electron-log/main'
 import type { CheckoutStartResult, PurchaseEvent } from '../../../../shared/license'
+import type { Product } from '../../../../shared/pricing'
 import { ApiError } from '../../lib/api-client'
 import { appState } from '../../state'
+import { fetchProducts } from '../../features/products'
 import {
   clearPendingPurchase,
   getPendingPurchase,
@@ -117,4 +119,14 @@ export function registerCheckoutHandlers(): void {
   ipcMain.handle('checkout:resume', handleCheckoutResume)
   ipcMain.handle('checkout:forget', handleCheckoutForget)
   ipcMain.on('checkout:cancel', handleCheckoutCancel)
+  ipcMain.handle('products:list', handleProductsList)
+}
+
+/**
+ * The catalogue for the Buy credits dialog. A null list means the catalogue
+ * could not be fetched; the renderer falls back to its offline packs.
+ */
+export async function handleProductsList(): Promise<{ products: Product[] | null; error: string | null }> {
+  const products = await fetchProducts()
+  return { products, error: products === null ? 'Could not reach the store.' : null }
 }

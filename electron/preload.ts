@@ -14,6 +14,11 @@ import type { SessionSummary } from '../shared/session'
 // Define the type for the callback value
 type RecordingResult = {
   canceled: boolean
+  /**
+   * Set when the Wayland cursor helper could not capture, so the recorder should
+   * ask again and let the renderer take the screen instead.
+   */
+  needsRendererCapture?: boolean
   filePath: string | undefined
 }
 
@@ -121,6 +126,11 @@ export const electronAPI = {
     systemAudio?: boolean
     /** Clean Demo Mode: hide the Dock, menu bar, other apps and desktop clutter while recording. */
     cleanDemo?: boolean
+    /**
+     * Which Wayland capture path to take: the native cursor helper, or the
+     * renderer's browser capture. Ignored on X11, Windows and macOS.
+     */
+    screenCapture?: 'helper' | 'renderer'
   }): Promise<RecordingResult> => ipcRenderer.invoke('recording:start', options),
   stopRecording: (): void => ipcRenderer.send('recording:stop'),
   loadVideoFromFile: (): Promise<RecordingResult> => ipcRenderer.invoke('recording:load-from-file'),

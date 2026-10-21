@@ -24,6 +24,8 @@ export interface CaptureTraits {
   notice: string | null
 }
 
+export type CaptureKind = 'renderer' | 'ffmpeg' | 'helper'
+
 const FALLBACK: CaptureTraits = {
   usesRendererCapture: false,
   systemAudioRidesInScreenStream: false,
@@ -35,8 +37,28 @@ const FALLBACK: CaptureTraits = {
 /**
  * @param platform - process.platform, or null before it is known.
  * @param wayland - Whether main decided to use the Wayland backend, or null when unknown.
+ * @param capture - Which backend main will use, from the session summary.
  */
-export function resolveCaptureBackend(platform: NodeJS.Platform | null, wayland: boolean | null): CaptureTraits {
+export function resolveCaptureBackend(
+  platform: NodeJS.Platform | null,
+  wayland: boolean | null,
+  capture: CaptureKind | null = null,
+): CaptureTraits {
+  if (capture === 'helper') {
+    // The native helper captures. It owns the screen-cast session, so the renderer
+    // must not open one of its own — and the pointer is data rather than pixels,
+    // which is what makes the editor's cursor work at all on Wayland.
+    return {
+      usesRendererCapture: false,
+      systemAudioRidesInScreenStream: false,
+      displayPickerSupported: false,
+      cursorTelemetry: true,
+      notice:
+        'Wayland: the screen is shared through the system dialog. The pointer is captured as data, so ' +
+        'cursors can be restyled and click effects work.',
+    }
+  }
+
   if (platform === 'darwin') {
     return {
       usesRendererCapture: true,

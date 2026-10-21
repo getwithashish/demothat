@@ -80,9 +80,17 @@ export function RecorderPage() {
   // The dock (+ preview) whose measured size drives the transparent window size.
   const contentRef = useRef<HTMLDivElement>(null)
   const lastSizeRef = useRef({ width: 0, height: 0 })
+  /**
+   * Set when the native cursor helper turned out to be unable to capture: the retry
+   * takes the browser path instead, which is the one that was already working.
+   */
+  const forceRendererCaptureRef = useRef(false)
 
   const supportsSystemAudio = platform === 'darwin'
-  const capture = useMemo(() => resolveCaptureBackend(platform, sessionInfo?.wayland ?? null), [platform, sessionInfo])
+  const capture = useMemo(
+    () => resolveCaptureBackend(platform, sessionInfo?.wayland ?? null, sessionInfo?.capture ?? null),
+    [platform, sessionInfo],
+  )
   const usesRendererScreenCapture = capture.usesRendererCapture
   const isBusy = actionInProgress !== 'none'
   const isWebcamPreviewVisible = selectedWebcamId !== 'none' && actionInProgress === 'none' && !isRecording
@@ -353,7 +361,10 @@ export function RecorderPage() {
       // optional system audio folded in. Errors here are fatal — without a
       // screen recording there's nothing to mux.
       let systemAudioCarriedInScreenStream = false
-      if (usesRendererScreenCapture) {
+      // Either the backend says the renderer captures, or a helper attempt already
+      // failed for this recording and we are on the second, deliberate try.
+      const rendererCaptures = usesRendererScreenCapture || forceRendererCaptureRef.current
+      if (rendererCaptures) {
         try {
           screenCaptureHandleRef.current = await startScreenCapture({
             displayId: source === 'fullscreen' ? Number(selectedDisplayId) : undefined,
@@ -457,7 +468,23 @@ export function RecorderPage() {
             : undefined,
         systemAudio: systemAudioReady,
         cleanDemo: cleanDemoEnabled,
+        // Which of the two Wayland capture paths main should take. On X11 and macOS
+        // this is not consulted.
+        screenCapture: rendererCaptures ? 'renderer' : 'helper',
       })
+
+      if (result.needsRendererCapture) {
+        // The helper exists but could not deliver — usually a desktop whose portal
+        // cannot report the pointer separately. The browser capture takes over; the
+        // retry is deliberate and explicit so nothing half-started is reused.
+        console.info('[Recorder] The cursor helper could not capture; using the browser capture.')
+        forceRendererCaptureRef.current = true
+        await stopSystemAudio()
+        setActionState('none')
+        setIsRecording(false)
+        startHandlerRef.current()
+        return
+      }
 
       if (result.canceled) {
         console.warn('[Recorder] main.startRecording returned canceled.')

@@ -4,7 +4,7 @@ A small native helper that does the two things Electron cannot do on Wayland:
 own the screen-cast session, and read the pointer's position out of it.
 
 Without it, DemoThat records on Wayland through Chromium's own screen share, which
-asks the compositor to *embed* the cursor in the frames. The recording looks right,
+asks the compositor to _embed_ the cursor in the frames. The recording looks right,
 but the pointer is part of the pixels, so the editor cannot restyle it, animate it,
 or follow it. This helper asks for the same screen with `cursor_mode = METADATA`
 instead, keeps the pointer out of the frames, and reports where it went.
@@ -81,12 +81,16 @@ and the pointer is in the video instead.
 
 ## Status
 
-- Compiled and unit-tested (17 tests: protocol framing, the SPA cursor ABI, evdev
-  device classification, the cursor-mode retry decision).
+- Built and tested: 19 unit tests (protocol framing, the SPA cursor ABI, the frame
+  rate reported to FFmpeg, evdev device classification, the cursor-mode retry
+  decision), plus a clean `cargo build --release`.
 - Exercised against a real portal in a headless session: negotiation runs, the
   metadata rejection is detected and retried with the embedded cursor, and failures
   are reported as one NDJSON `error` line with exit code 2 rather than a crash.
-- **Not yet verified against a real desktop**, and **not yet wired into the app**:
-  today the app still records on Wayland through Chromium's path. The client side
-  (spawn, pipe fd 3 into FFmpeg, map the events into `recordedMouseEvents`, bundle
-  the binary as an `extraResources` entry) is the next step.
+- **Wired into the app.** The recorder starts it on Wayland and pipes fd 3 into its
+  bundled FFmpeg; if it cannot deliver, the app falls back to the browser capture
+  path by itself. It ships as an `extraResources` entry, so a Linux release is still
+  a single AppImage — build it with `npm run build:helper` before packaging.
+- **Not yet verified on a real desktop** (that needs a GPU-backed compositor), and
+  the cursor *bitmap* is not extracted, so the editor draws its own cursor rather
+  than the desktop's.

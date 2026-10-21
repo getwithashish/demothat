@@ -23,12 +23,14 @@ pub fn now_ms() -> u64 {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Event {
     /// The stream is negotiated and the first frame is on its way. The app needs
-    /// `width`/`height` before it can start FFmpeg on the raw frames, and `format`
-    /// to tell FFmpeg what those bytes are.
+    /// `width`/`height` before it can start FFmpeg on the raw frames, `format` to
+    /// tell FFmpeg what those bytes are, and `fps` to tell it how fast they arrive
+    /// (the compositor's rate is not necessarily the one we asked for).
     Started {
         width: u32,
         height: u32,
         format: String,
+        fps: u32,
         cursor_mode: String,
         /// False when clicks are unavailable (no evdev permission); the app keeps
         /// recording, only click effects are missing.
@@ -113,6 +115,7 @@ mod tests {
                 width: 1920,
                 height: 1080,
                 format: "bgra".into(),
+                fps: 60,
                 cursor_mode: "metadata".into(),
                 clicks: true,
                 pid: 4242,
@@ -171,6 +174,7 @@ mod tests {
             width: 640,
             height: 480,
             format: "bgra".into(),
+            fps: 30,
             cursor_mode: "metadata".into(),
             clicks: false,
             pid: 1,
@@ -180,6 +184,7 @@ mod tests {
         assert_eq!(value["width"], 640);
         assert_eq!(value["height"], 480);
         assert_eq!(value["format"], "bgra");
+        assert_eq!(value["fps"], 30);
         assert_eq!(value["clicks"], false);
     }
 

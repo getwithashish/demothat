@@ -35,3 +35,6 @@ dist-ssr
 
 # Rust helper build output (native/cursor-helper)
 native/cursor-helper/target/
+
+# Built helper staged for packaging (scripts/build-cursor-helper.sh)
+build/cursor-helper/demothat-cursor-helper

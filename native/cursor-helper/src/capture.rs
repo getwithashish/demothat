@@ -90,12 +90,14 @@ struct UserData {
     width: u32,
     height: u32,
     paused: Arc<AtomicBool>,
-    /// Set by the control thread; the loop notices it on the next frame and stops
-    /// from the inside, which is the only thread-safe way to do it.
     stop: Arc<AtomicBool>,
     main_loop: pw::main_loop::MainLoop,
     cursor_is_metadata: bool,
     clicks_available: bool,
+    /// What the compositor negotiated, which is what FFmpeg has to be told; the
+    /// rate we asked for is only a hint.
+    fps: u32,
+    requested_fps: u32,
 }
 
 impl UserData {
@@ -167,6 +169,24 @@ unsafe fn read_cursor_meta(buffer: *mut spa::sys::spa_buffer) -> Option<(f64, f6
     None
 }
 
+/// The frame rate to report to FFmpeg: what the compositor negotiated, falling back
+/// to what we asked for when it does not say (or says something implausible).
+///
+/// This matters more than it looks: FFmpeg stamps raw frames at the rate we declare,
+/// so declaring 30 for a stream that runs at 60 would make the recording half as
+/// long as the wall clock and play at double speed.
+fn negotiated_fps(framerate: spa::utils::Fraction, fallback: u32) -> u32 {
+    let fallback = fallback.clamp(1, 240);
+    if framerate.num == 0 || framerate.denom == 0 {
+        return fallback;
+    }
+    let fps = (framerate.num as f64 / framerate.denom as f64).round();
+    if !(1.0..=240.0).contains(&fps) {
+        return fallback;
+    }
+    fps as u32
+}
+
 /// The pixel format we ask for, as FFmpeg spells it. The raw frames go straight
 /// into FFmpeg over a pipe, so the app needs this string to build its arguments.
 fn ffmpeg_format_name(format: spa::param::video::VideoFormat) -> &'static str {
@@ -193,6 +213,7 @@ pub fn run(
     paused: Arc<AtomicBool>,
     cursor_is_metadata: bool,
     clicks_available: bool,
+    requested_fps: u32,
 ) -> Result<()> {
     let mainloop =
         pw::main_loop::MainLoop::new(None).context("could not create a PipeWire loop")?;
@@ -233,6 +254,8 @@ pub fn run(
         main_loop: mainloop.clone(),
         cursor_is_metadata,
         clicks_available,
+        fps: 0,
+        requested_fps,
     };
 
     let listener = pw_stream
@@ -249,6 +272,7 @@ pub fn run(
             data.width = info.size().width;
             data.height = info.size().height;
             data.format_name = ffmpeg_format_name(info.format()).to_string();
+            data.fps = negotiated_fps(info.framerate(), data.requested_fps);
 
             // The app cannot start FFmpeg without the frame geometry: this event is
             // how it learns what it is about to receive, and it is emitted before
@@ -259,6 +283,7 @@ pub fn run(
                     width: data.width,
                     height: data.height,
                     format: data.format_name.clone(),
+                    fps: data.fps,
                     cursor_mode: if data.cursor_is_metadata {
                         "metadata"
                     } else {
@@ -522,5 +547,50 @@ mod tests {
     #[test]
     fn a_null_buffer_has_no_cursor() {
         assert!(unsafe { read_cursor_meta(std::ptr::null_mut()) }.is_none());
+    }
+
+    #[test]
+    fn the_negotiated_frame_rate_is_what_ffmpeg_is_told() {
+        // Declaring the wrong rate would stretch or squash the whole recording.
+        assert_eq!(
+            negotiated_fps(spa::utils::Fraction { num: 60, denom: 1 }, 30),
+            60
+        );
+        assert_eq!(
+            negotiated_fps(spa::utils::Fraction { num: 30, denom: 1 }, 30),
+            30
+        );
+        assert_eq!(
+            negotiated_fps(
+                spa::utils::Fraction {
+                    num: 30000,
+                    denom: 1001
+                },
+                30
+            ),
+            30
+        );
+    }
+
+    #[test]
+    fn an_implausible_rate_falls_back_to_what_we_asked_for() {
+        assert_eq!(
+            negotiated_fps(spa::utils::Fraction { num: 0, denom: 0 }, 30),
+            30
+        );
+        assert_eq!(
+            negotiated_fps(spa::utils::Fraction { num: 0, denom: 1 }, 30),
+            30
+        );
+        assert_eq!(
+            negotiated_fps(
+                spa::utils::Fraction {
+                    num: 100000,
+                    denom: 1
+                },
+                30
+            ),
+            30
+        );
     }
 }

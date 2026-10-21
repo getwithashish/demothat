@@ -1,0 +1,5 @@
+# Placeholder so the extraResources source directory always exists.
+#
+# scripts/build-cursor-helper.sh copies the built helper in here before packaging a
+# Linux release; on macOS and Windows this stays empty and the app runs without a
+# helper, which it is written to cope with.

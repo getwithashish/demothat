@@ -21,11 +21,13 @@ export interface SessionInfo {
   reason: SessionReason
 }
 
-/** What the renderer gets asked-once at startup. */
 export interface SessionSummary extends SessionInfo {
   platform: NodeJS.Platform
-  /** Which backend the recorder will use: the renderer's portal capture, or FFmpeg grabbing the display. */
-  capture: 'renderer' | 'ffmpeg'
+  /**
+   * Which backend the recorder will use: the native cursor helper, the renderer's
+   * portal capture, or FFmpeg grabbing the display itself.
+   */
+  capture: 'renderer' | 'ffmpeg' | 'helper'
 }
 
 /**

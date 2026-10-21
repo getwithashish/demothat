@@ -136,6 +136,7 @@ fn run() -> Result<()> {
         paused,
         capture_stream.cursor_is_metadata,
         clicks_available,
+        config.fps.clamp(1, 240),
     )
 }
 

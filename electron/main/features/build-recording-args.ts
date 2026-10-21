@@ -7,6 +7,12 @@ export function buildFfmpegArgs(
   hasMic: boolean,
   screenOut: string,
   webcamOut?: string,
+  /**
+   * A video filter for the screen output only. Used on Wayland, where the portal
+   * can only hand over a whole monitor and the user's area has to be cut out of it;
+   * it is applied here because this is the pass that encodes those frames.
+   */
+  screenFilter?: string,
 ): string[] {
   // Recording output paths can survive a failed attempt. FFmpeg is spawned
   // without an interactive terminal, so overwrite them instead of waiting for
@@ -26,6 +32,10 @@ export function buildFfmpegArgs(
   }
 
   finalArgs.push('-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p')
+  if (screenFilter) {
+    // Output-scoped, so it applies to the screen file and not to the webcam's.
+    finalArgs.push('-vf', screenFilter)
+  }
   if (hasMic) {
     finalArgs.push('-c:a', 'aac', '-b:a', '192k')
   }

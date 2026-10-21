@@ -4,6 +4,7 @@
 export const app = {
   isPackaged: false,
   getPath: () => '/tmp',
+  getAppPath: () => process.cwd(),
   getVersion: () => '0.0.0-test',
   quit: () => {},
   on: () => {},

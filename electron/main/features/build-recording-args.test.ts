@@ -33,4 +33,40 @@ describe('buildFfmpegArgs', () => {
     expect(args).toContain('0:a')
     expect(args).toContain('1:v')
   })
+
+  test('crops the screen output with the Wayland area selection', () => {
+    const args = buildFfmpegArgs(
+      ['-f', 'rawvideo', '-i', '-'],
+      false,
+      false,
+      'screen.mp4',
+      undefined,
+      'crop=800:600:100:50',
+    )
+
+    expect(args).toContain('-vf')
+    expect(args[args.indexOf('-vf') + 1]).toBe('crop=800:600:100:50')
+    // The filter belongs to the screen output, so it must come before it.
+    expect(args.indexOf('-vf')).toBeLessThan(args.lastIndexOf('screen.mp4'))
+  })
+
+  test('sends no filter at all when there is no crop', () => {
+    const args = buildFfmpegArgs(['-f', 'x11grab', '-i', ':0.0'], false, false, 'screen.mp4')
+    expect(args).not.toContain('-vf')
+  })
+
+  test('applies the screen crop without touching the webcam output', () => {
+    const args = buildFfmpegArgs(
+      ['-f', 'v4l2', '-i', '/dev/video0', '-f', 'rawvideo', '-i', '-'],
+      true,
+      false,
+      'screen.mp4',
+      'webcam.mp4',
+      'crop=640:480:0:0',
+    )
+
+    // The webcam is encoded after the screen file, and must not inherit the filter.
+    expect(args.indexOf('webcam.mp4')).toBeGreaterThan(args.indexOf('-vf'))
+    expect(args.filter((arg) => arg === '-vf')).toHaveLength(1)
+  })
 })

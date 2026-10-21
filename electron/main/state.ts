@@ -4,6 +4,7 @@
 import { BrowserWindow, Tray } from 'electron'
 import { ChildProcessWithoutNullStreams } from 'node:child_process'
 import type { IMouseTracker } from './features/mouse-tracker'
+import type { CursorHelperSession } from './features/cursor-helper'
 
 // ADDED: Define RecordingGeometry type here for better reusability
 export interface RecordingGeometry {
@@ -68,6 +69,12 @@ interface AppState {
   recordedMouseEvents: any[]
   runtimeCursorImageMap: Map<string, any>
 
+  /**
+   * The Wayland cursor helper, while it is capturing the screen. It owns the
+   * frames and the cursor samples for this recording; see features/cursor-helper.ts.
+   */
+  cursorHelper: CursorHelperSession | null
+
   // Recording State
   recordingStartTime: number
   originalCursorScale: number | null
@@ -93,6 +100,7 @@ export const appState: AppState = {
   mouseTracker: null,
   recordedMouseEvents: [],
   runtimeCursorImageMap: new Map(),
+  cursorHelper: null,
   recordingStartTime: 0,
   originalCursorScale: null,
   currentRecordingSession: null,

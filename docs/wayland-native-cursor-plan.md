@@ -1,13 +1,16 @@
 # Wayland cursor telemetry: the follow-up this change deliberately did not do
 
-Status: the helper described here now exists — `native/cursor-helper/` compiles, has
-17 unit tests, and has been exercised against a real portal (negotiation, the
-metadata rejection, the embedded retry, and the clean failure path). What is
-**not** done yet is the app-side wiring: the helper is not spawned by the app, so
-a Wayland recording still goes through Chromium's capture, with the cursor in the
-pixels. That wiring, plus bundling the binary as an `extraResources` entry, is the
-next step; everything below is the design it will follow, including the udev rule
-that clicks need.
+Status: implemented and wired in. `native/cursor-helper/` is built by
+`npm run build:helper`, staged into `build/cursor-helper/`, shipped as an
+`extraResources` entry in the same single AppImage, and started by the recorder on
+Wayland (see `electron/main/features/cursor-helper.ts`). When it cannot deliver —
+not bundled, portal without cursor metadata, missing permissions — the app falls
+back to the browser capture path on its own, so every machine still records.
+
+What remains: real-desktop verification (only a machine with a GPU-backed
+compositor can prove capture end to end), and the cursor *shape/bitmap*: positions
+and clicks come back, but the portal's cursor bitmap is not extracted yet, so the
+editor draws its own cursor rather than the desktop's.
 
 ## What is missing, and why
 

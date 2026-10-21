@@ -57,9 +57,9 @@ pub async fn open_capture_stream() -> Result<CaptureStream> {
     match open_session(CursorMode::Metadata).await {
         Ok(stream) => Ok(stream),
         Err(error) if is_unsupported_cursor_mode(&format!("{error:#}")) => {
-            let mut stream = open_session(CursorMode::Embedded)
-                .await
-                .context("the desktop would not share a screen, with or without cursor metadata")?;
+            // The retry's own failure is reported as it comes: the caller wraps it in
+            // context once, and a second copy of the same sentence helps nobody.
+            let mut stream = open_session(CursorMode::Embedded).await?;
             stream.notice = Some(
                 "this desktop cannot report the pointer separately, so the cursor is recorded into the video \
 and cannot be restyled, moved or animated afterwards"

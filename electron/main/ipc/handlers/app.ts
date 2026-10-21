@@ -1,6 +1,7 @@
 import { app, BrowserWindow, IpcMainEvent, IpcMainInvokeEvent } from 'electron'
 import type { SessionSummary } from '../../../../shared/session'
 import { usesRendererScreenCapture } from '../../lib/capture-backend'
+import { isCursorHelperAvailable } from '../../features/cursor-helper'
 import { detectSession } from '../../../../shared/session'
 import { appState } from '../../state'
 import { createRecorderWindow } from '../../windows/recorder-window'
@@ -23,11 +24,12 @@ export function handleGetPlatform() {
  */
 export function handleGetSessionInfo(): SessionSummary {
   const session = detectSession()
+  const helperAvailable = isCursorHelperAvailable()
   return {
     platform: process.platform,
     wayland: session.wayland,
     reason: session.reason,
-    capture: usesRendererScreenCapture() ? 'renderer' : 'ffmpeg',
+    capture: helperAvailable ? 'helper' : usesRendererScreenCapture() ? 'renderer' : 'ffmpeg',
   }
 }
 

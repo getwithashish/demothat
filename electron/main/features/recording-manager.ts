@@ -25,6 +25,7 @@ import { getCursorScale, restoreOriginalCursorScale, resetCursorScale } from './
 import { createEditorWindow, cleanupEditorFiles } from '../windows/editor-window'
 import { createSavingWindow, createSelectionWindow } from '../windows/temporary-windows'
 import type { RecordingSession, RecordingGeometry } from '../state'
+import { isCursorHelperAvailable, startCursorHelper, stopCursorHelper, type CursorSample } from './cursor-helper'
 import { SystemAudioWriter } from './system-audio-writer'
 import { ScreenVideoWriter } from './screen-video-writer'
 import { buildMuxArgs, buildMacMuxArgs } from './build-mux-args'
@@ -220,6 +221,50 @@ async function validateRecordingFiles(session: RecordingSession): Promise<boolea
 }
 
 /**
+ * Adds one cursor sample to the recording, in the coordinate space the editor
+ * expects: relative to the recorded frame, and only if it fell inside it.
+ *
+ * Shared by the two sources of samples — the X11 tracker and the Wayland helper —
+ * because they must agree exactly, and the offset arithmetic is easy to get wrong
+ * twice and hard to notice once.
+ */
+function recordCursorSample(
+  sample: { x: number; y: number; timestamp: number; type?: string; [key: string]: unknown },
+  geometry: RecordingGeometry,
+): void {
+  const inside =
+    sample.x >= geometry.x &&
+    sample.x <= geometry.x + geometry.width &&
+    sample.y >= geometry.y &&
+    sample.y <= geometry.y + geometry.height
+  if (!inside) return
+
+  appState.recordedMouseEvents.push({
+    ...sample,
+    x: sample.x - geometry.x,
+    y: sample.y - geometry.y,
+    timestamp: sample.timestamp,
+  })
+}
+
+/** The helper's samples arrive in the same shape as the tracker's. */
+function handleHelperSample(sample: CursorSample, geometry: RecordingGeometry): void {
+  recordCursorSample(
+    sample.type === 'click'
+      ? {
+          timestamp: sample.timestamp,
+          x: sample.x,
+          y: sample.y,
+          type: 'click',
+          button: sample.button,
+          pressed: sample.pressed,
+        }
+      : { timestamp: sample.timestamp, x: sample.x, y: sample.y, type: 'move' },
+    geometry,
+  )
+}
+
+/**
  * The core function that spawns FFmpeg and the mouse tracker to begin recording.
  * @param inputArgs - Platform-specific FFmpeg input arguments (mic + webcam only when
  *                    useRendererScreenCapture is true; otherwise also includes screen).
@@ -243,6 +288,7 @@ async function startActualRecording(
   recordingGeometry: RecordingGeometry,
   cleanDemo = false,
   pendingCrop?: RecordingSession['pendingCrop'],
+  screenFilter?: string,
 ) {
   const recordingDir = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.demothat')
   await ensureDirectoryExists(recordingDir)
@@ -330,21 +376,7 @@ async function startActualRecording(
 
   if (appState.mouseTracker) {
     appState.mouseTracker.on('data', (data: any) => {
-      // Check if the mouse event is within the recording geometry bounds
-      if (
-        data.x >= recordingGeometry.x &&
-        data.x <= recordingGeometry.x + recordingGeometry.width &&
-        data.y >= recordingGeometry.y &&
-        data.y <= recordingGeometry.y + recordingGeometry.height
-      ) {
-        const absoluteEvent = {
-          ...data,
-          x: data.x - recordingGeometry.x,
-          y: data.y - recordingGeometry.y,
-          timestamp: data.timestamp,
-        }
-        appState.recordedMouseEvents.push(absoluteEvent)
-      }
+      recordCursorSample(data, recordingGeometry)
     })
     // Check if tracker started successfully
     const trackerStarted = await appState.mouseTracker.start(appState.runtimeCursorImageMap)
@@ -362,9 +394,17 @@ async function startActualRecording(
   if (needsFfmpeg) {
     const finalArgs = useRendererScreenCapture
       ? buildMacFfmpegArgs(inputArgs, hasMic, hasWebcam, micAudioPath, webcamVideoPath)
-      : buildFfmpegArgs(inputArgs, hasWebcam, hasMic, screenVideoPath, webcamVideoPath)
+      : buildFfmpegArgs(inputArgs, hasWebcam, hasMic, screenVideoPath, webcamVideoPath, screenFilter)
     log.info(`[FFMPEG] Starting FFmpeg with args: ${finalArgs.join(' ')}`)
     appState.ffmpegProcess = spawn(FFMPEG_PATH, finalArgs)
+
+    // Wayland: the frames come from the helper's descriptor rather than from a
+    // display grab. Closing this pipe — which the helper does when it stops — is
+    // what makes FFmpeg finish the file.
+    if (appState.cursorHelper) {
+      log.info("[RecordingManager] Piping the cursor helper's frames into FFmpeg.")
+      appState.cursorHelper.video.pipe(appState.ffmpegProcess.stdin as NodeJS.WritableStream)
+    }
 
     // Monitor FFmpeg's stderr for progress, errors, and sync timing
     appState.ffmpegProcess.stderr.on('data', (data: any) => {
@@ -716,7 +756,69 @@ export async function startRecording(options: any) {
   if (process.platform === 'linux') {
     appState.originalCursorScale = await getCursorScale()
   }
-  const useRendererScreenCapture = backendCapturesScreen()
+
+  // --- Wayland: hand the screen to the native helper, when there is one ---
+  // The helper owns a screen-cast session with the pointer as *data*, which is the
+  // only way to reach its position on Wayland. It is tried after the source is
+  // chosen (so an area selection happens first), and never at the cost of the
+  // recording: if it cannot capture, the caller is told and asks again for the
+  // renderer's browser capture, which is the path that was already working.
+  let screenFilter: string | undefined
+  if (requiresPortalCapture() && options.screenCapture !== 'renderer' && isCursorHelperAvailable()) {
+    const session = await startCursorHelper({
+      fps: 30,
+      onSample: (sample) => handleHelperSample(sample, recordingGeometry),
+      onWarning: (message) => log.warn(`[RecordingManager] Cursor helper: ${message}`),
+    })
+    if (!session) {
+      log.info('[RecordingManager] The cursor helper could not capture; the renderer will take the screen.')
+      return { canceled: true, needsRendererCapture: true }
+    }
+
+    // The portal is authoritative about the monitor it gave us: a 125%-scaled
+    // display does not hand over the size the display reports, so the geometry and
+    // any crop are computed from the stream itself.
+    const video = { width: session.info.width, height: session.info.height }
+    const crop = pendingCrop
+      ? computeCrop({ selection: pendingCrop.selection, overlay: pendingCrop.overlay, video })
+      : null
+    if (crop) {
+      recordingGeometry = { x: crop.x, y: crop.y, width: crop.width, height: crop.height }
+      screenFilter = `crop=${crop.width}:${crop.height}:${crop.x}:${crop.y}`
+      log.info(`[RecordingManager] Wayland area: ${video.width}x${video.height} cropped to ${screenFilter}.`)
+    } else {
+      if (pendingCrop) {
+        log.warn('[RecordingManager] Wayland area: selection does not fit the capture; keeping the whole frame.')
+      }
+      recordingGeometry = { x: 0, y: 0, width: video.width, height: video.height }
+    }
+
+    // Raw frames arrive on a descriptor, so FFmpeg is told what they are rather
+    // than being handed a display to grab.
+    baseFfmpegArgs.push(
+      '-f',
+      'rawvideo',
+      '-pix_fmt',
+      session.info.format,
+      '-s',
+      `${video.width}x${video.height}`,
+      '-r',
+      String(session.info.fps),
+      '-i',
+      '-',
+    )
+    appState.cursorHelper = session
+    // This encode applies the crop, so the mux must not apply it a second time.
+    pendingCrop = undefined
+    log.info(
+      `[RecordingManager] Capturing through the cursor helper: ${video.width}x${video.height} ` +
+        `${session.info.format} @ ${session.info.fps}fps, clicks ${session.info.clicks ? 'on' : 'off'}.`,
+    )
+  }
+  // With the helper capturing, FFmpeg is fed raw frames on a pipe instead: the
+  // renderer's browser capture is not used at all (two capture paths would mean two
+  // portals, two pickers, and a pointer recorded twice).
+  const useRendererScreenCapture = backendCapturesScreen() && appState.cursorHelper === null
   log.info('[RecordingManager] Starting actual recording with args:', baseFfmpegArgs, {
     hasWebcam: !!webcam,
     hasMic: !!mic,
@@ -732,6 +834,7 @@ export async function startRecording(options: any) {
     recordingGeometry,
     !!cleanDemo,
     pendingCrop,
+    screenFilter,
   )
 }
 
@@ -747,6 +850,14 @@ export async function stopRecording() {
   appState.tray?.destroy()
   appState.tray = null
   createSavingWindow()
+
+  // Wayland: stop the capture helper first. Its descriptor closing is what tells
+  // FFmpeg the frames have ended, so the file is finalized by FFmpeg itself rather
+  // than being cut off mid-frame.
+  if (appState.cursorHelper) {
+    await stopCursorHelper()
+    appState.cursorHelper = null
+  }
 
   const session = appState.currentRecordingSession
   log.info('[StopRecord] Current session:', {
@@ -1183,6 +1294,10 @@ export async function cleanupAndDiscard() {
   appState.recorderWin?.webContents.send('recorder:stop-system-audio')
   appState.recorderWin?.webContents.send('recorder:stop-screen-capture')
   await Promise.allSettled([systemAudioWriter.abort(), screenVideoWriter.abort()])
+  if (appState.cursorHelper) {
+    await stopCursorHelper()
+    appState.cursorHelper = null
+  }
 
   appState.mouseTracker?.stop()
   appState.mouseTracker = null

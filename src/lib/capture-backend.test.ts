@@ -77,3 +77,34 @@ describe('cropsAfterCapture', () => {
     expect(cropsAfterCapture(null, null)).toBe(false)
   })
 })
+
+describe('when the native cursor helper is capturing', () => {
+  // Main reports this in the session summary once a helper is bundled and this is a
+  // Wayland session: the renderer must then keep its hands off the screen, because
+  // two capture paths would mean two portals and the pointer recorded twice.
+  const traits = resolveCaptureBackend('linux', true, 'helper')
+
+  it('leaves the capture to the helper', () => {
+    expect(traits.usesRendererCapture).toBe(false)
+  })
+
+  it('reports that the pointer is available as data, so the notice is not a limitation', () => {
+    expect(traits.cursorTelemetry).toBe(true)
+    expect(traits.notice).toContain('pointer is captured as data')
+    expect(traits.notice).not.toContain('cannot be restyled')
+  })
+
+  it('still lets the system dialog choose the screen', () => {
+    expect(traits.displayPickerSupported).toBe(false)
+  })
+
+  it('keeps the Linux audio model, so system audio is unaffected', () => {
+    expect(traits.systemAudioRidesInScreenStream).toBe(false)
+  })
+
+  it('is ignored on platforms that never have a helper', () => {
+    // A stale summary must not stop the renderer capturing on macOS.
+    expect(resolveCaptureBackend('darwin', false, 'renderer').usesRendererCapture).toBe(true)
+    expect(resolveCaptureBackend('win32', false, 'ffmpeg').usesRendererCapture).toBe(false)
+  })
+})

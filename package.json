@@ -22,6 +22,7 @@
   "scripts": {
     "dev": "vite",
     "clean": "rimraf dist dist-electron",
+    "build:helper": "bash scripts/build-cursor-helper.sh",
     "build": "npm run clean && tsc && vite build",
     "dist": "tsc && npm run build && electron-builder",
     "dist:appimage": "tsc && npm run build && electron-builder build -l AppImage --publish never",
@@ -220,6 +221,15 @@
     },
     "directories": {
       "buildResources": "build"
-    }
+    },
+    "extraResources": [
+      {
+        "from": "build/cursor-helper",
+        "to": "cursor-helper",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ]
   }
 }

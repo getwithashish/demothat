@@ -402,6 +402,64 @@ export const electronAPI = {
     return () => ipcRenderer.removeListener('export:complete', listener)
   },
 
+  // --- Cloud transcription ---
+  /** Whether this device can transcribe, and the price and limits the server publishes. */
+  transcribeStatus: (): Promise<{
+    configured: boolean
+    transcription: { enabled?: boolean; creditsPerMinute?: number; models?: string[]; maxAudioSeconds?: number } | null
+    error: string | null
+  }> => ipcRenderer.invoke('transcribe:status'),
+
+  /**
+   * Extract the recording's audio, transcribe it in the cloud and write the
+   * transcript. Resolves when the run is over; progress arrives on
+   * `onTranscribeProgress` meanwhile.
+   */
+  startTranscription: (request: {
+    sourcePath: string
+    transcriptPath: string
+    language?: string
+    model?: string
+  }): Promise<
+    | { ok: true; transcriptPath: string; transcript: unknown; charge: number; refund: number; audioSeconds: number }
+    | { ok: false; reason: 'canceled' | 'failed' | 'rejected'; error: string; charge?: number; refund?: number; cost?: number }
+  > => ipcRenderer.invoke('transcribe:start', request),
+
+  cancelTranscription: (): void => ipcRenderer.send('transcribe:cancel'),
+
+  onTranscribeProgress: (
+    callback: (payload: {
+      stage: string
+      stagePercent: number
+      reserved?: number
+      consumed?: number
+      audioSeconds?: number
+      audioSecondsDone?: number
+      etaSeconds?: number | null
+    }) => void,
+  ) => {
+    const listener = (_event: IpcRendererEvent, payload: any) => callback(payload)
+    ipcRenderer.on('transcribe:progress', listener)
+    return () => ipcRenderer.removeListener('transcribe:progress', listener)
+  },
+
+  onTranscribeComplete: (
+    callback: (payload: {
+      success: boolean
+      transcriptPath?: string
+      error?: string
+      reason?: string
+      charge?: number
+      refund?: number
+      cost?: number
+      audioSeconds?: number
+    }) => void,
+  ) => {
+    const listener = (_event: IpcRendererEvent, payload: any) => callback(payload)
+    ipcRenderer.on('transcribe:complete', listener)
+    return () => ipcRenderer.removeListener('transcribe:complete', listener)
+  },
+
   openAudioFile: (): Promise<{ canceled: boolean; filePath?: string; fileName?: string }> =>
     ipcRenderer.invoke('dialog:openAudioFile'),
   openVideoFiles: (): Promise<{ canceled: boolean; files?: { filePath: string; fileName: string }[] }> =>

@@ -2,6 +2,7 @@ import { ipcMain } from 'electron'
 import * as appHandlers from './handlers/app'
 import * as checkoutHandlers from './handlers/checkout'
 import * as cloudHandlers from './handlers/cloud'
+import * as transcribeHandlers from './handlers/transcribe'
 import * as desktopHandlers from './handlers/desktop'
 import * as exportHandlers from './handlers/export'
 import * as fsHandlers from './handlers/file-system'
@@ -80,6 +81,9 @@ export function registerIpcHandlers() {
 
   // Cloud (AI) upscaling: status, consent, and the retry / fallback paths.
   cloudHandlers.registerCloudHandlers()
+
+  // Cloud transcription: status, start, progress and cancel.
+  transcribeHandlers.registerTranscribeHandlers()
 
   // License, credit balance and devices.
   licenseHandlers.registerLicenseHandlers()

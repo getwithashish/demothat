@@ -122,9 +122,20 @@ export function usePreviewAudioMixer({ videoRef, isPlaying }: UsePreviewAudioMix
   }, [sources, videoRef])
 
   // --- Follow the transport -----------------------------------------------------
+  //
+  // Idempotent per mixer: the effect can run twice for one transition (the graph
+  // arriving and playback starting in the same commit), and `play()` twice on an
+  // element is a stutter, not a no-op, in some browsers. A *new* mixer while
+  // already playing still has to be started, which is why the guard is keyed on the
+  // mixer instance and not just on `isPlaying`.
+  const transportRef = useRef<{ mixer: PreviewAudioMixer | null; playing: boolean }>({ mixer: null, playing: false })
   useEffect(() => {
     const mixer = mixerRef.current
     if (!mixer) return
+    const last = transportRef.current
+    if (last.mixer === mixer && last.playing === isPlaying) return
+    transportRef.current = { mixer, playing: isPlaying }
+
     if (isPlaying) {
       // play() re-seeks first, so a track never starts from where it was left while
       // the picture moved on without it.

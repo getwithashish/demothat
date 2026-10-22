@@ -14,6 +14,7 @@ import { initialFrameState, recalculateCanvasDimensions } from './frameSlice'
 import { prepareCursorBitmaps } from '../../lib/utils'
 import { collectSavePayload, whenSaveIdle, withSaveGuard } from '../../lib/project-file'
 import { projectNameFromPath } from '../../lib/recent-projects'
+import { audioTracksFromManifest, legacyTracks } from '../../../shared/audio-tracks'
 import type { EditorState } from '../../types'
 
 export const initialProjectState: ProjectState = {
@@ -32,6 +33,8 @@ export const initialProjectState: ProjectState = {
   platform: null,
   cursorTheme: null,
   hasAudioTrack: false,
+  audioTracks: [],
+  audioTracksFromManifest: false,
   transcript: null,
   currentProjectPath: null,
   isDirty: false,
@@ -69,6 +72,7 @@ function projectSignature(state: EditorState): string {
     isWebcamVisible,
     cursorStyles,
     transcript,
+    audioTracks,
   } = state
   return JSON.stringify({
     frameStyles,
@@ -90,6 +94,7 @@ function projectSignature(state: EditorState): string {
     isWebcamVisible,
     cursorStyles,
     transcript,
+    audioTracks,
   })
 }
 
@@ -303,6 +308,12 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
       const metadataContent = await window.electronAPI.readFile(metadataPath)
       const parsedData = JSON.parse(metadataContent)
 
+      // The recording's own manifest says what its audio is. A manifest written
+      // before the sources were separated says nothing about them, so its single
+      // track is provisional until the player reports whether there is audio.
+      const manifestHasTracks = Array.isArray(parsedData.audioTracks)
+      const audioTracks = audioTracksFromManifest(parsedData, true)
+
       const processedMetadata = (parsedData.events || []).map((item: MetaDataItem) => ({
         ...item,
         timestamp: item.timestamp / 1000,
@@ -314,6 +325,9 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
       set((state) => {
         state.platform = platform
         state.metadata = processedMetadata
+        state.audioTracks = audioTracks
+        state.audioTracksFromManifest = manifestHasTracks
+        state.hasAudioTrack = audioTracks.length > 0
         // Represent each mouse click as an independent, removable audio clip.
         state.audioClips = state.audioClips.filter((clip) => clip.kind !== 'click')
         processedMetadata
@@ -466,6 +480,27 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
   setHasAudioTrack: (hasAudio) => {
     set((state) => {
       state.hasAudioTrack = hasAudio
+      // A manifest that predates the split could not say how many sources there
+      // were, so its tracks were provisional: the player's answer is the one fact
+      // available, and it decides whether there is a track at all.
+      if (!state.audioTracksFromManifest) {
+        state.audioTracks = legacyTracks(hasAudio)
+      }
+    })
+  },
+  setAudioTracks: (tracks) => {
+    set((state) => {
+      state.audioTracks = tracks
+      state.audioTracksFromManifest = true
+      state.hasAudioTrack = tracks.length > 0
+    })
+  },
+  updateAudioTrack: (id, patch) => {
+    set((state) => {
+      const track = state.audioTracks.find((candidate) => candidate.id === id)
+      if (!track) return
+      if (patch.volume !== undefined) track.volume = Math.min(1, Math.max(0, patch.volume))
+      if (patch.muted !== undefined) track.muted = patch.muted
     })
   },
   setTranscript: (transcript) => {
@@ -501,6 +536,12 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
       if (opened.mouseClickSoundName !== undefined) state.mouseClickSoundName = opened.mouseClickSoundName
       if (opened.mouseClickSoundVolume !== undefined) state.mouseClickSoundVolume = opened.mouseClickSoundVolume
       if (opened.hasAudioTrack !== undefined) state.hasAudioTrack = opened.hasAudioTrack
+      if (opened.audioTracks) {
+        state.audioTracks = opened.audioTracks
+        // Saved tracks are the recording's own: the manifest was already read when
+        // they were built, so nothing here is provisional.
+        state.audioTracksFromManifest = true
+      }
       if (opened.transcript !== undefined) state.transcript = opened.transcript ?? null
       if (opened.volume !== undefined) state.volume = opened.volume
       if (opened.isMuted !== undefined) state.isMuted = opened.isMuted

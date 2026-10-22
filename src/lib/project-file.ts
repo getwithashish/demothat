@@ -28,6 +28,7 @@ export function serializeEditorState(state: EditorState): Record<string, unknown
     mouseClickSoundName: state.mouseClickSoundName,
     mouseClickSoundVolume: state.mouseClickSoundVolume,
     hasAudioTrack: state.hasAudioTrack,
+    audioTracks: state.audioTracks,
     transcript: state.transcript,
     volume: state.volume,
     isMuted: state.isMuted,

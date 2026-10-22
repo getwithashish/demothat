@@ -1,6 +1,7 @@
 // --- Types ---
 import type { CreditStatus, DeviceView } from '../../shared/license'
 import type { TranscriptDocument } from '../../shared/transcript'
+import type { AudioTrack } from '../../shared/audio-tracks'
 
 export type BackgroundType = 'color' | 'gradient' | 'image' | 'wallpaper'
 export type AspectRatio = '16:9' | '9:16' | '4:3' | '3:4' | '1:1'
@@ -205,6 +206,20 @@ export interface ProjectState {
   cursorTheme: CursorTheme | null
   hasAudioTrack: boolean
   /**
+   * The recording's audio sources, one entry per source. A recording made before
+   * the sources were separated has a single `mixed` track.
+   */
+  audioTracks: AudioTrack[]
+  /**
+   * True when `audioTracks` came from the recording's own manifest.
+   *
+   * When it is false the manifest predates the split and could not say how many
+   * sources there were, so the tracks are provisional until the player reports
+   * whether the recording has audio at all. Not serialized: it describes where the
+   * tracks came from, not the edit.
+   */
+  audioTracksFromManifest: boolean
+  /**
    * The cloud transcription of this recording, in **source time**, or null when it
    * has not been transcribed. It is part of the project rather than a transient:
    * a transcription costs credits, so re-running it after a reload would charge the
@@ -252,6 +267,10 @@ export interface ProjectActions {
   setPostProcessingCursorScale: (scale: number) => Promise<void>
   reloadCursorTheme: (themeName: string) => Promise<void>
   setHasAudioTrack: (hasAudio: boolean) => void
+  /** Replace the recording's tracks — from a manifest, or from an opened project. */
+  setAudioTracks: (tracks: AudioTrack[]) => void
+  /** Change one track's volume or mute, leaving the others alone. */
+  updateAudioTrack: (id: string, patch: Partial<Pick<AudioTrack, 'volume' | 'muted'>>) => void
   /**
    * Store a transcription (or clear it). It is part of the project, so this marks
    * the project dirty: a transcription cost credits, and losing it on reload would

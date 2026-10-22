@@ -116,10 +116,7 @@ export function legacyTracks(hasAudio: boolean): AudioTrack[] {
  * recording made before the sources were separated, and falls back to a single
  * mixed track when the recording has audio at all.
  */
-export function audioTracksFromManifest(
-  manifest: { audioTracks?: unknown; hasAudioTrack?: unknown },
-  hasAudioStream: boolean,
-): AudioTrack[] {
+export function audioTracksFromManifest(manifest: Record<string, unknown>, hasAudioStream: boolean): AudioTrack[] {
   if (Array.isArray(manifest.audioTracks)) {
     const entries = manifest.audioTracks.filter(isManifestEntry)
     // An array that is present but unusable is treated as absent rather than as

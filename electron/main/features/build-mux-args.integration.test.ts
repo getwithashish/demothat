@@ -30,6 +30,36 @@ const suite = hasFfmpeg ? describe : describe.skip
 let tmpDir: string
 let webm: string
 let mic: string
+/** A WebM that carries Opus audio of its own, i.e. a renderer system-audio capture. */
+let webmWithAudio: string
+/** A mic track much shorter than the video, to prove the video is not cut to it. */
+let shortMic: string
+
+/**
+ * The audio streams of a file, in order, as `{ index, name }`.
+ *
+ * Parsed from the banner: FFmpeg lists each stream as `Stream #0:N` followed by
+ * its metadata block, and the mux names each one. `handler_name` is the one that
+ * survives the MP4 muxer — it is the QuickTime track name — so that is what this
+ * reads, which is also what the app reads.
+ */
+function audioStreamTitles(info: string): { index: number; title: string | null }[] {
+  const blocks = info.split(/Stream #\d+:/).slice(1)
+  const streams: { index: number; title: string | null }[] = []
+  blocks.forEach((block, position) => {
+    if (!/Audio:/.test(block)) return
+    const match = block.match(/handler_name\s*:\s*([A-Za-z0-9_-]+)/)
+    streams.push({ index: position, title: match ? match[1] : null })
+  })
+  return streams
+}
+
+/** The duration FFmpeg reports for a file, in seconds. */
+function durationOf(info: string): number {
+  const match = info.match(/Duration:\s*(\d+):(\d+):(\d+\.\d+)/)
+  if (!match) return 0
+  return Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3])
+}
 
 function run(args: string[]): Promise<{ code: number | null; stderr: string }> {
   return new Promise((resolve) => {
@@ -76,7 +106,25 @@ beforeAll(async () => {
 
   const audio = await run(['-y', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=1', '-c:a', 'aac', mic])
   expect(audio.code, audio.stderr.slice(-500)).toBe(0)
-}, 60_000)
+
+  // A WebM carrying its own Opus audio: what the renderer's loopback capture
+  // produces, and the only way to exercise the two-source path for real.
+  webmWithAudio = path.join(tmpDir, 'screen-with-audio.webm')
+  const withAudio = await run([
+    '-y',
+    '-f', 'lavfi', '-i', 'testsrc=size=640x360:rate=30',
+    '-f', 'lavfi', '-i', 'sine=frequency=880:duration=2',
+    '-t', '2',
+    '-c:v', 'libvpx-vp9', '-deadline', 'realtime', '-cpu-used', '8', '-pix_fmt', 'yuv420p',
+    '-c:a', 'libopus',
+    webmWithAudio,
+  ])
+  expect(withAudio.code, withAudio.stderr.slice(-500)).toBe(0)
+
+  shortMic = path.join(tmpDir, 'short-mic.m4a')
+  const short = await run(['-y', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=0.5', '-c:a', 'aac', shortMic])
+  expect(short.code, short.stderr.slice(-500)).toBe(0)
+}, 120_000)
 
 afterAll(async () => {
   if (tmpDir) await fs.promises.rm(tmpDir, { recursive: true, force: true })
@@ -132,5 +180,74 @@ suite('the Wayland area crop against the bundled ffmpeg', () => {
 
     expect(result.code, result.stderr.slice(-500)).toBe(0)
     expect(parseVideoSize(await inspect(out))).toEqual({ width: 640, height: 360 })
+  }, 60_000)
+})
+
+// The recording's contract with the editor: one stream per audio source, in a
+// known order, each named. Everything downstream — the per-track lanes, the
+// per-track mute and volume, the auto-speed pass reading the mic and the desktop
+// separately — depends on this being true of the real file.
+suite('separate mic and system audio streams', () => {
+  it('keeps both sources as two streams, mic first, each titled', async () => {
+    const out = path.join(tmpDir, 'two-streams.mp4')
+    const result = await run(
+      buildMacMuxArgs({
+        screenWebmInput: webmWithAudio,
+        micAudioInput: mic,
+        output: out,
+        webmHasSystemAudio: true,
+      }),
+    )
+
+    expect(result.code, result.stderr.slice(-500)).toBe(0)
+    const streams = audioStreamTitles(await inspect(out))
+    expect(streams.map((s) => s.title)).toEqual(['mic', 'system'])
+  }, 60_000)
+
+  it('titles a lone source for what it actually is', async () => {
+    const systemOnly = path.join(tmpDir, 'system-only.mp4')
+    const systemResult = await run(
+      buildMacMuxArgs({
+        screenWebmInput: webmWithAudio,
+        micAudioInput: undefined,
+        output: systemOnly,
+        webmHasSystemAudio: true,
+      }),
+    )
+    expect(systemResult.code, systemResult.stderr.slice(-500)).toBe(0)
+    expect(audioStreamTitles(await inspect(systemOnly)).map((s) => s.title)).toEqual(['system'])
+
+    const micOnly = path.join(tmpDir, 'mic-only.mp4')
+    const micResult = await run(
+      buildMacMuxArgs({
+        screenWebmInput: webm,
+        micAudioInput: mic,
+        output: micOnly,
+        webmHasSystemAudio: false,
+      }),
+    )
+    expect(micResult.code, micResult.stderr.slice(-500)).toBe(0)
+    // Copied, not re-encoded — and still named, which is what the app reads.
+    expect(audioStreamTitles(await inspect(micOnly)).map((s) => s.title)).toEqual(['mic'])
+  }, 60_000)
+
+  it('does not cut the video down to the shorter audio source', async () => {
+    // A 2s recording whose mic stops after 0.5s. Without padding each stream to the
+    // video's length, `-shortest` would end the output at the mic — a recording
+    // that silently loses three quarters of itself.
+    const out = path.join(tmpDir, 'short-mic.mp4')
+    const result = await run(
+      buildMacMuxArgs({
+        screenWebmInput: webmWithAudio,
+        micAudioInput: shortMic,
+        output: out,
+        webmHasSystemAudio: true,
+      }),
+    )
+
+    expect(result.code, result.stderr.slice(-500)).toBe(0)
+    const info = await inspect(out)
+    expect(durationOf(info)).toBeGreaterThan(1.8)
+    expect(audioStreamTitles(info).map((s) => s.title)).toEqual(['mic', 'system'])
   }, 60_000)
 })

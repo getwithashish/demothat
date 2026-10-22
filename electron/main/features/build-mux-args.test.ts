@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { buildMuxArgs, buildMacMuxArgs } from './build-mux-args'
+import { AUDIO_TRACK_TITLES, buildMuxArgs, buildMacMuxArgs } from './build-mux-args'
 
 const SCREEN = '/tmp/screen.mp4'
 const SYS = '/tmp/system.webm'
@@ -7,8 +7,16 @@ const OUT = '/tmp/final.mp4'
 const WEBM = '/tmp/screen.webm'
 const MIC = '/tmp/mic.m4a'
 
+/** The stream name for index 0/1, as FFmpeg takes it. */
+const title = (index: number, kind: 'mic' | 'system') => [
+  '-metadata:s:a:' + String(index),
+  'handler_name=' + AUDIO_TRACK_TITLES[kind],
+  '-metadata:s:a:' + String(index),
+  'title=' + AUDIO_TRACK_TITLES[kind],
+]
+
 describe('buildMuxArgs', () => {
-  test('mic + system: amix two streams, copy video', () => {
+  test('mic + system: two streams, mic first, each titled', () => {
     const args = buildMuxArgs({
       screenInput: SCREEN,
       systemAudioInput: SYS,
@@ -23,23 +31,37 @@ describe('buildMuxArgs', () => {
       '-i',
       SYS,
       '-filter_complex',
-      '[0:a][1:a]amix=inputs=2:duration=first:dropout_transition=0,aresample=async=1[a]',
+      '[0:a]aresample=async=1,apad[mic];[1:a]aresample=async=1,apad[sys]',
       '-map',
       '0:v',
       '-map',
-      '[a]',
+      '[mic]',
+      '-map',
+      '[sys]',
       '-c:v',
       'copy',
       '-c:a',
       'aac',
       '-b:a',
       '192k',
+      ...title(0, 'mic'),
+      ...title(1, 'system'),
       '-shortest',
       OUT,
     ])
   })
 
-  test('system only: passes system audio straight through', () => {
+  test('mic + system: the mic is stream 0, because the app reads the order', () => {
+    const args = buildMuxArgs({ screenInput: SCREEN, systemAudioInput: SYS, output: OUT, hasMicAudio: true })
+
+    // The order of the two -map flags is the order of the streams in the output.
+    expect(args.indexOf('[mic]')).toBeLessThan(args.indexOf('[sys]'))
+    // Both are padded, so a source that stops early is silence rather than a
+    // shorter stream that -shortest would then cut the video down to.
+    expect(args[args.indexOf('-filter_complex') + 1]).toContain('apad')
+  })
+
+  test('system only: one stream, titled system', () => {
     const args = buildMuxArgs({
       screenInput: SCREEN,
       systemAudioInput: SYS,
@@ -54,23 +76,24 @@ describe('buildMuxArgs', () => {
       '-i',
       SYS,
       '-filter_complex',
-      '[1:a]aresample=async=1[a]',
+      '[1:a]aresample=async=1,apad[sys]',
       '-map',
       '0:v',
       '-map',
-      '[a]',
+      '[sys]',
       '-c:v',
       'copy',
       '-c:a',
       'aac',
       '-b:a',
       '192k',
+      ...title(0, 'system'),
       '-shortest',
       OUT,
     ])
   })
 
-  test('mic only (no system audio): copies streams without filter graph', () => {
+  test('mic only (no system audio): copies streams, and still names the track', () => {
     const args = buildMuxArgs({
       screenInput: SCREEN,
       systemAudioInput: undefined,
@@ -78,7 +101,8 @@ describe('buildMuxArgs', () => {
       hasMicAudio: true,
     })
 
-    expect(args).toEqual(['-y', '-i', SCREEN, '-c', 'copy', OUT])
+    // A stream copy still accepts metadata, so the single track is identifiable.
+    expect(args).toEqual(['-y', '-i', SCREEN, '-c', 'copy', ...title(0, 'mic'), OUT])
   })
 
   test('no audio at all: copies streams without filter graph', () => {
@@ -89,6 +113,7 @@ describe('buildMuxArgs', () => {
       hasMicAudio: false,
     })
 
+    // No audio to name: a stream title on a file with no audio streams is noise.
     expect(args).toEqual(['-y', '-i', SCREEN, '-c', 'copy', OUT])
   })
 
@@ -109,7 +134,7 @@ describe('buildMuxArgs', () => {
 })
 
 describe('buildMacMuxArgs', () => {
-  test('webm with system audio + mic: amix two streams, transcode video', () => {
+  test('webm with system audio + mic: two streams, mic first, each titled', () => {
     const args = buildMacMuxArgs({
       screenWebmInput: WEBM,
       micAudioInput: MIC,
@@ -124,11 +149,13 @@ describe('buildMacMuxArgs', () => {
       '-i',
       MIC,
       '-filter_complex',
-      '[0:a][1:a]amix=inputs=2:duration=first:dropout_transition=0,aresample=async=1[a]',
+      '[1:a]aresample=async=1,apad[mic];[0:a]aresample=async=1,apad[sys]',
       '-map',
       '0:v',
       '-map',
-      '[a]',
+      '[mic]',
+      '-map',
+      '[sys]',
       '-c:v',
       'libx264',
       '-preset',
@@ -139,12 +166,14 @@ describe('buildMacMuxArgs', () => {
       'aac',
       '-b:a',
       '192k',
+      ...title(0, 'mic'),
+      ...title(1, 'system'),
       '-shortest',
       OUT,
     ])
   })
 
-  test('webm with system audio only: aresample audio, transcode video', () => {
+  test('webm with system audio only: one stream, titled system', () => {
     const args = buildMacMuxArgs({
       screenWebmInput: WEBM,
       micAudioInput: undefined,
@@ -157,11 +186,11 @@ describe('buildMacMuxArgs', () => {
       '-i',
       WEBM,
       '-filter_complex',
-      '[0:a]aresample=async=1[a]',
+      '[0:a]aresample=async=1,apad[sys]',
       '-map',
       '0:v',
       '-map',
-      '[a]',
+      '[sys]',
       '-c:v',
       'libx264',
       '-preset',
@@ -172,12 +201,13 @@ describe('buildMacMuxArgs', () => {
       'aac',
       '-b:a',
       '192k',
+      ...title(0, 'system'),
       '-shortest',
       OUT,
     ])
   })
 
-  test('mic only (no system audio in webm): copy mic stream, transcode video', () => {
+  test('mic only (no system audio in webm): copy mic stream, named', () => {
     const args = buildMacMuxArgs({
       screenWebmInput: WEBM,
       micAudioInput: MIC,
@@ -203,9 +233,41 @@ describe('buildMacMuxArgs', () => {
       'yuv420p',
       '-c:a',
       'copy',
+      ...title(0, 'mic'),
       '-shortest',
       OUT,
     ])
+  })
+
+  test('crop with the mic copied: the video link joins the graph and the track is named', () => {
+    const args = buildMacMuxArgs({
+      screenWebmInput: WEBM,
+      micAudioInput: MIC,
+      output: OUT,
+      webmHasSystemAudio: false,
+      crop: { x: 10, y: 20, width: 640, height: 360 },
+    })
+
+    expect(args[args.indexOf('-filter_complex') + 1]).toBe('[0:v]crop=640:360:10:20[v]')
+    expect(args).toContain('[v]')
+    expect(args).toEqual(expect.arrayContaining(title(0, 'mic')))
+  })
+
+  test('crop with both sources: the crop joins the two-stream graph', () => {
+    const args = buildMacMuxArgs({
+      screenWebmInput: WEBM,
+      micAudioInput: MIC,
+      output: OUT,
+      webmHasSystemAudio: true,
+      crop: { x: 0, y: 0, width: 1280, height: 720 },
+    })
+
+    expect(args[args.indexOf('-filter_complex') + 1]).toBe(
+      '[1:a]aresample=async=1,apad[mic];[0:a]aresample=async=1,apad[sys];[0:v]crop=1280:720:0:0[v]',
+    )
+    expect(args).toContain('[v]')
+    // Both audio streams are still mapped, and still in mic-then-system order.
+    expect(args.indexOf('[mic]')).toBeLessThan(args.indexOf('[sys]'))
   })
 
   test('no audio at all: video-only output with -an', () => {

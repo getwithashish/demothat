@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { parseVideoSize } from '../lib/video-size'
 import { buildMacMuxArgs } from './build-mux-args'
+import { probeAudioTracks } from './audio-tracks'
 
 // Drives the REAL bundled FFmpeg. The Wayland area crop adds a filter to the mux
 // arguments, and the only way to know FFmpeg accepts them — and that `crop=` means
@@ -24,6 +25,10 @@ const binaryName =
       : 'ffmpeg'
 const FFMPEG = path.resolve(here, '../../..', 'binaries', platformDir, binaryName)
 const hasFfmpeg = fs.existsSync(FFMPEG)
+
+// The app's own probe resolves FFmpeg through APP_ROOT, so the suite that runs it
+// has to look like the app does. The direct FFMPEG path above is for the mux runs.
+process.env.APP_ROOT = path.resolve(here, '../../..')
 
 const suite = hasFfmpeg ? describe : describe.skip
 
@@ -202,6 +207,27 @@ suite('separate mic and system audio streams', () => {
     expect(result.code, result.stderr.slice(-500)).toBe(0)
     const streams = audioStreamTitles(await inspect(out))
     expect(streams.map((s) => s.title)).toEqual(['mic', 'system'])
+  }, 60_000)
+
+  it('reads back through the app’s own probe as mic and system', async () => {
+    // The mux writes the names and the editor reads them; this is the one place
+    // both ends run against the same real file, so a change to either that the
+    // other does not know about fails here rather than in the timeline.
+    const out = path.join(tmpDir, 'probed.mp4')
+    const result = await run(
+      buildMacMuxArgs({
+        screenWebmInput: webmWithAudio,
+        micAudioInput: mic,
+        output: out,
+        webmHasSystemAudio: true,
+      }),
+    )
+    expect(result.code, result.stderr.slice(-500)).toBe(0)
+
+    const tracks = await probeAudioTracks(out)
+    expect(tracks.map((t) => t.kind)).toEqual(['mic', 'system'])
+    expect(tracks.map((t) => t.index)).toEqual([0, 1])
+    expect(tracks.every((t) => t.codec === 'aac')).toBe(true)
   }, 60_000)
 
   it('titles a lone source for what it actually is', async () => {

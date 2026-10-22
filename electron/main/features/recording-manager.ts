@@ -30,6 +30,7 @@ import { isEmbeddedOnlyDesktop, rememberEmbeddedOnlyDesktop } from './cursor-hel
 import { SystemAudioWriter } from './system-audio-writer'
 import { ScreenVideoWriter } from './screen-video-writer'
 import { buildMuxArgs, buildMacMuxArgs } from './build-mux-args'
+import { probeAudioTracks } from './audio-tracks'
 import { buildFfmpegArgs } from './build-recording-args'
 import {
   usesRendererScreenCapture as backendCapturesScreen,
@@ -1275,6 +1276,12 @@ async function processAndSaveMetadata(session: RecordingSession): Promise<boolea
     }))
 
     const primaryDisplay = screen.getPrimaryDisplay()
+    // What the recording's audio actually is, read back from the finished file:
+    // the editor builds one lane per track from this, and it is the only place
+    // that knows whether the two sources were separated. A probe that fails
+    // leaves the list empty, which reads as "no audio" — the same as a silent
+    // recording, and never as a track the editor would have to guess at.
+    const audioTracks = await probeAudioTracks(session.screenVideoPath)
     const finalMetadata = {
       platform: process.platform,
       screenSize: primaryDisplay.size,
@@ -1282,10 +1289,11 @@ async function processAndSaveMetadata(session: RecordingSession): Promise<boolea
       syncOffset: 0,
       cursorImages: Object.fromEntries(appState.runtimeCursorImageMap || []),
       events: finalEvents,
+      audioTracks,
     }
 
     await fsPromises.writeFile(session.metadataPath, JSON.stringify(finalMetadata))
-    log.info(`Metadata saved to ${session.metadataPath}`)
+    log.info(`Metadata saved to ${session.metadataPath} (${audioTracks.length} audio track(s))`)
     return true
   } catch (err) {
     log.error(`Failed to process and save metadata: ${err}`)
@@ -1297,6 +1305,8 @@ async function processAndSaveMetadata(session: RecordingSession): Promise<boolea
       geometry: session.recordingGeometry,
       screenSize: screen.getPrimaryDisplay().size,
       syncOffset: 0,
+      // The probe is what failed, so there is nothing honest to put here.
+      audioTracks: [],
     }
     await fsPromises.writeFile(session.metadataPath, JSON.stringify(errorMetadata))
     return false

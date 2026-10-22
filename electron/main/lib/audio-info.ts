@@ -37,6 +37,90 @@ export function parseAudioInfo(stderr: string): AudioInfo {
   return { hasAudio: parseHasAudio(stderr), durationSec: parseDuration(stderr) }
 }
 
+/** One audio stream of a file, as the banner describes it. */
+export interface AudioStreamInfo {
+  /** Position among the file's audio streams: `a:0`, `a:1`. This is what `-map` uses. */
+  audioIndex: number
+  /** The stream's index in the whole file, `Stream #0:N`. */
+  streamIndex: number
+  /**
+   * The container's name for the track. The recorder's mux writes `mic` or
+   * `system` here; a recording made before the sources were separated has none.
+   */
+  handlerName: string | null
+  codec: string | null
+  channels: number | null
+  sampleRate: number | null
+}
+
+/**
+ * Every audio stream in the banner, in file order.
+ *
+ * The banner is the only source for this — there is no ffprobe — and the name
+ * arrives in the per-stream `Metadata:` block that follows the stream line, so a
+ * stream's details and its name are read from the same block.
+ */
+export function parseAudioStreams(stderr: string): AudioStreamInfo[] {
+  // Split into one chunk per stream, so a Metadata block is attributed to the
+  // stream it belongs to rather than to whichever one came first.
+  const chunks = stderr.split(/\n\s*Stream #/).slice(1)
+  const streams: AudioStreamInfo[] = []
+  let audioIndex = 0
+
+  for (const chunk of chunks) {
+    const head = chunk.split('\n')[0] ?? ''
+    const indices = head.match(/^(\d+):(\d+)/)
+    if (!indices) continue
+    if (!/Audio:/.test(head)) continue
+
+    const codec = head.match(/Audio:\s*([A-Za-z0-9_]+)/)
+    const sampleRate = head.match(/(\d+)\s*Hz/)
+    const channels = head.match(/(mono|stereo)/)
+    const channelCount = head.match(/(\d+)\s*channels/)
+    const name = chunk.match(/handler_name\s*:\s*([^\r\n]+)/)
+
+    streams.push({
+      audioIndex,
+      streamIndex: Number(indices[2]),
+      handlerName: name ? name[1].trim() : null,
+      codec: codec ? codec[1] : null,
+      sampleRate: sampleRate ? Number(sampleRate[1]) : null,
+      channels: channels ? (channels[1] === 'mono' ? 1 : 2) : channelCount ? Number(channelCount[1]) : null,
+    })
+    audioIndex += 1
+  }
+
+  return streams
+}
+
+/**
+ * Probe a local file for all of its audio streams.
+ *
+ * Runs FFmpeg with no output file on purpose: it prints the input banner — every
+ * stream, with its metadata — and then exits complaining about the missing output.
+ * Nothing is decoded, so this costs a process spawn and not a pass over the file.
+ */
+export async function probeAudioStreams(filePath: string): Promise<AudioStreamInfo[]> {
+  return new Promise<AudioStreamInfo[]>((resolve) => {
+    let stderr = ''
+    try {
+      const proc = spawn(getFFmpegPath(), ['-hide_banner', '-i', filePath])
+      proc.stderr.on('data', (data) => {
+        stderr += data.toString()
+      })
+      proc.on('error', (err) => {
+        log.warn('[AudioInfo] Could not run ffmpeg to probe streams:', err)
+        resolve([])
+      })
+      // A non-zero exit is the expected outcome here, so the code is ignored.
+      proc.on('close', () => resolve(parseAudioStreams(stderr)))
+    } catch (err) {
+      log.warn('[AudioInfo] Probing streams threw:', err)
+      resolve([])
+    }
+  })
+}
+
 /**
  * Probe a local file for an audio stream and its length.
  *

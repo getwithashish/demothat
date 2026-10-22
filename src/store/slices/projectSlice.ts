@@ -497,10 +497,16 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
   },
   updateAudioTrack: (id, patch) => {
     set((state) => {
-      const track = state.audioTracks.find((candidate) => candidate.id === id)
-      if (!track) return
-      if (patch.volume !== undefined) track.volume = Math.min(1, Math.max(0, patch.volume))
-      if (patch.muted !== undefined) track.muted = patch.muted
+      const index = state.audioTracks.findIndex((candidate) => candidate.id === id)
+      if (index === -1) return
+      const current = state.audioTracks[index]
+      if (!current) return
+      const next = { ...current }
+      if (patch.volume !== undefined) next.volume = Math.min(1, Math.max(0, patch.volume))
+      if (patch.muted !== undefined) next.muted = patch.muted
+      // A new array, not a mutated one: the preview mixer subscribes to the tracks,
+      // and a mutated array keeps its identity, so the change would never reach it.
+      state.audioTracks = state.audioTracks.map((track, position) => (position === index ? next : track))
     })
   },
   setTranscript: (transcript) => {

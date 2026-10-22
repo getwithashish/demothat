@@ -44,7 +44,9 @@ export async function handleExtractAudioTracks(
       tracks: extracted.map((track) => ({
         id: track.id,
         index: track.index,
-        url: `media://${track.filePath}`,
+        // Encoded the way the renderer builds its own `media://` URLs — a path with
+        // a space or a `#` in it would otherwise not resolve.
+        url: `media://${encodeURI(track.filePath).replace(/#/g, '%23').replace(/\?/g, '%3F')}`,
       })),
     }
   } catch (error) {

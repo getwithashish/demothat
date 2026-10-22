@@ -16,6 +16,7 @@ import { Button } from '../ui/button'
 import { drawScene, getClipSourceTime, type VideoClipLayer } from '../../lib/renderer'
 import { cn } from '../../lib/utils'
 import type { VisualEffectRegion } from '../../types'
+import { usePreviewAudioMixer } from '../../hooks/usePreviewAudioMixer'
 
 const mediaUrl = (filePath: string) => `media://${encodeURI(filePath).replace(/#/g, '%23').replace(/\?/g, '%3F')}`
 
@@ -79,6 +80,11 @@ export const Preview = memo(
 
     const { setPlaying, setDuration, setVideoDimensions, setHasAudioTrack } = useEditorStore.getState()
     const { isPlaying, isCurrentlyCut } = usePlaybackState()
+
+    // The recording's audio tracks, mixed separately from the video element so each
+    // source can be muted and balanced on its own. While the mixer is carrying the
+    // audio the element is silenced — see the volume effect below.
+    const { mixerOwnsAudio } = usePreviewAudioMixer({ videoRef, isPlaying })
 
     const [bgImage, setBgImage] = useState<HTMLImageElement | null>(null)
     const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -351,14 +357,19 @@ export const Preview = memo(
       }
     }, [isPlaying, videoRef])
 
-    // Effect to handle volume and mute state
+    // Effect to handle volume and mute state.
+    //
+    // While the preview's mixer is carrying the recording's audio, the element's own
+    // audio is silenced: the file holds both tracks and the element would play one of
+    // them, so the first track would otherwise be heard twice. The user's mute still
+    // applies on top — it silences the mix, not just the element.
     useEffect(() => {
       const video = videoRef.current
       if (video) {
         video.volume = volume
-        video.muted = isMuted
+        video.muted = isMuted || mixerOwnsAudio
       }
-    }, [volume, isMuted, videoRef])
+    }, [volume, isMuted, mixerOwnsAudio, videoRef])
 
     useEffect(() => {
       const video = videoRef.current

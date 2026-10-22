@@ -225,7 +225,9 @@ describe('settlement', () => {
     for (let attempt = 0; attempt < 40 && !running; attempt++) {
       await new Promise((resolve) => setTimeout(resolve, 50))
       const current = await fetchJob(jobId)
-      if (current.status === 'running' && current.framesDone > 0) running = true
+      // framesDone is optional on the wire now (a transcription job reports audio
+      // seconds instead), so an upscale job's progress is a null-safe read.
+      if (current.status === 'running' && (current.framesDone ?? 0) > 0) running = true
     }
     expect(running).toBe(true)
 

@@ -194,6 +194,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/jobs/transcribe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Credit preflight for a transcription, then the audio upload URL
+         * @description The same shape as `POST /v1/jobs`, for an audio file instead of a video. The preflight prices the *declared* audio length; the server re-prices from its own probe of the uploaded audio and that number is final (0.8). Settlement follows the same reserve/settle/refund rules as an upscale (0.3), priced per minute of audio rather than per frame. The transcript is delivered as a JSON object and fetched through the same `downloadUrl` on the job view.
+         */
+        post: operations["createTranscribeJob"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/jobs/{id}": {
         parameters: {
             query?: never;
@@ -398,6 +418,18 @@ export interface components {
             minChargeCredits: number;
             cloudEnabled: boolean;
             multipartThresholdBytes?: number;
+            transcription?: components["schemas"]["TranscriptionCapabilities"];
+        };
+        /** @description What the transcription service publishes so the app can quote a price before it uploads anything. `creditsPerMinute` is the same number the server charges from; the app mirrors it for the estimate and never sends a price of its own. */
+        TranscriptionCapabilities: {
+            /** @description False when cloud transcription is switched off for this deployment. */
+            enabled: boolean;
+            /** @description Credits per minute of probed audio, `ceil`ed. Defaults to the cost of a 30 fps 1080p cloud upscale of the same clip, so transcription starts out priced like the export it accompanies. */
+            creditsPerMinute: number;
+            /** @description Model names `CreateTranscribeJobRequest.model` accepts. */
+            models: string[];
+            /** @description Longest audio the worker will accept. */
+            maxAudioSeconds?: number;
         };
         /** @description A price as rendered, not as charged. `amountMinor` is an integer in the smallest denomination of `currency`, so divide by 10^`minorUnitExponent` — 2 for USD, but 0 for zero-decimal currencies such as JPY, which is why the exponent is published instead of assumed. */
         ProductPrice: {
@@ -433,6 +465,15 @@ export interface components {
             targetWidth: number;
             targetHeight: number;
         };
+        CreateTranscribeJobRequest: {
+            /** @description Declared length of the audio about to be uploaded. Used for the preflight only; the charge comes from the server's own probe. */
+            audioSeconds: number;
+            fileSizeBytes: number;
+            /** @description ISO-639-1 hint, or `auto` to let the model decide. */
+            language?: string;
+            /** @description One of `Capabilities.transcription.models`; omit for the server default. */
+            model?: string;
+        };
         CreateJobResponse: {
             jobId: string;
             estimatedCost: number;
@@ -450,12 +491,23 @@ export interface components {
             };
         };
         JobView: {
+            /**
+             * @description What this job does. `upscale` jobs report `framesDone`/`totalFrames`; `transcribe` jobs report `audioSecondsDone`/`audioSeconds` instead.
+             * @enum {string}
+             */
+            kind: "upscale" | "transcribe";
             /** @enum {string} */
             status: "created" | "uploading" | "uploaded" | "validating" | "rejected" | "queued" | "running" | "canceling" | "canceled" | "succeeded" | "failed" | "expired";
             stage: string;
             progress: number;
-            framesDone: number;
-            totalFrames: number;
+            /** @description Frames written to the encoder. Present for `upscale` jobs only. */
+            framesDone?: number;
+            /** @description Present for `upscale` jobs only. */
+            totalFrames?: number;
+            /** @description Audio length the worker probed, and the basis of the charge. Present for `transcribe` jobs only. */
+            audioSeconds?: number;
+            /** @description Audio processed so far. Present for `transcribe` jobs only. */
+            audioSecondsDone?: number;
             reserved: number;
             consumed: number;
             etaSeconds?: number;
@@ -832,6 +884,68 @@ export interface operations {
                 };
             };
             /** @description Cloud upscaling disabled */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    createTranscribeJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTranscribeJobRequest"];
+            };
+        };
+        responses: {
+            /** @description Job created, upload plan returned */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateJobResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            /** @description Insufficient credits (carries estimatedCost and balance) */
+            402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description A job is already running for this license */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Daily job limit reached */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Cloud transcription disabled */
             503: {
                 headers: {
                     [name: string]: unknown;

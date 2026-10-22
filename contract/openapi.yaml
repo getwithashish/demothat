@@ -1,5 +1,5 @@
 # contract/openapi.yaml
-# CONTRACT VERSION: 2.1.0
+# CONTRACT VERSION: 2.2.0
 #
 # OWNER: demothat-api. This file is the source of truth for the app -> API
 # contract. `demothat` vendors a pinned copy and its CI fails when the version
@@ -11,9 +11,10 @@
 openapi: 3.1.0
 info:
   title: DemoThat API
-  version: 2.1.0
+  version: 2.2.0
   description: >-
-    Pro licensing, credit ledger and cloud upscaling jobs for the DemoThat
+    Pro licensing, credit ledger, cloud upscaling jobs and cloud transcription
+    for the DemoThat
     desktop app. This file is the app-to-API contract; the API-to-worker contract
     lives in contract/worker-protocol.md plus the JSON Schemas in contract/schemas/.
   contact:
@@ -36,6 +37,8 @@ tags:
     description: License activation, tokens and devices
   - name: jobs
     description: Cloud upscaling jobs
+  - name: transcription
+    description: Cloud transcription jobs (audio in, timestamped transcript out)
   - name: internal
     description: Worker callbacks and operator tasks
 
@@ -322,6 +325,63 @@ paths:
                 $ref: '#/components/schemas/Error'
         '503':
           description: Cloud upscaling disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1/jobs/transcribe:
+    post:
+      operationId: createTranscribeJob
+      tags: [transcription]
+      summary: Credit preflight for a transcription, then the audio upload URL
+      description: >-
+        The same shape as `POST /v1/jobs`, for an audio file instead of a video.
+        The preflight prices the *declared* audio length; the server re-prices
+        from its own probe of the uploaded audio and that number is final (0.8).
+        Settlement follows the same reserve/settle/refund rules as an upscale
+        (0.3), priced per minute of audio rather than per frame. The transcript
+        is delivered as a JSON object and fetched through the same `downloadUrl`
+        on the job view.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTranscribeJobRequest'
+      responses:
+        '200':
+          description: Job created, upload plan returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateJobResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '402':
+          description: Insufficient credits (carries estimatedCost and balance)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: A job is already running for this license
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Daily job limit reached
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Cloud transcription disabled
           content:
             application/json:
               schema:
@@ -763,6 +823,35 @@ components:
           type: boolean
         multipartThresholdBytes:
           type: integer
+        transcription:
+          $ref: '#/components/schemas/TranscriptionCapabilities'
+    TranscriptionCapabilities:
+      type: object
+      description: >-
+        What the transcription service publishes so the app can quote a price
+        before it uploads anything. `creditsPerMinute` is the same number the
+        server charges from; the app mirrors it for the estimate and never
+        sends a price of its own.
+      required: [enabled, creditsPerMinute, models]
+      properties:
+        enabled:
+          type: boolean
+          description: False when cloud transcription is switched off for this deployment.
+        creditsPerMinute:
+          type: number
+          minimum: 0
+          description: >-
+            Credits per minute of probed audio, `ceil`ed. Defaults to the cost of
+            a 30 fps 1080p cloud upscale of the same clip, so transcription
+            starts out priced like the export it accompanies.
+        models:
+          type: array
+          items:
+            type: string
+          description: Model names `CreateTranscribeJobRequest.model` accepts.
+        maxAudioSeconds:
+          type: integer
+          description: Longest audio the worker will accept.
     ProductPrice:
       type: object
       description: >-
@@ -838,6 +927,23 @@ components:
           type: integer
         targetHeight:
           type: integer
+    CreateTranscribeJobRequest:
+      type: object
+      required: [audioSeconds, fileSizeBytes]
+      properties:
+        audioSeconds:
+          type: number
+          description: >-
+            Declared length of the audio about to be uploaded. Used for the
+            preflight only; the charge comes from the server's own probe.
+        fileSizeBytes:
+          type: integer
+        language:
+          type: string
+          description: ISO-639-1 hint, or `auto` to let the model decide.
+        model:
+          type: string
+          description: One of `Capabilities.transcription.models`; omit for the server default.
     CreateJobResponse:
       type: object
       required: [jobId, estimatedCost, upload]
@@ -874,8 +980,14 @@ components:
                     format: uri
     JobView:
       type: object
-      required: [status, stage, progress, framesDone, totalFrames, reserved, consumed, cost]
+      required: [status, stage, progress, reserved, consumed, cost, kind]
       properties:
+        kind:
+          type: string
+          enum: [upscale, transcribe]
+          description: >-
+            What this job does. `upscale` jobs report `framesDone`/`totalFrames`;
+            `transcribe` jobs report `audioSecondsDone`/`audioSeconds` instead.
         status:
           type: string
           enum:
@@ -899,8 +1011,18 @@ components:
           type: number
         framesDone:
           type: integer
+          description: Frames written to the encoder. Present for `upscale` jobs only.
         totalFrames:
           type: integer
+          description: Present for `upscale` jobs only.
+        audioSeconds:
+          type: number
+          description: >-
+            Audio length the worker probed, and the basis of the charge. Present
+            for `transcribe` jobs only.
+        audioSecondsDone:
+          type: number
+          description: Audio processed so far. Present for `transcribe` jobs only.
         reserved:
           type: integer
         consumed:

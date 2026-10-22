@@ -10,9 +10,11 @@ import { Scissors } from 'tabler-icons-react'
 import { formatTime, calculateRulerInterval } from '../../lib/utils'
 import { useTimelineInteraction } from '../../hooks/useTimelineInteraction'
 import { FlipScissorsIcon } from '../ui/icons'
-import { Camera, Music, GripVertical, Search } from 'tabler-icons-react'
+import { Camera, Music, GripVertical, Search, Volume, VolumeOff } from 'tabler-icons-react'
 import { AudioTimelinePreview } from './timeline/AudioTimelinePreview'
 import { ICON_SIZE, ICON_STROKE } from '../ui/icons'
+import { Slider } from '../ui/slider'
+import { buildTrackRows } from './timeline/track-rows'
 import { COMPOSITION_LAYOUTS } from '../../lib/constants'
 
 // Timeline geometry (DESIGN_SPEC §8): 34px rows, 26px clips, 22px ruler, 108px track header.
@@ -201,7 +203,8 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
   const updateVideoClip = useEditorStore((state) => state.updateVideoClip)
   const mouseClickSoundsEnabled = useEditorStore((state) => state.mouseClickSoundsEnabled)
   const videoPath = useEditorStore((state) => state.videoPath)
-  const hasAudioTrack = useEditorStore((state) => state.hasAudioTrack)
+  const audioTracks = useEditorStore((state) => state.audioTracks)
+  const updateAudioTrack = useEditorStore((state) => state.updateAudioTrack)
   const clickClips = useMemo(() => audioClips.filter((clip) => clip.kind === 'click'), [audioClips])
 
   // Imported clips are stacked top-first: the top row is drawn last (on top),
@@ -209,10 +212,15 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
   const displayVideoClips = useMemo(() => [...videoClips].sort((a, b) => (b.order ?? 0) - (a.order ?? 0)), [videoClips])
 
   const trackLayout = useMemo(() => {
-    const rows = [
-      ...displayVideoClips.map((clip) => ({ key: clip.id, label: 'Video', height: ROW_HEIGHT })),
-      ...FIXED_ROWS,
-    ]
+    const rows = buildTrackRows({
+      videoClipIds: displayVideoClips.map((clip) => clip.id),
+      // One row per audio source: each has its own volume and mute, and a lane is
+      // how the editor says so. A recording made before the sources were separated
+      // has one `mixed` track and gets one lane, which is what it is.
+      audioTracks: audioTracks.map((track) => ({ id: track.id, label: track.label })),
+      fixedRows: FIXED_ROWS,
+      rowHeight: ROW_HEIGHT,
+    })
     let top = 0
     const positioned = rows.map((row) => {
       const positionedRow = { ...row, top }
@@ -224,7 +232,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
       topByKey: Object.fromEntries(positioned.map((row) => [row.key, row.top])) as Record<string, number>,
       height: top,
     }
-  }, [displayVideoClips])
+  }, [displayVideoClips, audioTracks])
 
   // Dragging a clip's grip handle moves it up/down the stack. The row under the
   // cursor becomes its new index, and the store keeps the bottom-first order.
@@ -412,20 +420,63 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
                   />
                 )}
 
-                {/* Audio captured with the recording (mic / system audio) on its own lane. */}
-                {hasAudioTrack && duration > 0 && (
+                {/* One lane per audio source captured with the recording. The bar is
+                    interactive where the old single strip was not: a source you cannot
+                    silence is not a track, it is a decoration. */}
+                {audioTracks.map((track) => (
                   <div
-                    className="pointer-events-none absolute rounded-clip border border-line bg-clip-audio"
+                    key={track.id}
+                    data-audio-track={track.id}
+                    className={cn(
+                      'absolute flex items-center gap-2 overflow-hidden rounded-clip border bg-clip-audio pr-2 pl-1',
+                      track.muted ? 'border-line opacity-55' : 'border-line',
+                    )}
                     style={{
-                      top: `${trackLayout.topByKey['recorded-audio'] + LANE_INSET}px`,
+                      top: `${(trackLayout.topByKey[track.id] ?? 0) + LANE_INSET}px`,
                       left: 0,
                       width: `${timeToPx(duration)}px`,
                       height: CLIP_HEIGHT,
-                      zIndex: 8,
+                      zIndex: 9,
                     }}
-                    aria-hidden="true"
-                  />
-                )}
+                    // The timeline seeks on mousedown; a control inside a lane is not a
+                    // seek target.
+                    onMouseDown={(event) => event.stopPropagation()}
+                  >
+                    <button
+                      type="button"
+                      title={track.muted ? `Unmute ${track.label}` : `Mute ${track.label}`}
+                      aria-label={track.muted ? `Unmute ${track.label}` : `Mute ${track.label}`}
+                      aria-pressed={track.muted}
+                      className={cn(
+                        'flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-[3px] border',
+                        track.muted ? 'border-line bg-ctl text-muted' : 'border-line bg-clip-audio text-fg',
+                      )}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        updateAudioTrack(track.id, { muted: !track.muted })
+                      }}
+                    >
+                      {track.muted ? (
+                        <VolumeOff size={ICON_SIZE} strokeWidth={ICON_STROKE} />
+                      ) : (
+                        <Volume size={ICON_SIZE} strokeWidth={ICON_STROKE} />
+                      )}
+                    </button>
+                    <div className="w-24 shrink-0" title={`${track.label} volume`}>
+                      <Slider
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        value={track.volume}
+                        disabled={track.muted}
+                        onChange={(volume) => updateAudioTrack(track.id, { volume })}
+                      />
+                    </div>
+                    <span className="truncate font-mono text-sm tabular-nums text-muted">
+                      {track.muted ? 'muted' : `${Math.round(track.volume * 100)}%`}
+                    </span>
+                  </div>
+                ))}
                 {videoClips.map((clip) => {
                   const selected = selectedRegionId === clip.id
                   return (

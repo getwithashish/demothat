@@ -43,6 +43,13 @@ export interface ExportProjectState {
   hasAudioTrack?: boolean
   isMuted?: boolean
   volume?: number
+  /**
+   * The recording's audio sources, each with its own gain.
+   *
+   * Absent for a project saved before the sources were separated; the single stream
+   * such a recording has is the whole of its audio.
+   */
+  audioTracks?: Array<{ index: number; volume: number; muted: boolean }>
   mouseClickSoundsEnabled?: boolean
   mouseClickSoundPath?: string | null
   mouseClickSoundVolume?: number
@@ -228,18 +235,44 @@ export function buildExportArgs(options: BuildExportArgsOptions): string[] {
 
   if (isMp4) {
     let inputIndex = 1
-    if (
-      projectState.hasAudioTrack &&
-      projectState.videoPath &&
-      !projectState.isMuted &&
-      Number(projectState.volume) > 0
-    ) {
+    const masterVolume = Math.max(0, Math.min(1, Number(projectState.volume) || 0))
+    /**
+     * The recording's audio sources, each with its own gain.
+     *
+     * The recording file holds one stream per source, and `[N:a]` addresses only the
+     * first of them — so mapping it once, as this did, silently drops every source
+     * but one. Each kept source gets its own chain, and they are mixed together with
+     * the imported clips below.
+     *
+     * A project saved before the sources were separated has no `audioTracks`, and its
+     * single stream is the whole of the recording's audio. An empty list is a
+     * different thing: it is a recording the editor believes has no audio, and
+     * falling back to stream 0 there would export audio the editor says is not
+     * there.
+     */
+    const recordingTracks: { index: number; volume: number; muted: boolean }[] = Array.isArray(
+      projectState.audioTracks,
+    )
+      ? projectState.audioTracks.map((track) => ({
+          index: Math.max(0, Math.trunc(Number(track.index) || 0)),
+          volume: Math.max(0, Math.min(1, Number(track.volume))),
+          muted: track.muted === true,
+        }))
+      : [{ index: 0, volume: 1, muted: false }]
+    // A muted or silent source contributes nothing, and a chain that multiplies by
+    // zero is a decoder pass over the whole recording for no audio at all.
+    const keptTracks = recordingTracks.filter((track) => !track.muted && track.volume > 0)
+
+    if (projectState.hasAudioTrack && projectState.videoPath && !projectState.isMuted && keptTracks.length > 0) {
       ffmpegArgs.push('-i', projectState.videoPath)
-      const originalVolume = Math.max(0, Math.min(1, Number(projectState.volume) || 0))
-      audioFilterParts.push(
-        `[${inputIndex}:a]atrim=duration=${exportDuration},asetpts=PTS-STARTPTS,volume=${originalVolume}[original]`,
-      )
-      audioLabels.push('[original]')
+      keptTracks.forEach((track, position) => {
+        const label = position === 0 ? 'original' : `original${position}`
+        audioFilterParts.push(
+          `[${inputIndex}:a:${track.index}]atrim=duration=${exportDuration},asetpts=PTS-STARTPTS,` +
+            `volume=${masterVolume * track.volume}[${label}]`,
+        )
+        audioLabels.push(`[${label}]`)
+      })
       inputIndex++
     }
 

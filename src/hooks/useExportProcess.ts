@@ -134,6 +134,9 @@ export const useExportProcess = () => {
         mouseClickSoundName: fullState.mouseClickSoundName,
         mouseClickSoundVolume: fullState.mouseClickSoundVolume,
         hasAudioTrack: fullState.hasAudioTrack,
+        // One entry per audio source, so the export can mix them with their own
+        // gains instead of mapping the recording's first stream and losing the rest.
+        audioTracks: fullState.audioTracks,
         volume: fullState.volume,
         isMuted: fullState.isMuted,
         zoomRegions: fullState.zoomRegions,

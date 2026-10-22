@@ -1,3 +1,14 @@
+## [1.9.0](https://github.com/getwithashish/DemoThat/compare/v1.8.0...v1.9.0) (2026-10-22)
+
+### Features
+
+* **checkout:** render the catalogue from GET /v1/products ([34f7560](https://github.com/getwithashish/DemoThat/commit/34f7560156ef378070602a34994d7c52fada3ff8))
+* **cursor:** path smoothing and optics-based motion blur ([77a83ad](https://github.com/getwithashish/DemoThat/commit/77a83adf4d92fe4c9aa00d27d103489ef4c2deea))
+* **linux:** record natively on Wayland ([687e50c](https://github.com/getwithashish/DemoThat/commit/687e50c7ec4a53ce8bb6a407ca968b34c54a8bee))
+* **wayland:** capture and cursor telemetry through the native helper ([4a10815](https://github.com/getwithashish/DemoThat/commit/4a10815307583ef76fba0e68d0cdd488a11000f7))
+* **wayland:** draw the user's real cursor, and ask a desktop only once ([e9860c8](https://github.com/getwithashish/DemoThat/commit/e9860c8c015259bf8e26b1dc5530d141f6c7b252))
+* **wayland:** native cursor helper for pointer telemetry ([8fc6265](https://github.com/getwithashish/DemoThat/commit/8fc626512d096183503584a7b1c86ef92741d324))
+
 ## [1.8.0](https://github.com/getwithashish/DemoThat/compare/v1.7.0...v1.8.0) (2026-10-16)
 
 ### Features

@@ -32,6 +32,7 @@ export const initialProjectState: ProjectState = {
   platform: null,
   cursorTheme: null,
   hasAudioTrack: false,
+  transcript: null,
   currentProjectPath: null,
   isDirty: false,
   saveStatus: 'untitled',
@@ -67,6 +68,7 @@ function projectSignature(state: EditorState): string {
     webcamStyles,
     isWebcamVisible,
     cursorStyles,
+    transcript,
   } = state
   return JSON.stringify({
     frameStyles,
@@ -87,6 +89,7 @@ function projectSignature(state: EditorState): string {
     webcamStyles,
     isWebcamVisible,
     cursorStyles,
+    transcript,
   })
 }
 
@@ -465,6 +468,14 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
       state.hasAudioTrack = hasAudio
     })
   },
+  setTranscript: (transcript) => {
+    set((state) => {
+      state.transcript = transcript
+      // A transcription cost credits. It is part of the project, so it is a change
+      // the user would lose by closing without saving.
+      state.isDirty = true
+    })
+  },
   applyOpenedProject: async (project, projectPath, options) => {
     const opened = project as unknown as Partial<EditorState>
     const videoPath = typeof opened.videoPath === 'string' ? opened.videoPath : null
@@ -490,6 +501,7 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
       if (opened.mouseClickSoundName !== undefined) state.mouseClickSoundName = opened.mouseClickSoundName
       if (opened.mouseClickSoundVolume !== undefined) state.mouseClickSoundVolume = opened.mouseClickSoundVolume
       if (opened.hasAudioTrack !== undefined) state.hasAudioTrack = opened.hasAudioTrack
+      if (opened.transcript !== undefined) state.transcript = opened.transcript ?? null
       if (opened.volume !== undefined) state.volume = opened.volume
       if (opened.isMuted !== undefined) state.isMuted = opened.isMuted
       if (opened.zoomRegions) state.zoomRegions = opened.zoomRegions

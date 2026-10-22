@@ -1,5 +1,6 @@
 // --- Types ---
 import type { CreditStatus, DeviceView } from '../../shared/license'
+import type { TranscriptDocument } from '../../shared/transcript'
 
 export type BackgroundType = 'color' | 'gradient' | 'image' | 'wallpaper'
 export type AspectRatio = '16:9' | '9:16' | '4:3' | '3:4' | '1:1'
@@ -203,6 +204,13 @@ export interface ProjectState {
   platform: NodeJS.Platform | null
   cursorTheme: CursorTheme | null
   hasAudioTrack: boolean
+  /**
+   * The cloud transcription of this recording, in **source time**, or null when it
+   * has not been transcribed. It is part of the project rather than a transient:
+   * a transcription costs credits, so re-running it after a reload would charge the
+   * user twice for the same audio.
+   */
+  transcript: TranscriptDocument | null
   /** Path of the `.dthat` this session was saved to / opened from. */
   currentProjectPath: string | null
   /** True when the project has changes since the last save/open. */
@@ -244,6 +252,12 @@ export interface ProjectActions {
   setPostProcessingCursorScale: (scale: number) => Promise<void>
   reloadCursorTheme: (themeName: string) => Promise<void>
   setHasAudioTrack: (hasAudio: boolean) => void
+  /**
+   * Store a transcription (or clear it). It is part of the project, so this marks
+   * the project dirty: a transcription cost credits, and losing it on reload would
+   * mean paying for it twice.
+   */
+  setTranscript: (transcript: TranscriptDocument | null) => void
   /** Applies a project opened from a `.dthat` archive over a fresh load. */
   applyOpenedProject: (
     project: Record<string, unknown>,

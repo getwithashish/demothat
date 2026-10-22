@@ -3,6 +3,7 @@ import * as appHandlers from './handlers/app'
 import * as checkoutHandlers from './handlers/checkout'
 import * as cloudHandlers from './handlers/cloud'
 import * as transcribeHandlers from './handlers/transcribe'
+import * as audioHandlers from './handlers/audio'
 import * as desktopHandlers from './handlers/desktop'
 import * as exportHandlers from './handlers/export'
 import * as fsHandlers from './handlers/file-system'
@@ -84,6 +85,9 @@ export function registerIpcHandlers() {
 
   // Cloud transcription: status, start, progress and cancel.
   transcribeHandlers.registerTranscribeHandlers()
+
+  // The preview's audio tracks: one playable file per track of the recording.
+  audioHandlers.registerAudioHandlers()
 
   // License, credit balance and devices.
   licenseHandlers.registerLicenseHandlers()

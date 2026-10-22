@@ -427,6 +427,17 @@ export const electronAPI = {
 
   cancelTranscription: (): void => ipcRenderer.send('transcribe:cancel'),
 
+  // --- The preview's audio tracks ---
+  /**
+   * Extract the recording's tracks into files the preview can play, one per track.
+   * Tracks that could not be extracted are absent from the result.
+   */
+  extractAudioTracks: (request: {
+    filePath: string
+    tracks: { id: string; kind: string; index: number; label: string; volume: number; muted: boolean }[]
+  }): Promise<{ tracks: { id: string; index: number; url: string }[] }> =>
+    ipcRenderer.invoke('audio:extractTracks', request),
+
   onTranscribeProgress: (
     callback: (payload: {
       stage: string

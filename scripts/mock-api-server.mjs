@@ -45,6 +45,10 @@ const DEFAULTS = {
   minChargeCredits: Number(process.env.MOCK_MIN_CHARGE ?? 10),
   fail: process.env.MOCK_FAIL ?? 'none',
   upscaleMs: Number(process.env.MOCK_UPSCALE_MS ?? 4000),
+  /** Transcription: credits per minute of audio, and how long a job takes. */
+  transcribeCreditsPerMinute: Number(process.env.MOCK_TRANSCRIBE_CREDITS_PER_MINUTE ?? 1800),
+  maxAudioSeconds: Number(process.env.MOCK_MAX_AUDIO_SECONDS ?? 900),
+  transcribeMs: Number(process.env.MOCK_TRANSCRIBE_MS ?? 2000),
   multipartThresholdBytes: Number(process.env.MOCK_MULTIPART_THRESHOLD ?? 5 * 1024 * 1024),
   partSize: Number(process.env.MOCK_PART_SIZE ?? 5 * 1024 * 1024),
   /** When set, a purchase stays pending for this long instead of N polls. */
@@ -161,9 +165,20 @@ export async function createMockApiServer(options = {}) {
   const jobView = (job) => ({
     status: job.status,
     stage: job.stage,
-    progress: job.totalFrames > 0 ? Math.min(100, Math.round((job.framesDone / job.totalFrames) * 100)) : 0,
+    kind: job.kind ?? 'upscale',
+    progress:
+      job.kind === 'transcribe'
+        ? job.audioSeconds > 0
+          ? Math.min(100, Math.round((job.audioSecondsDone / job.audioSeconds) * 100))
+          : 0
+        : job.totalFrames > 0
+          ? Math.min(100, Math.round((job.framesDone / job.totalFrames) * 100))
+          : 0,
     framesDone: job.framesDone,
     totalFrames: job.totalFrames,
+    ...(job.kind === 'transcribe'
+      ? { audioSeconds: job.audioSeconds, audioSecondsDone: job.audioSecondsDone }
+      : {}),
     reserved: job.reserved,
     consumed: job.consumed,
     etaSeconds: job.etaSeconds ?? null,
@@ -185,26 +200,43 @@ export async function createMockApiServer(options = {}) {
     if (job.status === 'queued' && now - job.startedAt > 600) {
       job.status = 'running'
       job.reachedRunning = true
-      job.stage = 'upscaling'
+      job.stage = job.kind === 'transcribe' ? 'transcribing' : 'upscaling'
       job.runningAt = now
     }
     if (job.status === 'running' || job.status === 'canceling') {
       const elapsed = now - job.runningAt
-      const done = Math.min(job.totalFrames, Math.round((elapsed / config.upscaleMs) * job.totalFrames))
-      if (done > job.framesDone) {
-        job.framesDone = done
-        job.consumed = Math.ceil(done * job.rate)
+      if (job.kind === 'transcribe') {
+        // A transcription advances seconds of audio, not frames, and is billed per
+        // minute: the mock keeps the same two counters the real API does.
+        const done = Math.min(job.audioSeconds, (elapsed / config.transcribeMs) * job.audioSeconds)
+        if (done > job.audioSecondsDone) {
+          job.audioSecondsDone = done
+          job.consumed = Math.ceil((done / 60) * job.rate)
+        }
+        job.etaSeconds = Math.max(
+          0,
+          Math.round(((job.audioSeconds - job.audioSecondsDone) / job.audioSeconds) * (config.transcribeMs / 1000)),
+        )
+      } else {
+        const done = Math.min(job.totalFrames, Math.round((elapsed / config.upscaleMs) * job.totalFrames))
+        if (done > job.framesDone) {
+          job.framesDone = done
+          job.consumed = Math.ceil(done * job.rate)
+        }
+        job.etaSeconds = Math.max(
+          0,
+          Math.round(((job.totalFrames - job.framesDone) / job.totalFrames) * (config.upscaleMs / 1000)),
+        )
       }
-      job.etaSeconds = Math.max(
-        0,
-        Math.round(((job.totalFrames - job.framesDone) / job.totalFrames) * (config.upscaleMs / 1000)),
-      )
     }
     if (job.status === 'canceling' && now - job.cancelAt > 300) {
       settle(job, job.framesDone > 0 ? 'canceled' : 'canceled')
       return
     }
-    if (job.status === 'running' && now - job.runningAt >= config.upscaleMs) {
+    if (
+      job.status === 'running' &&
+      now - job.runningAt >= (job.kind === 'transcribe' ? config.transcribeMs : config.upscaleMs)
+    ) {
       if (config.fail === 'infra') settle(job, 'infra')
       else if (config.fail === 'input') settle(job, 'input')
       else settle(job, 'succeeded')
@@ -239,6 +271,12 @@ export async function createMockApiServer(options = {}) {
           minChargeCredits: config.minChargeCredits,
           cloudEnabled: true,
           multipartThresholdBytes: config.multipartThresholdBytes,
+          transcription: {
+            enabled: true,
+            creditsPerMinute: config.transcribeCreditsPerMinute,
+            models: ['large-v3'],
+            maxAudioSeconds: config.maxAudioSeconds,
+          },
         })
       }
       if (req.method === 'GET' && url.pathname === '/dev/public-key') {
@@ -426,6 +464,50 @@ export async function createMockApiServer(options = {}) {
         })
       }
 
+      if (req.method === 'POST' && url.pathname === '/v1/jobs/transcribe') {
+        if (!token) return fail(res, 401, 'unauthorized', 'A license token is required')
+        const body = await readBody(req)
+        if (!(body.audioSeconds > 0)) {
+          return fail(res, 400, 'validation_error', 'audioSeconds is required')
+        }
+        if (body.audioSeconds > config.maxAudioSeconds) {
+          return fail(res, 400, 'validation_error', `audioSeconds exceeds ${config.maxAudioSeconds}`)
+        }
+        const rate = config.transcribeCreditsPerMinute
+        const cost = Math.max(1, Math.ceil((body.audioSeconds / 60) * rate))
+        if (state.credits < cost) {
+          return fail(res, 402, 'insufficient_credits', 'Not enough credits for this job', {
+            estimatedCost: cost,
+            balance: Math.round(state.credits),
+          })
+        }
+        const id = `job_${state.jobs.size + 1}`
+        state.credits -= cost
+        const job = {
+          id,
+          kind: 'transcribe',
+          status: 'uploading',
+          stage: 'uploading',
+          audioSeconds: body.audioSeconds,
+          audioSecondsDone: 0,
+          totalFrames: 0,
+          framesDone: 0,
+          rate,
+          cost,
+          reserved: cost,
+          consumed: 0,
+          reachedRunning: false,
+          upload: { parts: null, partCount: 0 },
+          createdAt: Date.now(),
+        }
+        state.jobs.set(id, job)
+        return json(res, 200, {
+          jobId: id,
+          estimatedCost: cost,
+          upload: { type: 'single', url: `${baseUrl()}/upload/${id}/1` },
+        })
+      }
+
       if (req.method === 'PUT' && parts[0] === 'upload' && parts[1]) {
         const job = state.jobs.get(parts[1])
         if (!job) return fail(res, 404, 'not_found', 'No such job')
@@ -487,6 +569,32 @@ export async function createMockApiServer(options = {}) {
         const job = state.jobs.get(parts[1])
         if (!job) return fail(res, 404, 'not_found', 'No such job')
         if (job.status !== 'succeeded') return fail(res, 409, 'not_ready', 'Job has not succeeded')
+        if (job.kind === 'transcribe') {
+          // The transcript document the worker would have uploaded: deterministic
+          // segments covering the audio, with word timings.
+          const segments = []
+          for (let start = 0; start < job.audioSeconds; start += 5) {
+            const end = Math.min(job.audioSeconds, start + 5)
+            segments.push({
+              start,
+              end,
+              text: `mock segment ${segments.length + 1}`,
+              words: [{ start, end, text: 'mock' }],
+            })
+          }
+          const payload = JSON.stringify({
+            version: 1,
+            language: 'en',
+            model: 'large-v3',
+            durationSec: job.audioSeconds,
+            segments,
+          })
+          res.writeHead(200, {
+            'Content-Type': 'application/json',
+            'Content-Length': String(Buffer.byteLength(payload)),
+          })
+          return res.end(payload)
+        }
         // A stand-in for the upscaled file: deterministic bytes per job.
         const body = Buffer.alloc(2048, job.id)
         res.writeHead(200, { 'Content-Type': 'video/mp4', 'Content-Length': String(body.length) })

@@ -7,6 +7,7 @@
 import type { ResolutionKey } from '../../../shared/export-resolutions'
 import { selectExportCodec } from '../../../shared/export-codec'
 import { videoEncodeArgs, type ExportQuality } from './export-video-args'
+import { buildAudioTimelineSegments, buildRecordingAudioChains } from './audio-timeline'
 
 export interface ExportRegion {
   startTime: number
@@ -263,17 +264,37 @@ export function buildExportArgs(options: BuildExportArgsOptions): string[] {
     // zero is a decoder pass over the whole recording for no audio at all.
     const keptTracks = recordingTracks.filter((track) => !track.muted && track.volume > 0)
 
-    if (projectState.hasAudioTrack && projectState.videoPath && !projectState.isMuted && keptTracks.length > 0) {
-      ffmpegArgs.push('-i', projectState.videoPath)
+    if (projectState.hasAudioTrack && projectState.videoPath && !projectState.isMuted) {
+      // The audio is cut and warped exactly as the picture is, so the two cannot run
+      // on different clocks once a cut or a speed region is in play.
+      const segments = buildAudioTimelineSegments(projectState)
+      const chains: { label: string; filters: string[] }[] = []
       keptTracks.forEach((track, position) => {
         const label = position === 0 ? 'original' : `original${position}`
-        audioFilterParts.push(
-          `[${inputIndex}:a:${track.index}]atrim=duration=${exportDuration},asetpts=PTS-STARTPTS,` +
-            `volume=${masterVolume * track.volume}[${label}]`,
-        )
-        audioLabels.push(`[${label}]`)
+        const filters = buildRecordingAudioChains({
+          inputIndex,
+          streamIndex: track.index,
+          segments,
+          volume: masterVolume * track.volume,
+          label,
+          // Unique per source: a graph with two of them would otherwise define
+          // `[seg0]` twice, which FFmpeg rejects.
+          segmentPrefix: `${label}_seg`,
+        })
+        if (filters.length > 0) chains.push({ label, filters })
       })
-      inputIndex++
+
+      // The recording is only added as an input when something will actually be
+      // mapped from it — otherwise every later input's index would be off by one and
+      // an imported clip would be read out of the recording's file.
+      if (chains.length > 0) {
+        ffmpegArgs.push('-i', projectState.videoPath)
+        for (const chain of chains) {
+          audioFilterParts.push(...chain.filters)
+          audioLabels.push(`[${chain.label}]`)
+        }
+        inputIndex++
+      }
     }
 
     const clips = (projectState.audioClips ?? []).filter(

@@ -22,20 +22,26 @@ export interface BuildTrackRowsOptions {
   videoClipIds: string[]
   /** The recording's audio sources. Empty means the recording has no audio. */
   audioTracks: { id: string; label: string }[]
+  /** The captions. Empty means there are none to show. */
+  subtitleCueIds: string[]
   /** The lanes that always exist, in order. */
   fixedRows: TimelineRow[]
   rowHeight: number
 }
 
+/** The row the captions occupy, when there are any. */
+export const SUBTITLE_ROW_KEY = 'subtitles'
+
 /**
  * The timeline's rows, top to bottom.
  *
- * A recording with no audio gets no audio lane at all — not an empty one. An empty
- * lane is a promise of audio that is not there, and it would sit in the timeline
- * forever, because nothing would ever remove it.
+ * A recording with no audio gets no audio lane, and one with no captions gets no
+ * subtitle lane — not an empty one. An empty lane is a promise of something that is
+ * not there, and it would sit in the timeline forever, because nothing would ever
+ * remove it.
  */
 export function buildTrackRows(options: BuildTrackRowsOptions): TimelineRow[] {
-  const { videoClipIds, audioTracks, fixedRows, rowHeight } = options
+  const { videoClipIds, audioTracks, subtitleCueIds, fixedRows, rowHeight } = options
 
   const videoRows: TimelineRow[] = videoClipIds.map((id) => ({ key: id, label: 'Video', height: rowHeight }))
   const audioRows: TimelineRow[] = audioTracks.map((track) => ({
@@ -44,9 +50,11 @@ export function buildTrackRows(options: BuildTrackRowsOptions): TimelineRow[] {
     height: rowHeight,
   }))
 
-  const fixed = fixedRows.flatMap((row) =>
-    row.key === RECORDED_AUDIO_ROW_KEY ? audioRows : [row],
-  )
+  const fixed = fixedRows.flatMap((row) => {
+    if (row.key === RECORDED_AUDIO_ROW_KEY) return audioRows
+    if (row.key === SUBTITLE_ROW_KEY) return subtitleCueIds.length > 0 ? [row] : []
+    return [row]
+  })
 
   return [...videoRows, ...fixed]
 }

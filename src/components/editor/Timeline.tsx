@@ -14,7 +14,7 @@ import { Camera, Music, GripVertical, Search, Volume, VolumeOff } from 'tabler-i
 import { AudioTimelinePreview } from './timeline/AudioTimelinePreview'
 import { ICON_SIZE, ICON_STROKE } from '../ui/icons'
 import { Slider } from '../ui/slider'
-import { buildTrackRows } from './timeline/track-rows'
+import { buildTrackRows, SUBTITLE_ROW_KEY } from './timeline/track-rows'
 import { COMPOSITION_LAYOUTS } from '../../lib/constants'
 
 // Timeline geometry (DESIGN_SPEC §8): 34px rows, 26px clips, 22px ruler, 108px track header.
@@ -29,6 +29,7 @@ const TRACK_HEADER_WIDTH = 108
 const FIXED_ROWS: { key: string; label: string; height: number }[] = [
   { key: 'screen', label: 'Screen', height: ROW_HEIGHT },
   { key: 'recorded-audio', label: 'Recorded audio', height: ROW_HEIGHT },
+  { key: SUBTITLE_ROW_KEY, label: 'Subtitles', height: ROW_HEIGHT },
   { key: 'music', label: 'Music', height: ROW_HEIGHT },
   { key: 'clicks', label: 'Click sounds', height: ROW_HEIGHT },
   { key: 'camera', label: '3D camera', height: ROW_HEIGHT },
@@ -204,6 +205,8 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
   const mouseClickSoundsEnabled = useEditorStore((state) => state.mouseClickSoundsEnabled)
   const videoPath = useEditorStore((state) => state.videoPath)
   const audioTracks = useEditorStore((state) => state.audioTracks)
+  const subtitleCues = useEditorStore((state) => state.subtitleCues)
+  const removeSubtitleCue = useEditorStore((state) => state.removeSubtitleCue)
   const updateAudioTrack = useEditorStore((state) => state.updateAudioTrack)
   const clickClips = useMemo(() => audioClips.filter((clip) => clip.kind === 'click'), [audioClips])
 
@@ -218,6 +221,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
       // how the editor says so. A recording made before the sources were separated
       // has one `mixed` track and gets one lane, which is what it is.
       audioTracks: audioTracks.map((track) => ({ id: track.id, label: track.label })),
+      subtitleCueIds: subtitleCues.map((cue) => cue.id),
       fixedRows: FIXED_ROWS,
       rowHeight: ROW_HEIGHT,
     })
@@ -232,7 +236,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
       topByKey: Object.fromEntries(positioned.map((row) => [row.key, row.top])) as Record<string, number>,
       height: top,
     }
-  }, [displayVideoClips, audioTracks])
+  }, [displayVideoClips, audioTracks, subtitleCues])
 
   // Dragging a clip's grip handle moves it up/down the stack. The row under the
   // cursor becomes its new index, and the store keeps the bottom-first order.
@@ -475,6 +479,41 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
                     <span className="truncate font-mono text-sm tabular-nums text-muted">
                       {track.muted ? 'muted' : `${Math.round(track.volume * 100)}%`}
                     </span>
+                  </div>
+                ))}
+
+                {/* The captions, one bar per cue. Clicking one seeks to where it was
+                    clicked, which is the timeline's own behaviour and the one a caption
+                    should have: the text and the moment it belongs to are the same
+                    thing. The × is the delete, on the bar rather than behind a menu,
+                    because removing a caption is the edit that gets made most. */}
+                {subtitleCues.map((cue) => (
+                  <div
+                    key={cue.id}
+                    className="group absolute flex items-center overflow-hidden rounded-clip border border-line bg-clip-screen pr-1 pl-2 text-sm text-fg"
+                    style={{
+                      top: `${(trackLayout.topByKey[SUBTITLE_ROW_KEY] ?? 0) + LANE_INSET}px`,
+                      left: `${timeToPx(cue.start)}px`,
+                      width: `${Math.max(28, timeToPx(cue.end - cue.start))}px`,
+                      height: CLIP_HEIGHT,
+                      zIndex: 10,
+                    }}
+                    title={`${cue.text}\n${formatTime(cue.start)} – ${formatTime(cue.end)}`}
+                  >
+                    <span className="truncate">{cue.text}</span>
+                    <button
+                      type="button"
+                      aria-label={`Delete caption: ${cue.text}`}
+                      title="Delete caption"
+                      className="ml-auto shrink-0 cursor-pointer px-1 text-muted opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                      onClick={(event) => {
+                        // Not a seek: this button is not the caption's timeline.
+                        event.stopPropagation()
+                        removeSubtitleCue(cue.id)
+                      }}
+                    >
+                      ×
+                    </button>
                   </div>
                 ))}
                 {videoClips.map((clip) => {

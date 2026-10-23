@@ -437,6 +437,11 @@ export interface TimelineActions {
   addZoomRegion: () => void
   addCutRegion: (regionData?: Partial<CutRegion>) => void
   addSpeedRegion: () => void
+  /**
+   * Find the dead stretches in the recording and add a speed region over each.
+   * Resolves with how many were added, and how many were considered.
+   */
+  tidyUp: () => Promise<{ added: number; suggested: number }>
   addVideoClip: (clip: Omit<VideoClip, 'id' | 'order' | 'sourceStart'>) => void
   updateVideoClip: (id: string, updates: Partial<VideoClip>) => void
   deleteVideoClip: (id: string) => void

@@ -7,7 +7,7 @@
 import type { ResolutionKey } from '../../../shared/export-resolutions'
 import { selectExportCodec } from '../../../shared/export-codec'
 import { videoEncodeArgs, type ExportQuality } from './export-video-args'
-import { buildAudioTimelineSegments, buildRecordingAudioChains } from './audio-timeline'
+import { buildAudioTimelineSegments, buildRecordingAudioChains, timelineDuration } from './audio-timeline'
 
 export interface ExportRegion {
   startTime: number
@@ -90,31 +90,42 @@ export interface BuildExportArgsOptions {
 }
 
 /** Output clip length after cuts and speed regions. */
+/**
+ * How long the exported video is.
+ *
+ * Measured from the timeline the picture and the audio are both rendered against:
+ * the source split at every cut and speed boundary, the stretches inside cuts
+ * dropped, each survivor counted at its own speed.
+ *
+ * The previous arithmetic walked the regions instead — subtracting each cut's whole
+ * duration and adding back each speed region's whole saving. That double-counts
+ * wherever the two overlap: a speed region with a cut inside it lost the cut's
+ * seconds twice, and the renderer was handed fewer frames than the video has, so the
+ * export ended early. Counting the timeline cannot disagree with itself.
+ */
 export function computeExportDuration(projectState: ExportProjectState): number {
-  let exportDuration = Math.max(0, Number(projectState.duration) || 0)
-  for (const region of Object.values(projectState.cutRegions ?? {}) as ExportRegion[]) {
-    exportDuration -= Number(region.duration) || 0
-  }
-  for (const region of Object.values(projectState.speedRegions ?? {}) as ExportSpeedRegion[]) {
-    exportDuration -= Number(region.duration) || 0
-    exportDuration += (Number(region.duration) || 0) / Math.max(0.01, Number(region.speed) || 1)
-  }
-  return Math.max(0, exportDuration)
+  return timelineDuration(buildAudioTimelineSegments(projectState))
 }
 
+/**
+ * Where a moment of the recording lands in the exported video.
+ *
+ * The inverse of the renderer's `mapExportTimeToSourceTime`, and deliberately the
+ * same walk: the segments in order, each contributing its length divided by its
+ * speed. A source time inside a cut maps to the moment the cut was removed at, which
+ * is where the material either side of it joins.
+ */
 export function mapSourceTimeToExportTime(sourceTime: number, projectState: ExportProjectState): number {
-  let exportTime = Math.max(0, sourceTime)
-  for (const region of Object.values(projectState.cutRegions ?? {}) as ExportRegion[]) {
-    if (region.startTime + region.duration <= sourceTime) exportTime -= region.duration
-    else if (region.startTime < sourceTime) exportTime -= sourceTime - region.startTime
+  const segments = buildAudioTimelineSegments(projectState)
+  let exportTime = 0
+
+  for (const segment of segments) {
+    if (sourceTime <= segment.sourceStart) break
+    const end = Math.min(sourceTime, segment.sourceEnd)
+    exportTime += (end - segment.sourceStart) / segment.speed
+    if (sourceTime <= segment.sourceEnd) break
   }
-  for (const region of Object.values(projectState.speedRegions ?? {}) as ExportSpeedRegion[]) {
-    if (region.startTime + region.duration <= sourceTime) exportTime += region.duration - region.duration / region.speed
-    else if (region.startTime < sourceTime) {
-      const elapsed = sourceTime - region.startTime
-      exportTime += elapsed - elapsed / region.speed
-    }
-  }
+
   return Math.max(0, exportTime)
 }
 

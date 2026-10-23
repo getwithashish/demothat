@@ -6,7 +6,7 @@
 // there, and that one is about whether it arrives.
 
 import { describe, expect, it } from 'vitest'
-import { computeExportDuration, type ExportProjectState } from './build-export-args'
+import { computeExportDuration, mapSourceTimeToExportTime, type ExportProjectState } from './build-export-args'
 import {
   atempoChain,
   buildAudioTimelineSegments,
@@ -121,6 +121,10 @@ describe('the audio is as long as the video', () => {
     { name: 'two speed regions', state: state({ speedRegions: { a: speed(1, 2, 2), b: speed(5, 2, 0.5) } }) },
     { name: 'a cut and a speed region', state: state({ cutRegions: { c: cut(2, 2) }, speedRegions: { s: speed(6, 2, 4) } }) },
     { name: 'a cut between two speed regions', state: state({ cutRegions: { c: cut(4, 2) }, speedRegions: { a: speed(1, 2, 2), b: speed(7, 2, 2) } }) },
+    // Overlapping regions, which is where the two used to disagree.
+    { name: 'a cut inside a speed region', state: state({ speedRegions: { s: speed(2, 4, 2) }, cutRegions: { c: cut(3, 2) } }) },
+    { name: 'a speed region inside a cut', state: state({ cutRegions: { c: cut(2, 4) }, speedRegions: { s: speed(3, 2, 2) } }) },
+    { name: 'a speed region straddling a cut', state: state({ cutRegions: { c: cut(4, 2) }, speedRegions: { s: speed(3, 4, 0.5) } }) },
   ]
 
   for (const testCase of cases) {
@@ -200,19 +204,34 @@ describe('regions that overlap each other', () => {
     expect(shape(segments)).toEqual(['0-2@1', '2-3@2', '5-6@2', '6-10@1'])
   })
 
-  it('is longer than what computeExportDuration claims, and that is the video’s bug', () => {
+  it('counts the timeline once, so the video and the audio agree', () => {
     const overlapping = state({ speedRegions: { s: speed(2, 4, 2) }, cutRegions: { c: cut(3, 2) } })
 
     // In export terms: 2s at 1x, then 1s of source at 2x, then 2s of source cut away
     // — 1s of the sped-up stretch — then 0.5s, then 4s. Seven seconds.
     expect(timelineDuration(buildAudioTimelineSegments(overlapping))).toBe(7)
 
-    // `computeExportDuration` counts the speed region's whole four seconds as sped up
-    // and the cut's two seconds as removed, double-counting the overlap: it says six.
-    // The frame count the renderer is given is therefore wrong for overlapping
-    // regions, and the audio timeline is the one that is right — inside a cut there
-    // is no picture for the audio to be out of step with. Asserted as known rather
-    // than fixed here, so the discrepancy cannot change unnoticed.
-    expect(computeExportDuration(overlapping)).toBe(6)
+    // The frame count the renderer is given used to say six: it subtracted the cut's
+    // two seconds and credited the speed region with saving two more, counting the
+    // stretch where they overlap twice. It counts the timeline now, which is the same
+    // walk the audio and the renderer's own mapping use, so the three cannot disagree.
+    expect(computeExportDuration(overlapping)).toBe(7)
+  })
+
+  it('maps a source time to the export time the segments put it at', () => {
+    const overlapping = state({ speedRegions: { s: speed(2, 4, 2) }, cutRegions: { c: cut(3, 2) } })
+
+    // The start, the start of the sped-up stretch, the join where the cut was
+    // removed, and the end.
+    expect(mapSourceTimeToExportTime(0, overlapping)).toBe(0)
+    expect(mapSourceTimeToExportTime(2, overlapping)).toBe(2)
+    expect(mapSourceTimeToExportTime(3, overlapping)).toBe(2.5)
+    // Source 5 is where the cut ends: it and everything inside the cut land on the
+    // join at 2.5, which is where the two sides of the cut are spliced together.
+    expect(mapSourceTimeToExportTime(4, overlapping)).toBe(2.5)
+    expect(mapSourceTimeToExportTime(5, overlapping)).toBe(2.5)
+    // Half a second of source at 2x is a quarter of a second of export.
+    expect(mapSourceTimeToExportTime(6, overlapping)).toBe(3)
+    expect(mapSourceTimeToExportTime(10, overlapping)).toBe(7)
   })
 })

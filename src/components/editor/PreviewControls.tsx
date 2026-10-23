@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import {
   Scissors,
+  Wand,
   ZoomIn,
   ZoomOut,
   Trash,
@@ -29,6 +30,7 @@ export function PreviewControls() {
     addZoomRegion,
     addCutRegion,
     addSpeedRegion,
+    tidyUp,
     addCameraMotion,
     addCompositionLayout,
     currentTime,
@@ -138,6 +140,16 @@ export function PreviewControls() {
           disabled={!!selectedRegionId}
         >
           Speed
+        </ToolbarButton>
+        <ToolbarButton
+          icon={<Wand {...iconProps} />}
+          title="Find the silent and idle stretches and speed them up"
+          onClick={() => {
+            void tidyUp()
+          }}
+          disabled={!!selectedRegionId}
+        >
+          Tidy up
         </ToolbarButton>
         <Button
           variant="danger"

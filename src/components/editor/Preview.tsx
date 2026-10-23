@@ -17,6 +17,7 @@ import { drawScene, getClipSourceTime, type VideoClipLayer } from '../../lib/ren
 import { cn } from '../../lib/utils'
 import type { VisualEffectRegion } from '../../types'
 import { usePreviewAudioMixer } from '../../hooks/usePreviewAudioMixer'
+import { mapSourceTimeToExportTime } from '../../lib/utils'
 
 const mediaUrl = (filePath: string) => `media://${encodeURI(filePath).replace(/#/g, '%23').replace(/\?/g, '%3F')}`
 
@@ -51,6 +52,7 @@ export const Preview = memo(
       cursorStyles,
       cursorBitmapsToRender,
       videoClips,
+      subtitleCues,
     } = useEditorStore(
       useShallow((state) => ({
         videoUrl: state.videoUrl,
@@ -75,6 +77,7 @@ export const Preview = memo(
         cursorStyles: state.cursorStyles,
         cursorBitmapsToRender: state.cursorBitmapsToRender,
         videoClips: state.videoClips,
+        subtitleCues: state.subtitleCues,
       })),
     )
 
@@ -475,6 +478,12 @@ export const Preview = memo(
       }
     }
 
+    // The caption under the playhead. The cues are in export time — they are what the
+    // sidecar file will carry — and the preview plays the recording, so the playhead
+    // has to be mapped through the timeline before it can be compared with them.
+    const exportTimeAtPlayhead = mapSourceTimeToExportTime(currentTime, duration, cutRegions, speedRegions)
+    const activeCue = subtitleCues.find((cue) => exportTimeAtPlayhead >= cue.start && exportTimeAtPlayhead < cue.end)
+
     return (
       <div
         ref={previewContainerRef}
@@ -488,13 +497,32 @@ export const Preview = memo(
           className="transition-all duration-300 ease-out flex items-center justify-center w-full flex-1 min-h-0"
         >
           {videoUrl ? (
-            <canvas
-              ref={canvasRef}
-              width={canvasDimensions.width}
-              height={canvasDimensions.height}
-              style={{ maxWidth: '100%', maxHeight: '100%', width: 'auto', height: 'auto' }}
-              className="rounded-pv ring-1 ring-line shadow-[var(--sa-preview-shadow)]"
-            />
+            // The wrapper hugs the canvas so the caption sits over the picture and not
+            // over the empty space around it. `container-type` lets the caption's size
+            // follow the preview's, which is the only way it stays legible when the
+            // window is resized.
+            <div className="relative flex items-center justify-center" style={{ containerType: 'inline-size' }}>
+              <canvas
+                ref={canvasRef}
+                width={canvasDimensions.width}
+                height={canvasDimensions.height}
+                style={{ maxWidth: '100%', maxHeight: '100%', width: 'auto', height: 'auto' }}
+                className="rounded-pv ring-1 ring-line shadow-[var(--sa-preview-shadow)]"
+              />
+              {activeCue && (
+                <div
+                  className="pointer-events-none absolute inset-x-0 bottom-[6%] flex justify-center px-[4%]"
+                  data-preview-caption
+                >
+                  <span
+                    className="rounded-[4px] bg-black/70 px-2 py-1 text-center leading-snug text-white"
+                    style={{ fontSize: 'clamp(11px, 2.6cqw, 26px)' }}
+                  >
+                    {activeCue.text}
+                  </span>
+                </div>
+              )}
+            </div>
           ) : (
             <div className="flex h-full w-full flex-col items-center justify-center gap-3 rounded-pv border border-dashed border-line text-muted">
               <Movie size={32} strokeWidth={ICON_STROKE} className="text-muted" />

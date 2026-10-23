@@ -14,7 +14,7 @@
 // double-counting bug broke.
 
 import { describe, expect, it } from 'vitest'
-import { mapExportTimeToSourceTime } from './utils'
+import { mapExportTimeToSourceTime, mapSourceTimeToExportTime as rendererMapSourceToExport } from './utils'
 import type { CutRegion, SpeedRegion } from '../types'
 import {
   computeExportDuration,
@@ -68,6 +68,21 @@ describe('the renderer’s mapping and the export’s are inverses', () => {
         const backToExport = mapSourceTimeToExportTime(sourceTime, testCase.state)
         // Within a frame at 30fps: the two are floating-point walks of the same list.
         expect(Math.abs(backToExport - exportTime)).toBeLessThan(1 / 30)
+      }
+    })
+
+    it(`has two forward mappings that agree for ${testCase.name}`, () => {
+      // The export has one and the renderer has another, because the main process
+      // cannot import from the renderer and the renderer should not reach into the
+      // main process. Two copies of the same arithmetic is exactly what drifts, so
+      // this is the assertion that says they have not.
+      const { duration, cutRegions, speedRegions } = regions(testCase.state)
+
+      for (let sourceTime = 0; sourceTime <= duration; sourceTime += duration / 40) {
+        expect(rendererMapSourceToExport(sourceTime, duration, cutRegions, speedRegions)).toBeCloseTo(
+          mapSourceTimeToExportTime(sourceTime, testCase.state),
+          6,
+        )
       }
     })
   }

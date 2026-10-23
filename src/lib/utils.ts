@@ -128,6 +128,67 @@ export const prepareCursorBitmaps = async (
 }
 
 /**
+ * Maps a timestamp from the source video to the corresponding timestamp in the
+ * exported video — the inverse of `mapExportTimeToSourceTime` above.
+ *
+ * This exists for the things that are *about* the exported video and have to be shown
+ * while editing: the captions, whose times are the ones the sidecar file will carry.
+ * A moment inside a cut maps to the join where that cut was removed, because that is
+ * where the material either side of it meets in the export.
+ *
+ * The export has its own copy of this arithmetic, because the main process cannot
+ * import from here. `src/lib/export-time-mapping.test.ts` holds the two against each
+ * other: a round trip through both has to land back where it started, for every
+ * arrangement of cuts and speed regions. If they ever drift, that test is what fails.
+ */
+export const mapSourceTimeToExportTime = (
+  sourceTime: number,
+  duration: number,
+  cutRegions: Record<string, CutRegion>,
+  speedRegions: Record<string, SpeedRegion>,
+): number => {
+  const allCuts = Object.values(cutRegions)
+  const allSpeeds = Object.values(speedRegions)
+
+  const events = new Set([0, duration])
+  allCuts.forEach((r) => {
+    events.add(r.startTime)
+    events.add(r.startTime + r.duration)
+  })
+  allSpeeds.forEach((r) => {
+    events.add(r.startTime)
+    events.add(r.startTime + r.duration)
+  })
+  const sortedEvents = Array.from(events)
+    .sort((a, b) => a - b)
+    .filter((t) => t >= 0 && t <= duration)
+
+  let exportTime = 0
+
+  for (let i = 0; i < sortedEvents.length - 1; i++) {
+    const segmentStart = sortedEvents[i]
+    const segmentEnd = sortedEvents[i + 1]
+    const midpoint = segmentStart + (segmentEnd - segmentStart) / 2
+
+    // Inside a cut: there is no picture for this stretch, so it contributes nothing.
+    if (allCuts.some((r) => midpoint >= r.startTime && midpoint < r.startTime + r.duration)) continue
+
+    const activeSpeedRegion = allSpeeds.find((r) => midpoint >= r.startTime && midpoint < r.startTime + r.duration)
+    const speed = activeSpeedRegion ? activeSpeedRegion.speed : 1
+
+    // Past the moment we are asking about: count the part of this stretch that is
+    // before it and stop.
+    if (sourceTime <= segmentEnd) {
+      return Math.max(0, exportTime + Math.max(0, sourceTime - segmentStart) / speed)
+    }
+    exportTime += (segmentEnd - segmentStart) / speed
+  }
+
+  // At or past the end of the recording.
+  return Math.max(0, exportTime)
+}
+
+/**
  * Maps a timestamp from the exported video timeline to the corresponding timestamp in the source video.
  * This is crucial for seek-driven rendering, as it accounts for cut regions and speed modifications.
  * @param exportTime The time in seconds in the final exported video.

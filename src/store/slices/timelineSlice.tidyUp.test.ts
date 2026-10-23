@@ -9,6 +9,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const detectSilence = vi.hoisted(() => vi.fn())
+const detectActivity = vi.hoisted(() => vi.fn())
 
 vi.mock('electron', () => ({ ipcRenderer: { invoke: vi.fn(), on: vi.fn(), send: vi.fn() } }))
 
@@ -19,7 +20,9 @@ const silence = (start: number, end: number) => ({ start, end, duration: end - s
 beforeEach(() => {
   detectSilence.mockReset()
   detectSilence.mockResolvedValue([])
-  ;(window as unknown as { electronAPI: unknown }).electronAPI = { detectSilence }
+  detectActivity.mockReset()
+  detectActivity.mockResolvedValue([])
+  ;(window as unknown as { electronAPI: unknown }).electronAPI = { detectSilence, detectActivity }
   useEditorStore.setState({ videoPath: '/recordings/one.mp4', duration: 20, speedRegions: {}, isDirty: false })
 })
 
@@ -108,5 +111,50 @@ describe('tidyUp', () => {
 
     expect(result).toEqual({ added: 0, suggested: 0 })
     expect(detectSilence).not.toHaveBeenCalled()
+  })
+
+  it('uses the picture when the audio has nothing to say', async () => {
+    // Nobody is speaking, so there is no silence — but the screen is not moving
+    // either, which is the typing and the spinner case.
+    detectSilence.mockResolvedValue([])
+    detectActivity.mockResolvedValue([
+      { time: 0, activity: 0.5 },
+      { time: 1, activity: 0.001 },
+      { time: 2, activity: 0.002 },
+      { time: 3, activity: 0.001 },
+      { time: 4, activity: 0.5 },
+    ])
+
+    const result = await useEditorStore.getState().tidyUp()
+
+    expect(result.added).toBe(1)
+    expect(detectActivity).toHaveBeenCalledWith('/recordings/one.mp4')
+  })
+
+  it('still uses the audio when the picture cannot be measured', async () => {
+    // The two halves are independent: losing one does not lose the other.
+    detectSilence.mockResolvedValue([silence(2, 6)])
+    detectActivity.mockRejectedValue(new Error('ffmpeg is not happy'))
+
+    const result = await useEditorStore.getState().tidyUp()
+
+    expect(result.added).toBe(1)
+  })
+
+  it('does not propose the same stretch twice when both halves find it', async () => {
+    detectSilence.mockResolvedValue([silence(2, 6)])
+    detectActivity.mockResolvedValue([
+      { time: 0, activity: 0.5 },
+      { time: 1, activity: 0.5 },
+      { time: 2, activity: 0.001 },
+      { time: 3, activity: 0.001 },
+      { time: 4, activity: 0.001 },
+      { time: 5, activity: 0.001 },
+      { time: 6, activity: 0.5 },
+    ])
+
+    const result = await useEditorStore.getState().tidyUp()
+
+    expect(result).toEqual({ added: 1, suggested: 1 })
   })
 })

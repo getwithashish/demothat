@@ -188,7 +188,18 @@ export const createTimelineSlice: Slice<TimelineState, TimelineActions> = (set, 
       return { added: 0, suggested: 0 }
     }
 
-    const suggested = suggestSpeedRegions({ silences, duration })
+    // The other half: how much the picture changed. Typing, a spinner and a progress
+    // bar all sit below the threshold and all three are dead time. A recording whose
+    // picture cannot be measured simply contributes nothing here — the audio half
+    // still stands on its own.
+    let samples: { time: number; activity: number }[] = []
+    try {
+      samples = await window.electronAPI.detectActivity(videoPath)
+    } catch (error) {
+      console.warn('[TidyUp] Could not measure the recording’s picture:', error)
+    }
+
+    const suggested = suggestSpeedRegions({ silences, samples, duration })
     const existing = Object.values(get().speedRegions)
     const additions = suggested.filter(
       (candidate) =>

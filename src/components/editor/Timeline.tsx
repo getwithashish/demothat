@@ -207,6 +207,12 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
   const audioTracks = useEditorStore((state) => state.audioTracks)
   const subtitleCues = useEditorStore((state) => state.subtitleCues)
   const removeSubtitleCue = useEditorStore((state) => state.removeSubtitleCue)
+  const updateSubtitleCue = useEditorStore((state) => state.updateSubtitleCue)
+  // Which caption is being retyped, and what has been typed so far. Editing in place
+  // on the bar: the caption and the moment it belongs to are the same thing, so the
+  // place to correct it is where it sits.
+  const [editingCueId, setEditingCueId] = useState<string | null>(null)
+  const [cueDraft, setCueDraft] = useState('')
   const updateAudioTrack = useEditorStore((state) => state.updateAudioTrack)
   const clickClips = useMemo(() => audioClips.filter((clip) => clip.kind === 'click'), [audioClips])
 
@@ -496,11 +502,44 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
                       left: `${timeToPx(cue.start)}px`,
                       width: `${Math.max(28, timeToPx(cue.end - cue.start))}px`,
                       height: CLIP_HEIGHT,
-                      zIndex: 10,
+                      zIndex: editingCueId === cue.id ? 120 : 10,
                     }}
-                    title={`${cue.text}\n${formatTime(cue.start)} – ${formatTime(cue.end)}`}
+                    title={`${cue.text}\n${formatTime(cue.start)} – ${formatTime(cue.end)}\nDouble-click to edit`}
+                    onDoubleClick={(event) => {
+                      event.stopPropagation()
+                      setCueDraft(cue.text)
+                      setEditingCueId(cue.id)
+                    }}
                   >
-                    <span className="truncate">{cue.text}</span>
+                    {editingCueId === cue.id ? (
+                      <input
+                        autoFocus
+                        value={cueDraft}
+                        aria-label="Caption text"
+                        className="w-full min-w-0 bg-transparent pr-1 text-sm text-fg outline-none"
+                        // The timeline seeks on mousedown; typing in a caption is not a seek.
+                        onMouseDown={(event) => event.stopPropagation()}
+                        onChange={(event) => setCueDraft(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.currentTarget.blur()
+                          }
+                          if (event.key === 'Escape') {
+                            setEditingCueId(null)
+                          }
+                        }}
+                        onBlur={() => {
+                          const text = cueDraft.trim()
+                          // Emptying a caption is a delete, not a blank caption: a cue
+                          // with no words is one the player shows as nothing at all.
+                          if (text.length === 0) removeSubtitleCue(cue.id)
+                          else if (text !== cue.text) updateSubtitleCue(cue.id, { text })
+                          setEditingCueId(null)
+                        }}
+                      />
+                    ) : (
+                      <span className="truncate">{cue.text}</span>
+                    )}
                     <button
                       type="button"
                       aria-label={`Delete caption: ${cue.text}`}

@@ -477,6 +477,12 @@ export const electronAPI = {
     ipcRenderer.invoke('dialog:openVideoFiles'),
   detectSilence: (videoPath: string): Promise<{ start: number; end: number; duration: number }[]> =>
     ipcRenderer.invoke('video:detectSilence', videoPath),
+  /**
+   * How much the picture changed, second by second, for the auto-speed detector. A
+   * file that cannot be measured yields no samples rather than an error.
+   */
+  detectActivity: (videoPath: string): Promise<{ time: number; activity: number }[]> =>
+    ipcRenderer.invoke('video:detectActivity', videoPath),
 
   showSaveDialog: (options: Electron.SaveDialogOptions): Promise<Electron.SaveDialogReturnValue> => {
     return ipcRenderer.invoke('dialog:showSaveDialog', options)

@@ -36,6 +36,9 @@ export const initialProjectState: ProjectState = {
   audioTracks: [],
   audioTracksFromManifest: false,
   transcript: null,
+  subtitleCues: [],
+  subtitlesEnabled: false,
+  subtitleFormat: 'srt',
   currentProjectPath: null,
   isDirty: false,
   saveStatus: 'untitled',
@@ -73,6 +76,9 @@ function projectSignature(state: EditorState): string {
     cursorStyles,
     transcript,
     audioTracks,
+    subtitleCues,
+    subtitlesEnabled,
+    subtitleFormat,
   } = state
   return JSON.stringify({
     frameStyles,
@@ -95,6 +101,9 @@ function projectSignature(state: EditorState): string {
     cursorStyles,
     transcript,
     audioTracks,
+    subtitleCues,
+    subtitlesEnabled,
+    subtitleFormat,
   })
 }
 
@@ -517,6 +526,50 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
       state.isDirty = true
     })
   },
+  setSubtitleCues: (cues) => {
+    set((state) => {
+      state.subtitleCues = cues
+      state.isDirty = true
+    })
+  },
+  updateSubtitleCue: (id, patch) => {
+    set((state) => {
+      const index = state.subtitleCues.findIndex((cue) => cue.id === id)
+      if (index === -1) return
+      const current = state.subtitleCues[index]
+      if (!current) return
+      const next = { ...current }
+      if (patch.text !== undefined) next.text = patch.text
+      if (patch.start !== undefined) next.start = Math.max(0, patch.start)
+      // A cue that ends before it starts is not a cue; the editor keeps the pair
+      // ordered rather than writing a file no player can read.
+      if (patch.end !== undefined) next.end = Math.max(patch.end, next.start + 0.05)
+      if (patch.start !== undefined && next.end <= next.start) next.end = next.start + 0.05
+      // A new array: subscribers to the cues are compared by identity.
+      state.subtitleCues = state.subtitleCues.map((cue, position) => (position === index ? next : cue))
+      state.isDirty = true
+    })
+  },
+  removeSubtitleCue: (id) => {
+    set((state) => {
+      const remaining = state.subtitleCues.filter((cue) => cue.id !== id)
+      if (remaining.length === state.subtitleCues.length) return
+      state.subtitleCues = remaining
+      state.isDirty = true
+    })
+  },
+  setSubtitlesEnabled: (enabled) => {
+    set((state) => {
+      state.subtitlesEnabled = enabled
+      state.isDirty = true
+    })
+  },
+  setSubtitleFormat: (format) => {
+    set((state) => {
+      state.subtitleFormat = format
+      state.isDirty = true
+    })
+  },
   applyOpenedProject: async (project, projectPath, options) => {
     const opened = project as unknown as Partial<EditorState>
     const videoPath = typeof opened.videoPath === 'string' ? opened.videoPath : null
@@ -549,6 +602,9 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
         state.audioTracksFromManifest = true
       }
       if (opened.transcript !== undefined) state.transcript = opened.transcript ?? null
+      if (opened.subtitleCues) state.subtitleCues = opened.subtitleCues
+      if (opened.subtitlesEnabled !== undefined) state.subtitlesEnabled = opened.subtitlesEnabled
+      if (opened.subtitleFormat !== undefined) state.subtitleFormat = opened.subtitleFormat
       if (opened.volume !== undefined) state.volume = opened.volume
       if (opened.isMuted !== undefined) state.isMuted = opened.isMuted
       if (opened.zoomRegions) state.zoomRegions = opened.zoomRegions

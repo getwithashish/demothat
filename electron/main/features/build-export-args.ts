@@ -51,6 +51,12 @@ export interface ExportProjectState {
    * such a recording has is the whole of its audio.
    */
   audioTracks?: Array<{ index: number; volume: number; muted: boolean }>
+  /** The captions to write beside the exported video, in export time. */
+  subtitleCues?: Array<{ id: string; start: number; end: number; text: string }>
+  /** Whether a sidecar is written at all. */
+  subtitlesEnabled?: boolean
+  /** Which sidecar format to write. */
+  subtitleFormat?: 'srt' | 'vtt'
   mouseClickSoundsEnabled?: boolean
   mouseClickSoundPath?: string | null
   mouseClickSoundVolume?: number

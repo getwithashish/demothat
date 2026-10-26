@@ -19,11 +19,7 @@ import {
   type CloudCancellation,
 } from '../../features/cloud-client'
 import { runTranscription, type TranscribeProgress } from '../../features/transcribe'
-import {
-  cancelActiveCloudWork,
-  clearCloudCancellation,
-  registerCloudCancellation,
-} from '../../features/cloud-cancel'
+import { cancelActiveCloudWork, clearCloudCancellation, registerCloudCancellation } from '../../features/cloud-cancel'
 import { getStoredToken } from '../../features/license-client'
 import { appState } from '../../state'
 import type { TranscriptDocument } from '../../../../shared/transcript'

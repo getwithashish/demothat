@@ -7,12 +7,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { computeExportDuration, mapSourceTimeToExportTime, type ExportProjectState } from './build-export-args'
-import {
-  atempoChain,
-  buildAudioTimelineSegments,
-  buildRecordingAudioChains,
-  timelineDuration,
-} from './audio-timeline'
+import { atempoChain, buildAudioTimelineSegments, buildRecordingAudioChains, timelineDuration } from './audio-timeline'
 
 function state(overrides: Partial<ExportProjectState> = {}): ExportProjectState {
   return { aspectRatio: '16:9', duration: 10, ...overrides }
@@ -73,9 +68,7 @@ describe('buildAudioTimelineSegments', () => {
   it('joins neighbouring stretches that play at the same speed', () => {
     // Two cuts, so the stretch between them is its own stretch — but it is still 1x,
     // and a filter node per stretch would be a node for nothing.
-    const segments = buildAudioTimelineSegments(
-      state({ cutRegions: { a: cut(2, 1), b: cut(5, 1) } }),
-    )
+    const segments = buildAudioTimelineSegments(state({ cutRegions: { a: cut(2, 1), b: cut(5, 1) } }))
 
     expect(shape(segments)).toEqual(['0-2@1', '3-5@1', '6-10@1'])
   })
@@ -119,12 +112,27 @@ describe('the audio is as long as the video', () => {
     { name: 'a slowing region', state: state({ speedRegions: { a: speed(3, 4, 0.5) } }) },
     { name: 'a 4x region', state: state({ speedRegions: { a: speed(3, 4, 4) } }) },
     { name: 'two speed regions', state: state({ speedRegions: { a: speed(1, 2, 2), b: speed(5, 2, 0.5) } }) },
-    { name: 'a cut and a speed region', state: state({ cutRegions: { c: cut(2, 2) }, speedRegions: { s: speed(6, 2, 4) } }) },
-    { name: 'a cut between two speed regions', state: state({ cutRegions: { c: cut(4, 2) }, speedRegions: { a: speed(1, 2, 2), b: speed(7, 2, 2) } }) },
+    {
+      name: 'a cut and a speed region',
+      state: state({ cutRegions: { c: cut(2, 2) }, speedRegions: { s: speed(6, 2, 4) } }),
+    },
+    {
+      name: 'a cut between two speed regions',
+      state: state({ cutRegions: { c: cut(4, 2) }, speedRegions: { a: speed(1, 2, 2), b: speed(7, 2, 2) } }),
+    },
     // Overlapping regions, which is where the two used to disagree.
-    { name: 'a cut inside a speed region', state: state({ speedRegions: { s: speed(2, 4, 2) }, cutRegions: { c: cut(3, 2) } }) },
-    { name: 'a speed region inside a cut', state: state({ cutRegions: { c: cut(2, 4) }, speedRegions: { s: speed(3, 2, 2) } }) },
-    { name: 'a speed region straddling a cut', state: state({ cutRegions: { c: cut(4, 2) }, speedRegions: { s: speed(3, 4, 0.5) } }) },
+    {
+      name: 'a cut inside a speed region',
+      state: state({ speedRegions: { s: speed(2, 4, 2) }, cutRegions: { c: cut(3, 2) } }),
+    },
+    {
+      name: 'a speed region inside a cut',
+      state: state({ cutRegions: { c: cut(2, 4) }, speedRegions: { s: speed(3, 2, 2) } }),
+    },
+    {
+      name: 'a speed region straddling a cut',
+      state: state({ cutRegions: { c: cut(4, 2) }, speedRegions: { s: speed(3, 4, 0.5) } }),
+    },
   ]
 
   for (const testCase of cases) {

@@ -115,10 +115,28 @@ describe.skipIf(ffmpegPath === null)('extractAudioForTranscription (real ffmpeg)
 
     // Two seconds of video with a tone: the shape a recording has.
     execFileSync(ffmpegPath as string, [
-      '-hide_banner', '-loglevel', 'error', '-y',
-      '-f', 'lavfi', '-i', 'testsrc2=size=160x90:rate=15',
-      '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000',
-      '-t', '2', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', source,
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-y',
+      '-f',
+      'lavfi',
+      '-i',
+      'testsrc2=size=160x90:rate=15',
+      '-f',
+      'lavfi',
+      '-i',
+      'sine=frequency=440:sample_rate=48000',
+      '-t',
+      '2',
+      '-c:v',
+      'libx264',
+      '-pix_fmt',
+      'yuv420p',
+      '-c:a',
+      'aac',
+      '-shortest',
+      source,
     ])
 
     const seen: number[] = []
@@ -153,9 +171,22 @@ describe.skipIf(ffmpegPath === null)('extractAudioForTranscription (real ffmpeg)
     const work = fs.mkdtempSync(path.join(os.tmpdir(), 'demothat-noaudio-'))
     const source = path.join(work, 'video-only.mp4')
     execFileSync(ffmpegPath as string, [
-      '-hide_banner', '-loglevel', 'error', '-y',
-      '-f', 'lavfi', '-i', 'testsrc2=size=160x90:rate=15',
-      '-t', '1', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-an', source,
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-y',
+      '-f',
+      'lavfi',
+      '-i',
+      'testsrc2=size=160x90:rate=15',
+      '-t',
+      '1',
+      '-c:v',
+      'libx264',
+      '-pix_fmt',
+      'yuv420p',
+      '-an',
+      source,
     ])
 
     await expect(

@@ -36,12 +36,7 @@ export type AudioTrackKind = keyof typeof AUDIO_TRACK_TITLES
  */
 function trackNameArgs(index: number, kind: AudioTrackKind): string[] {
   const name = AUDIO_TRACK_TITLES[kind]
-  return [
-    '-metadata:s:a:' + String(index),
-    'handler_name=' + name,
-    '-metadata:s:a:' + String(index),
-    'title=' + name,
-  ]
+  return ['-metadata:s:a:' + String(index), 'handler_name=' + name, '-metadata:s:a:' + String(index), 'title=' + name]
 }
 
 export interface BuildMuxArgsOptions {
@@ -59,15 +54,7 @@ export function buildMuxArgs(opts: BuildMuxArgsOptions): string[] {
     // A copy still accepts metadata, so the single stream is named too. It is the
     // microphone here: this path is the one where FFmpeg itself recorded the mic
     // into the screen file.
-    return [
-      '-y',
-      '-i',
-      screenInput,
-      '-c',
-      'copy',
-      ...(hasMicAudio ? trackNameArgs(0, 'mic') : []),
-      output,
-    ]
+    return ['-y', '-i', screenInput, '-c', 'copy', ...(hasMicAudio ? trackNameArgs(0, 'mic') : []), output]
   }
 
   // Both sources: two streams, mic first. `apad` keeps each stream running to the

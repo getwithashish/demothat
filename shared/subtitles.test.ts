@@ -71,9 +71,7 @@ describe('wrapCueText', () => {
 
   it('leaves a word longer than the line whole rather than splitting it', () => {
     // Splitting it would be the worse of the two.
-    expect(wrapCueText('supercalifragilisticexpialidocious', 10, 2)).toBe(
-      'supercalifragilisticexpialidocious',
-    )
+    expect(wrapCueText('supercalifragilisticexpialidocious', 10, 2)).toBe('supercalifragilisticexpialidocious')
   })
 
   it('keeps the words when there are more lines than the convention allows', () => {
@@ -169,9 +167,7 @@ describe('toSrt', () => {
     const srt = toSrt([cue('a', 0, 1.5, 'First line.'), cue('b', 2, 3, 'Second line.')])
 
     expect(srt).toBe(
-      '1\n00:00:00,000 --> 00:00:01,500\nFirst line.\n' +
-        '\n' +
-        '2\n00:00:02,000 --> 00:00:03,000\nSecond line.\n',
+      '1\n00:00:00,000 --> 00:00:01,500\nFirst line.\n' + '\n' + '2\n00:00:02,000 --> 00:00:03,000\nSecond line.\n',
     )
   })
 

@@ -65,15 +65,7 @@ interface PublishDialogProps {
 }
 
 /** Copy-to-clipboard with the feedback the rest of the app uses. */
-function CopyButton({
-  value,
-  label,
-  onCopied,
-}: {
-  value: string
-  label: string
-  onCopied?: (label: string) => void
-}) {
+function CopyButton({ value, label, onCopied }: { value: string; label: string; onCopied?: (label: string) => void }) {
   const [copied, setCopied] = useState(false)
   return (
     <Button
@@ -261,8 +253,8 @@ export function PublishDialog({
           </div>
 
           <p className="text-xs text-muted">
-            The link works until {formatExpiry(publication.expiresAt)}. Deleting it before then
-            stops the video costing any storage, but the credits are not returned.
+            The link works until {formatExpiry(publication.expiresAt)}. Deleting it before then stops the video costing
+            any storage, but the credits are not returned.
           </p>
 
           <div className="rounded-ctl border border-border/60 px-3">
@@ -323,8 +315,8 @@ export function PublishDialog({
           )}
 
           <p className="text-xs text-muted">
-            Anyone with the link can watch — the link is the key, so share it the way you would a
-            file. Captions {publication.hasCaptions ? 'are' : 'are not'} included.
+            Anyone with the link can watch — the link is the key, so share it the way you would a file. Captions{' '}
+            {publication.hasCaptions ? 'are' : 'are not'} included.
           </p>
 
           <div className="flex justify-end gap-2">
@@ -358,8 +350,7 @@ export function PublishDialog({
             />
           </div>
           <p className="text-xs text-muted">
-            Nothing is charged until the video has finished uploading. Cancelling before then costs
-            nothing.
+            Nothing is charged until the video has finished uploading. Cancelling before then costs nothing.
           </p>
           <div className="flex justify-end">
             <Button variant="secondary" size="sm" onClick={onCancel}>
@@ -378,8 +369,7 @@ export function PublishDialog({
       <div className="max-h-[70vh] space-y-4 overflow-y-auto p-5">
         {!configured && (
           <Notice>
-            This computer is not activated, so it cannot publish. Enter your license key to publish
-            videos.
+            This computer is not activated, so it cannot publish. Enter your license key to publish videos.
           </Notice>
         )}
 
@@ -388,8 +378,8 @@ export function PublishDialog({
             <div className="flex items-start gap-2 text-sm text-fg">
               <Lock size={ICON_SIZE} strokeWidth={ICON_STROKE} className="mt-0.5 text-accent" />
               <span>
-                Publishing is a Pro feature. Buying credits unlocks it, and each publication is
-                charged from that balance.
+                Publishing is a Pro feature. Buying credits unlocks it, and each publication is charged from that
+                balance.
               </span>
             </div>
             <Button size="sm" onClick={onUnlock}>
@@ -400,8 +390,8 @@ export function PublishDialog({
 
         {tooBig && capabilities !== null && (
           <Notice>
-            This video is {formatBytes(fileSizeBytes)}, above the {formatBytes(capabilities.maxSizeBytes)}{' '}
-            publishing limit. Export a smaller one, or publish a clip.
+            This video is {formatBytes(fileSizeBytes)}, above the {formatBytes(capabilities.maxSizeBytes)} publishing
+            limit. Export a smaller one, or publish a clip.
           </Notice>
         )}
 
@@ -409,9 +399,7 @@ export function PublishDialog({
           <Notice>The publishing prices could not be read from the server. Try again in a moment.</Notice>
         )}
 
-        {filePath === null && (
-          <Notice>Export this project first — publishing sends the exported video.</Notice>
-        )}
+        {filePath === null && <Notice>Export this project first — publishing sends the exported video.</Notice>}
 
         {capabilities !== null && (
           <>
@@ -460,8 +448,8 @@ export function PublishDialog({
                 ))}
               </div>
               <p className="mt-2 text-xs text-muted">
-                The term covers both the storage and the link: when it ends, the video is deleted and
-                the link stops working.
+                The term covers both the storage and the link: when it ends, the video is deleted and the link stops
+                working.
               </p>
             </Section>
 
@@ -478,8 +466,8 @@ export function PublishDialog({
 
         {cues.length > 0 && (
           <p className="text-xs text-muted">
-            The project's {cues.length} captions will be published with the video, so the player shows
-            them and viewers can download the track.
+            The project's {cues.length} captions will be published with the video, so the player shows them and viewers
+            can download the track.
           </p>
         )}
 
@@ -497,8 +485,8 @@ export function PublishDialog({
         )}
         {cost !== null && (
           <p className="text-xs text-muted">
-            Balance after publishing: {Math.max(0, balance - cost)} credits. Final price comes from the
-            size the server stores, so it can differ if the file changes.
+            Balance after publishing: {Math.max(0, balance - cost)} credits. Final price comes from the size the server
+            stores, so it can differ if the file changes.
           </p>
         )}
 
@@ -529,9 +517,7 @@ function Wrapper({ children }: { children: React.ReactNode }) {
 }
 
 function Notice({ children }: { children: React.ReactNode }) {
-  return (
-    <p className="rounded-ctl border border-border/60 bg-ctl/40 p-3 text-xs text-muted">{children}</p>
-  )
+  return <p className="rounded-ctl border border-border/60 bg-ctl/40 p-3 text-xs text-muted">{children}</p>
 }
 
 function kindLabel(kind: PublicationKind): string {

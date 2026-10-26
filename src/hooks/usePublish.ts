@@ -99,30 +99,33 @@ export function usePublish() {
     }
   }, [])
 
-  const start = useCallback(async (request: PublishRequest): Promise<PublishOutcome> => {
-    setPublishing(true)
-    setProgress({ stage: 'Preparing', stagePercent: 0 })
-    try {
-      const outcome = (await window.electronAPI.startPublish(request)) as PublishOutcome
-      if (outcome.ok) {
-        // The list is stale the moment something is published.
-        setPublications((current) => [...current, outcome.publication])
-        void refreshStatus()
+  const start = useCallback(
+    async (request: PublishRequest): Promise<PublishOutcome> => {
+      setPublishing(true)
+      setProgress({ stage: 'Preparing', stagePercent: 0 })
+      try {
+        const outcome = (await window.electronAPI.startPublish(request)) as PublishOutcome
+        if (outcome.ok) {
+          // The list is stale the moment something is published.
+          setPublications((current) => [...current, outcome.publication])
+          void refreshStatus()
+        }
+        return outcome
+      } catch (error) {
+        return {
+          ok: false,
+          reason: 'failed',
+          error: error instanceof Error ? error.message : String(error),
+        }
+      } finally {
+        if (mounted.current) {
+          setPublishing(false)
+          setProgress(null)
+        }
       }
-      return outcome
-    } catch (error) {
-      return {
-        ok: false,
-        reason: 'failed',
-        error: error instanceof Error ? error.message : String(error),
-      }
-    } finally {
-      if (mounted.current) {
-        setPublishing(false)
-        setProgress(null)
-      }
-    }
-  }, [refreshStatus])
+    },
+    [refreshStatus],
+  )
 
   const cancel = useCallback(() => {
     window.electronAPI.cancelPublish()

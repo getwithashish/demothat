@@ -132,7 +132,9 @@ export async function extractAudioForTranscription(options: ExtractAudioOptions)
     proc.on('close', (code) => {
       if (code !== 0) {
         log.error(`[AudioExtract] ffmpeg exited ${code}: ${stderr.slice(-500)}`)
-        finish(new Error(`Could not extract the audio track: ${stderr.trim().split('\n').slice(-1)[0] ?? `exit ${code}`}`))
+        finish(
+          new Error(`Could not extract the audio track: ${stderr.trim().split('\n').slice(-1)[0] ?? `exit ${code}`}`),
+        )
         return
       }
       void fsp

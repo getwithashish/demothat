@@ -10,18 +10,9 @@
 
 import type { AudioStreamInfo } from '../lib/audio-info'
 import { probeAudioStreams } from '../lib/audio-info'
-import {
-  trackKindFromName,
-  type AudioTrackKind,
-  type AudioTrackManifestEntry,
-} from '../../../shared/audio-tracks'
+import { trackKindFromName, type AudioTrackKind, type AudioTrackManifestEntry } from '../../../shared/audio-tracks'
 
-export {
-  TRACK_NAME_MIC,
-  TRACK_NAME_SYSTEM,
-  trackKindFromName,
-  trackLabel,
-} from '../../../shared/audio-tracks'
+export { TRACK_NAME_MIC, TRACK_NAME_SYSTEM, trackKindFromName, trackLabel } from '../../../shared/audio-tracks'
 export type { AudioTrack, AudioTrackKind, AudioTrackManifestEntry } from '../../../shared/audio-tracks'
 
 /** The manifest entries for a file's audio streams, in file order. */

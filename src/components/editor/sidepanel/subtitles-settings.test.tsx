@@ -123,9 +123,7 @@ async function click(element: Element | null | undefined): Promise<void> {
 }
 
 function buttonByText(host: HTMLElement, text: string): Element | undefined {
-  return [...host.querySelectorAll('button')].find((button) =>
-    (button.textContent ?? '').trim().startsWith(text),
-  )
+  return [...host.querySelectorAll('button')].find((button) => (button.textContent ?? '').trim().startsWith(text))
 }
 
 /** The captions currently in the store. */
@@ -178,7 +176,9 @@ describe('SubtitlesSettings', () => {
     await click(buttonByText(host, 'Transcribe this recording'))
 
     // On by default, so the hesitations are already gone from the captions.
-    const text = cues().map((cue) => cue.text).join(' ')
+    const text = cues()
+      .map((cue) => cue.text)
+      .join(' ')
     expect(text).toContain('So this is the dashboard')
     expect(text.toLowerCase()).not.toContain('um')
     expect(host.textContent).toContain('2 filler words removed from the captions')
@@ -198,7 +198,9 @@ describe('SubtitlesSettings', () => {
       toggle!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     })
 
-    const text = cues().map((cue) => cue.text).join(' ')
+    const text = cues()
+      .map((cue) => cue.text)
+      .join(' ')
     expect(text.toLowerCase()).toContain('um')
     expect(text).toContain('So um this is the um dashboard')
     expect(host.textContent).toContain('keep every word')
@@ -209,13 +211,21 @@ describe('SubtitlesSettings', () => {
   it('collapses stutters only when asked', async () => {
     const host = await render(<SubtitlesSettings />)
     await click(buttonByText(host, 'Transcribe this recording'))
-    expect(cues().map((cue) => cue.text).join(' ')).toContain('I I think')
+    expect(
+      cues()
+        .map((cue) => cue.text)
+        .join(' '),
+    ).toContain('I I think')
 
     const stutterToggle = host.querySelector('#drop-stutters')
     await act(async () => {
       stutterToggle!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     })
-    expect(cues().map((cue) => cue.text).join(' ')).toContain('I think')
+    expect(
+      cues()
+        .map((cue) => cue.text)
+        .join(' '),
+    ).toContain('I think')
   })
 
   it('lets a cue be reworded and deleted', async () => {
@@ -225,10 +235,7 @@ describe('SubtitlesSettings', () => {
     const first = cues()[0]!
     const textarea = host.querySelector('textarea') as HTMLTextAreaElement
     await act(async () => {
-      const setter = Object.getOwnPropertyDescriptor(
-        window.HTMLTextAreaElement.prototype,
-        'value',
-      )?.set
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set
       setter?.call(textarea, 'A reworded caption')
       textarea.dispatchEvent(new Event('input', { bubbles: true }))
     })

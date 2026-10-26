@@ -268,9 +268,7 @@ export function buildExportArgs(options: BuildExportArgsOptions): string[] {
      * falling back to stream 0 there would export audio the editor says is not
      * there.
      */
-    const recordingTracks: { index: number; volume: number; muted: boolean }[] = Array.isArray(
-      projectState.audioTracks,
-    )
+    const recordingTracks: { index: number; volume: number; muted: boolean }[] = Array.isArray(projectState.audioTracks)
       ? projectState.audioTracks.map((track) => ({
           index: Math.max(0, Math.trunc(Number(track.index) || 0)),
           volume: Math.max(0, Math.min(1, Number(track.volume))),

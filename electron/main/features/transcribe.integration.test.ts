@@ -83,10 +83,28 @@ async function writeRecording(seconds = 3): Promise<string> {
   workDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'transcribe-test-'))
   const source = path.join(workDir, 'recording.mp4')
   execFileSync(ffmpegPath as string, [
-    '-hide_banner', '-loglevel', 'error', '-y',
-    '-f', 'lavfi', '-i', 'testsrc2=size=160x90:rate=15',
-    '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000',
-    '-t', String(seconds), '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', source,
+    '-hide_banner',
+    '-loglevel',
+    'error',
+    '-y',
+    '-f',
+    'lavfi',
+    '-i',
+    'testsrc2=size=160x90:rate=15',
+    '-f',
+    'lavfi',
+    '-i',
+    'sine=frequency=440:sample_rate=48000',
+    '-t',
+    String(seconds),
+    '-c:v',
+    'libx264',
+    '-pix_fmt',
+    'yuv420p',
+    '-c:a',
+    'aac',
+    '-shortest',
+    source,
   ])
   return source
 }
@@ -96,9 +114,22 @@ async function writeSilentRecording(): Promise<string> {
   workDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'transcribe-silent-'))
   const source = path.join(workDir, 'video-only.mp4')
   execFileSync(ffmpegPath as string, [
-    '-hide_banner', '-loglevel', 'error', '-y',
-    '-f', 'lavfi', '-i', 'testsrc2=size=160x90:rate=15',
-    '-t', '2', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-an', source,
+    '-hide_banner',
+    '-loglevel',
+    'error',
+    '-y',
+    '-f',
+    'lavfi',
+    '-i',
+    'testsrc2=size=160x90:rate=15',
+    '-t',
+    '2',
+    '-c:v',
+    'libx264',
+    '-pix_fmt',
+    'yuv420p',
+    '-an',
+    source,
   ])
   return source
 }

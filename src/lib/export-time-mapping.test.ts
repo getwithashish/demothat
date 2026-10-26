@@ -47,11 +47,23 @@ const CASES: { name: string; state: ExportProjectState }[] = [
   { name: 'a speed region at 0.5x', state: state({ speedRegions: { a: speed(3, 4, 0.5) } }) },
   { name: 'a speed region at 4x', state: state({ speedRegions: { a: speed(3, 4, 4) } }) },
   { name: 'two speed regions', state: state({ speedRegions: { a: speed(1, 2, 2), b: speed(5, 2, 0.5) } }) },
-  { name: 'a cut and a speed region', state: state({ cutRegions: { c: cut(2, 2) }, speedRegions: { s: speed(6, 2, 4) } }) },
+  {
+    name: 'a cut and a speed region',
+    state: state({ cutRegions: { c: cut(2, 2) }, speedRegions: { s: speed(6, 2, 4) } }),
+  },
   // The overlapping arrangements: the ones that used to disagree.
-  { name: 'a cut inside a speed region', state: state({ speedRegions: { s: speed(2, 4, 2) }, cutRegions: { c: cut(3, 2) } }) },
-  { name: 'a speed region inside a cut', state: state({ cutRegions: { c: cut(2, 4) }, speedRegions: { s: speed(3, 2, 2) } }) },
-  { name: 'a speed region straddling a cut', state: state({ cutRegions: { c: cut(4, 2) }, speedRegions: { s: speed(3, 4, 0.5) } }) },
+  {
+    name: 'a cut inside a speed region',
+    state: state({ speedRegions: { s: speed(2, 4, 2) }, cutRegions: { c: cut(3, 2) } }),
+  },
+  {
+    name: 'a speed region inside a cut',
+    state: state({ cutRegions: { c: cut(2, 4) }, speedRegions: { s: speed(3, 2, 2) } }),
+  },
+  {
+    name: 'a speed region straddling a cut',
+    state: state({ cutRegions: { c: cut(4, 2) }, speedRegions: { s: speed(3, 4, 0.5) } }),
+  },
 ]
 
 describe('the renderer’s mapping and the export’s are inverses', () => {

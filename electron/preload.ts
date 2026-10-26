@@ -434,7 +434,14 @@ export const electronAPI = {
     model?: string
   }): Promise<
     | { ok: true; transcriptPath: string; transcript: unknown; charge: number; refund: number; audioSeconds: number }
-    | { ok: false; reason: 'canceled' | 'failed' | 'rejected'; error: string; charge?: number; refund?: number; cost?: number }
+    | {
+        ok: false
+        reason: 'canceled' | 'failed' | 'rejected'
+        error: string
+        charge?: number
+        refund?: number
+        cost?: number
+      }
   > => ipcRenderer.invoke('transcribe:start', request),
 
   cancelTranscription: (): void => ipcRenderer.send('transcribe:cancel'),
@@ -467,22 +474,18 @@ export const electronAPI = {
   cancelPublish: (): void => ipcRenderer.send('publish:cancel'),
 
   /** The size of the file a publication would carry, for the price quote. */
-  probePublishFile: (
-    filePath: string,
-  ): Promise<{ ok: true; sizeBytes: number } | { ok: false; error: string }> =>
+  probePublishFile: (filePath: string): Promise<{ ok: true; sizeBytes: number } | { ok: false; error: string }> =>
     ipcRenderer.invoke('publish:probe', { filePath }),
 
   /** Everything this license has published, newest last. */
-  listPublications: (): Promise<
-    { ok: true; publications: PublicationView[] } | { ok: false; error: string }
-  > => ipcRenderer.invoke('publish:list'),
+  listPublications: (): Promise<{ ok: true; publications: PublicationView[] } | { ok: false; error: string }> =>
+    ipcRenderer.invoke('publish:list'),
 
   /** Delete a publication. The bytes go at once; the credits are not returned. */
   deletePublication: (
     publicationId: string,
-  ): Promise<
-    { ok: true; publication: PublicationView; creditsRefunded: number } | { ok: false; error: string }
-  > => ipcRenderer.invoke('publish:delete', { publicationId }),
+  ): Promise<{ ok: true; publication: PublicationView; creditsRefunded: number } | { ok: false; error: string }> =>
+    ipcRenderer.invoke('publish:delete', { publicationId }),
 
   /** Who watched a publication, from where, and for how long. */
   publicationAnalytics: (
@@ -491,9 +494,7 @@ export const electronAPI = {
   ): Promise<{ ok: true; analytics: PublicationAnalytics } | { ok: false; error: string }> =>
     ipcRenderer.invoke('publish:analytics', { publicationId, range }),
 
-  onPublishProgress: (
-    callback: (payload: { stage: string; stagePercent: number; estimatedCost?: number }) => void,
-  ) => {
+  onPublishProgress: (callback: (payload: { stage: string; stagePercent: number; estimatedCost?: number }) => void) => {
     const listener = (_event: IpcRendererEvent, payload: any) => callback(payload)
     ipcRenderer.on('publish:progress', listener)
     return () => ipcRenderer.removeListener('publish:progress', listener)

@@ -123,25 +123,56 @@ suite('extractAudioTracks against the bundled ffmpeg', () => {
     // system audio at 48000. Swapping them would still yield two playable files.
     const webm = path.join(workDir, 'screen.webm')
     execFileSync(FFMPEG, [
-      '-y', '-hide_banner', '-loglevel', 'error',
-      '-f', 'lavfi', '-i', 'testsrc=size=320x180:rate=15',
-      '-f', 'lavfi', '-i', 'sine=frequency=880:sample_rate=48000:duration=2',
-      '-t', '2', '-c:v', 'libvpx-vp9', '-deadline', 'realtime', '-cpu-used', '8',
-      '-pix_fmt', 'yuv420p', '-c:a', 'libopus', webm,
+      '-y',
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-f',
+      'lavfi',
+      '-i',
+      'testsrc=size=320x180:rate=15',
+      '-f',
+      'lavfi',
+      '-i',
+      'sine=frequency=880:sample_rate=48000:duration=2',
+      '-t',
+      '2',
+      '-c:v',
+      'libvpx-vp9',
+      '-deadline',
+      'realtime',
+      '-cpu-used',
+      '8',
+      '-pix_fmt',
+      'yuv420p',
+      '-c:a',
+      'libopus',
+      webm,
     ])
     const mic = path.join(workDir, 'mic.m4a')
     execFileSync(FFMPEG, [
-      '-y', '-hide_banner', '-loglevel', 'error',
-      '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=44100:duration=2',
-      '-c:a', 'aac', mic,
+      '-y',
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-f',
+      'lavfi',
+      '-i',
+      'sine=frequency=440:sample_rate=44100:duration=2',
+      '-c:a',
+      'aac',
+      mic,
     ])
     recording = path.join(workDir, 'recording.mp4')
-    execFileSync(FFMPEG, buildMacMuxArgs({
-      screenWebmInput: webm,
-      micAudioInput: mic,
-      output: recording,
-      webmHasSystemAudio: true,
-    }))
+    execFileSync(
+      FFMPEG,
+      buildMacMuxArgs({
+        screenWebmInput: webm,
+        micAudioInput: mic,
+        output: recording,
+        webmHasSystemAudio: true,
+      }),
+    )
   }, 120_000)
 
   afterAll(async () => {

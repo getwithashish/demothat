@@ -20,9 +20,7 @@ export interface TranscribeCostEstimate {
  * shows "unavailable" rather than quoting a price of zero.
  */
 export function estimateTranscribeCredits(
-  transcription:
-    | { enabled?: boolean; creditsPerMinute?: number; maxAudioSeconds?: number }
-    | undefined,
+  transcription: { enabled?: boolean; creditsPerMinute?: number; maxAudioSeconds?: number } | undefined,
   audioSeconds: number,
 ): TranscribeCostEstimate | null {
   const rate = transcription?.creditsPerMinute

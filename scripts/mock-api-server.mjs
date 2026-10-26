@@ -81,9 +81,7 @@ const DEVICE_LIMIT = 10
 function publishCost(sizeBytes, storageDays, kind, config) {
   const gigabytes = sizeBytes / 1_000_000_000
   const storage =
-    sizeBytes <= 0 || storageDays <= 0
-      ? 0
-      : Math.ceil((gigabytes * config.publishCreditsPerGbYear * storageDays) / 365)
+    sizeBytes <= 0 || storageDays <= 0 ? 0 : Math.ceil((gigabytes * config.publishCreditsPerGbYear * storageDays) / 365)
   // The floor is on the total, exactly as the real API computes it — a landing page's
   // surcharge is added to a storage term that may itself be below the minimum, and the
   // minimum then covers the sum rather than being absorbed by one component.
@@ -207,9 +205,7 @@ export async function createMockApiServer(options = {}) {
           : 0,
     framesDone: job.framesDone,
     totalFrames: job.totalFrames,
-    ...(job.kind === 'transcribe'
-      ? { audioSeconds: job.audioSeconds, audioSecondsDone: job.audioSecondsDone }
-      : {}),
+    ...(job.kind === 'transcribe' ? { audioSeconds: job.audioSeconds, audioSecondsDone: job.audioSecondsDone } : {}),
     reserved: job.reserved,
     consumed: job.consumed,
     etaSeconds: job.etaSeconds ?? null,
@@ -695,10 +691,7 @@ export async function createMockApiServer(options = {}) {
                 type: 'multipart',
                 uploadId: `upload_${id}`,
                 partSize: config.partSize,
-                partUrls: Array.from(
-                  { length: partCount },
-                  (_, index) => `${baseUrl()}/upload-pub/${id}/${index + 1}`,
-                ),
+                partUrls: Array.from({ length: partCount }, (_, index) => `${baseUrl()}/upload-pub/${id}/${index + 1}`),
               }
             : { type: 'single', url: `${baseUrl()}/upload-pub/${id}/1` },
           expiresAt: new Date(publication.createdAt + publication.storageDays * 86_400_000).toISOString(),
@@ -791,12 +784,7 @@ export async function createMockApiServer(options = {}) {
         return json(res, 200, { ...publicationView(publication), creditsRefunded: 0 })
       }
 
-      if (
-        req.method === 'GET' &&
-        parts[0] === 'v1' &&
-        parts[1] === 'publications' &&
-        parts[3] === 'analytics'
-      ) {
+      if (req.method === 'GET' && parts[0] === 'v1' && parts[1] === 'publications' && parts[3] === 'analytics') {
         if (!token) return fail(res, 401, 'unauthorized', 'A license token is required')
         const publication = state.publications.get(parts[2])
         if (!publication) return fail(res, 404, 'not_found', 'No such publication')

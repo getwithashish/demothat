@@ -104,10 +104,7 @@ export function isFiller(text: string, extraWords: readonly string[] = []): bool
  * Returns a new document; the input is never mutated, so a caller that keeps the
  * original (the project does) can always get back to it.
  */
-export function removeFillers(
-  transcript: TranscriptDocument,
-  options: RemoveFillersOptions = {},
-): RemoveFillersResult {
+export function removeFillers(transcript: TranscriptDocument, options: RemoveFillersOptions = {}): RemoveFillersResult {
   const extras = options.extraWords ?? []
   const removed: RemovedFiller[] = []
   const segments: TranscriptSegment[] = []
@@ -124,12 +121,7 @@ export function removeFillers(
           continue
         }
         const bare = bareWord(word.text)
-        if (
-          options.dropStutters === true &&
-          bare.length > 0 &&
-          previousBare !== null &&
-          bare === previousBare
-        ) {
+        if (options.dropStutters === true && bare.length > 0 && previousBare !== null && bare === previousBare) {
           removed.push({ text: word.text.trim(), start: word.start, end: word.end })
           continue
         }
@@ -159,12 +151,7 @@ export function removeFillers(
         continue
       }
       const bare = bareWord(token)
-      if (
-        options.dropStutters === true &&
-        bare.length > 0 &&
-        previousBare !== null &&
-        bare === previousBare
-      ) {
+      if (options.dropStutters === true && bare.length > 0 && previousBare !== null && bare === previousBare) {
         removed.push({ text: token.trim() })
         continue
       }

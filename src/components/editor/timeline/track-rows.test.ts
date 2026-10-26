@@ -31,13 +31,7 @@ describe('buildTrackRows', () => {
     const rows = build([MIC, SYSTEM])
 
     expect(rows.map((row) => row.key)).toEqual(['screen', 'audio-mic-0', 'audio-system-1', 'music', 'clicks'])
-    expect(rows.map((row) => row.label)).toEqual([
-      'Screen',
-      'Microphone',
-      'System audio',
-      'Music',
-      'Click sounds',
-    ])
+    expect(rows.map((row) => row.label)).toEqual(['Screen', 'Microphone', 'System audio', 'Music', 'Click sounds'])
   })
 
   it('replaces the placeholder row rather than adding to it', () => {

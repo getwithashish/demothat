@@ -65,9 +65,7 @@ export interface CreatePublicationInput {
  * The declared `fileSizeBytes` is a preflight only; the server re-prices from the size
  * it reads back at completion, and that number is final.
  */
-export async function createPublication(
-  input: CreatePublicationInput,
-): Promise<CreatePublicationResponse> {
+export async function createPublication(input: CreatePublicationInput): Promise<CreatePublicationResponse> {
   try {
     return await apiRequest<CreatePublicationResponse>(getApiBaseUrl(), {
       method: 'POST',
@@ -268,9 +266,7 @@ export async function publish(request: PublishRequest): Promise<PublishResult> {
       kind: request.kind,
       fileSizeBytes: size,
       storageDays: request.storageDays,
-      ...(request.title !== undefined && request.title.trim().length > 0
-        ? { title: request.title.trim() }
-        : {}),
+      ...(request.title !== undefined && request.title.trim().length > 0 ? { title: request.title.trim() } : {}),
       ...(request.durationSec !== undefined ? { durationSec: request.durationSec } : {}),
     })
     publicationId = created.publicationId
@@ -291,11 +287,7 @@ export async function publish(request: PublishRequest): Promise<PublishResult> {
     // this is the step the user is paying for, and it is where a size-based price may
     // differ from the quote.
     onProgress({ stage: 'Activating', stagePercent: 0, estimatedCost: created.estimatedCost })
-    const publication = await completePublicationUpload(
-      created.publicationId,
-      uploaded.parts,
-      captionsVtt ?? undefined,
-    )
+    const publication = await completePublicationUpload(created.publicationId, uploaded.parts, captionsVtt ?? undefined)
     publicationId = null // activated: nothing to abandon
     onProgress({ stage: 'Done', stagePercent: 100 })
 

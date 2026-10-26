@@ -31,11 +31,7 @@ import {
   type PublishProgress,
 } from '../../features/publishing'
 import { getEntitlement } from '../../features/entitlement'
-import {
-  cancelActiveCloudWork,
-  clearCloudCancellation,
-  registerCloudCancellation,
-} from '../../features/cloud-cancel'
+import { cancelActiveCloudWork, clearCloudCancellation, registerCloudCancellation } from '../../features/cloud-cancel'
 import { getStoredToken } from '../../features/license-client'
 import { appState } from '../../state'
 import type { SubtitleCue } from '../../../../shared/subtitles'
@@ -178,10 +174,7 @@ export async function handlePublishStart(
       emit(window, 'publish:complete', { success: false, error: message, reason: 'rejected' })
       return { ok: false, reason: 'rejected', error: message }
     }
-    if (
-      !capabilities.publishing.durationsDays.includes(request.storageDays) &&
-      request.storageDays > 0
-    ) {
+    if (!capabilities.publishing.durationsDays.includes(request.storageDays) && request.storageDays > 0) {
       // Not fatal — the server decides — but a term it does not offer is a bug in the
       // caller, and finding out here beats finding out after an upload.
       log.warn(`[Publishing] Storage term ${request.storageDays} is not one the server offers`)
@@ -255,10 +248,7 @@ export async function handlePublishList(): Promise<
 export async function handlePublishDelete(
   _event: IpcMainInvokeEvent,
   request: { publicationId: string },
-): Promise<
-  | { ok: true; publication: PublicationView; creditsRefunded: number }
-  | { ok: false; error: string }
-> {
+): Promise<{ ok: true; publication: PublicationView; creditsRefunded: number } | { ok: false; error: string }> {
   try {
     const result = await deletePublication(request.publicationId)
     return { ok: true, publication: result.view, creditsRefunded: result.creditsRefunded }

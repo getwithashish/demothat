@@ -6,12 +6,7 @@
 // hand back a document whose duration it cannot trust.
 
 import { describe, expect, it } from 'vitest'
-import {
-  TRANSCRIPT_VERSION,
-  parseTranscript,
-  parseTranscriptJson,
-  transcriptText,
-} from '../../../shared/transcript'
+import { TRANSCRIPT_VERSION, parseTranscript, parseTranscriptJson, transcriptText } from '../../../shared/transcript'
 
 const DOCUMENT = {
   version: 1,
@@ -83,7 +78,10 @@ describe('parseTranscript', () => {
           start: 0,
           end: 1,
           text: 'hello there',
-          words: [{ start: 0, end: 0.5, text: 'hello' }, { start: null, end: 1, text: 'there' }],
+          words: [
+            { start: 0, end: 0.5, text: 'hello' },
+            { start: null, end: 1, text: 'there' },
+          ],
         },
       ],
     })

@@ -128,9 +128,7 @@ export function SubtitlesSettings() {
         setRemoved(null)
         return
       }
-      const result = options.stripFillers
-        ? removeFillers(current, { dropStutters: options.dropStutters })
-        : null
+      const result = options.stripFillers ? removeFillers(current, { dropStutters: options.dropStutters }) : null
       const source = result?.transcript ?? current
       setSubtitleCues(cuesFromTranscript(source, mapper))
       setRemoved(result === null ? null : result.removedCount)
@@ -191,14 +189,10 @@ export function SubtitlesSettings() {
         )}
 
         {status !== null && status.configured && !enabled && (
-          <p className="text-sm text-muted">
-            Transcription is switched off for this deployment right now.
-          </p>
+          <p className="text-sm text-muted">Transcription is switched off for this deployment right now.</p>
         )}
 
-        {videoPath === null && (
-          <p className="text-sm text-muted">Open a recording to transcribe it.</p>
-        )}
+        {videoPath === null && <p className="text-sm text-muted">Open a recording to transcribe it.</p>}
 
         {videoPath !== null && transcript === null && (
           <>
@@ -261,12 +255,7 @@ export function SubtitlesSettings() {
                 {settled.charge} credits charged for {Math.round(settled.audioSeconds)}s of audio.
               </p>
             )}
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => void transcribe()}
-              disabled={isRunning || !enabled}
-            >
+            <Button variant="secondary" size="sm" onClick={() => void transcribe()} disabled={isRunning || !enabled}>
               Transcribe again
             </Button>
           </div>
@@ -301,14 +290,12 @@ export function SubtitlesSettings() {
               </p>
             )}
             {removed === null && (
-              <p className="mt-2 text-xs text-muted">
-                The captions keep every word, exactly as transcribed.
-              </p>
+              <p className="mt-2 text-xs text-muted">The captions keep every word, exactly as transcribed.</p>
             )}
             <p className="mt-2 flex items-start gap-1.5 text-xs text-muted">
               <AlertTriangle size={12} strokeWidth={ICON_STROKE} className="mt-0.5 shrink-0" />
-              Word choice is deliberately narrow: “like”, “so” and “right” carry meaning in
-              some sentences, so they are never removed automatically.
+              Word choice is deliberately narrow: “like”, “so” and “right” carry meaning in some sentences, so they are
+              never removed automatically.
             </p>
           </Section>
 
@@ -333,16 +320,15 @@ export function SubtitlesSettings() {
               </Select>
             </div>
             <p className="mt-2 text-xs text-muted">
-              {subtitleCues.length} {subtitleCues.length === 1 ? 'caption' : 'captions'} on the timeline.
-              Click one below to reword it.
+              {subtitleCues.length} {subtitleCues.length === 1 ? 'caption' : 'captions'} on the timeline. Click one
+              below to reword it.
             </p>
           </Section>
 
           <Section label="Cues">
             {subtitleCues.length === 0 ? (
               <p className="text-sm text-muted">
-                No captions yet. The transcript produced none — that can happen for a recording with no
-                speech.
+                No captions yet. The transcript produced none — that can happen for a recording with no speech.
               </p>
             ) : (
               <ul className="space-y-2">

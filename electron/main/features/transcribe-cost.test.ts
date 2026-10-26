@@ -7,11 +7,7 @@
 // against the balance.
 
 import { describe, expect, it } from 'vitest'
-import {
-  estimateTranscribeCredits,
-  hasEnoughCredits,
-  transcribeBlockedReason,
-} from '../../../shared/transcribe-cost'
+import { estimateTranscribeCredits, hasEnoughCredits, transcribeBlockedReason } from '../../../shared/transcribe-cost'
 
 const CAPS = { enabled: true, creditsPerMinute: 1800, maxAudioSeconds: 900 }
 

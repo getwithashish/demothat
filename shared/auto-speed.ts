@@ -93,10 +93,7 @@ export function mergeRanges(ranges: TimeRange[], duration: number): TimeRange[] 
 }
 
 /** Pull both ends in, and keep only what is still long enough to be worth it. */
-function toRegions(
-  ranges: TimeRange[],
-  options: AutoSpeedOptions,
-): SpeedRegionSpec[] {
+function toRegions(ranges: TimeRange[], options: AutoSpeedOptions): SpeedRegionSpec[] {
   const speed = clampSpeed(options.speed)
   const regions: SpeedRegionSpec[] = []
 

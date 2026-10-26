@@ -33,10 +33,7 @@ export interface PublishCostInput {
  * Never below `minCredits`, and the landing page's surcharge is added on top of that
  * floor rather than being able to absorb it.
  */
-export function estimatePublishCredits(
-  capabilities: PublishingCapabilities,
-  input: PublishCostInput,
-): number {
+export function estimatePublishCredits(capabilities: PublishingCapabilities, input: PublishCostInput): number {
   const storage = storageCredits(input.sizeBytes, input.storageDays, capabilities.creditsPerGbYear)
   const landing = input.kind === 'page' ? capabilities.landingPageCredits : 0
   // The floor is on the **total**, which is where the server applies it. Flooring the
@@ -54,11 +51,7 @@ export function estimatePublishCredits(
  * 0 for a degenerate size or term: the floor belongs to the total, and duplicating it
  * here is how the two drift apart.
  */
-export function storageCredits(
-  sizeBytes: number,
-  storageDays: number,
-  creditsPerGbYear: number,
-): number {
+export function storageCredits(sizeBytes: number, storageDays: number, creditsPerGbYear: number): number {
   if (sizeBytes <= 0 || storageDays <= 0) return 0
   const gigabytes = sizeBytes / BYTES_PER_GB
   return Math.ceil((gigabytes * creditsPerGbYear * storageDays) / 365)

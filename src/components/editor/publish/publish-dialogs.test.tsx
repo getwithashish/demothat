@@ -66,9 +66,7 @@ async function click(element: Element | null | undefined): Promise<void> {
 
 /** Find a button whose text starts with the given label. */
 function buttonByText(host: HTMLElement, text: string): Element | undefined {
-  return [...host.querySelectorAll('button')].find((button) =>
-    (button.textContent ?? '').trim().startsWith(text),
-  )
+  return [...host.querySelectorAll('button')].find((button) => (button.textContent ?? '').trim().startsWith(text))
 }
 
 const capabilities: PublishingCapabilities = {

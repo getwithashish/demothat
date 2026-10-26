@@ -63,9 +63,7 @@ describe('estimatePublishCredits', () => {
     expect(costs).toEqual([...costs].sort((a, b) => a - b))
     expect(costs).toEqual([12, 50, 148, 600])
     // The same clip at a tenth of the size, for contrast: 50 MB for a week is 2.
-    expect(
-      estimatePublishCredits(capabilities, { sizeBytes: 50 * 1000 * 1000, storageDays: 7, kind: 'links' }),
-    ).toBe(2)
+    expect(estimatePublishCredits(capabilities, { sizeBytes: 50 * 1000 * 1000, storageDays: 7, kind: 'links' })).toBe(2)
   })
 
   it('uses decimal GB, so it does not overcharge by the GiB/G B difference', () => {
@@ -81,9 +79,7 @@ describe('estimatePublishCredits', () => {
     // term instead (as this file used to) would quote 1,900 where the server charges
     // 1,000, which is the kind of gap a user only finds out about afterwards.
     const highFloor: PublishingCapabilities = { ...capabilities, minCredits: 1000 }
-    expect(
-      estimatePublishCredits(highFloor, { sizeBytes: 2_000_000, storageDays: 7, kind: 'page' }),
-    ).toBe(1000)
+    expect(estimatePublishCredits(highFloor, { sizeBytes: 2_000_000, storageDays: 7, kind: 'page' })).toBe(1000)
   })
 
   it('has no surcharge for the kinds without a landing page', () => {

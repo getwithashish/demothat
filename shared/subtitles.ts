@@ -62,7 +62,10 @@ export function wrapCueText(
   maxCharsPerLine: number = DEFAULT_MAX_CHARS_PER_LINE,
   maxLines: number = DEFAULT_MAX_LINES,
 ): string {
-  const words = text.trim().split(/\s+/).filter((word) => word.length > 0)
+  const words = text
+    .trim()
+    .split(/\s+/)
+    .filter((word) => word.length > 0)
   if (words.length === 0) return ''
 
   const lines: string[] = []

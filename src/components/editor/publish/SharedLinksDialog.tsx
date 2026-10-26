@@ -14,11 +14,7 @@ import { Button } from '../../ui/button'
 import { Loader2, Trash, Link, CircleCheck, CircleX, Clock, Eye } from 'tabler-icons-react'
 import { ICON_SIZE, ICON_STROKE } from '../../ui/icons'
 import { formatBytes } from '../../../../shared/publish-cost'
-import type {
-  PublicationAnalytics,
-  PublicationAnalyticsRange,
-  PublicationView,
-} from '../../../hooks/usePublish'
+import type { PublicationAnalytics, PublicationAnalyticsRange, PublicationView } from '../../../hooks/usePublish'
 
 interface SharedLinksDialogProps {
   isOpen: boolean
@@ -231,11 +227,7 @@ export function SharedLinksDialog({
                       onCopied={onCopied}
                     />
                   )}
-                  <LinkLine
-                    label="Video download"
-                    value={selected.links.videoDownloadUrl}
-                    onCopied={onCopied}
-                  />
+                  <LinkLine label="Video download" value={selected.links.videoDownloadUrl} onCopied={onCopied} />
                   {selected.links.captionsDownloadUrl !== undefined && (
                     <LinkLine
                       label="Captions download"
@@ -269,8 +261,10 @@ export function SharedLinksDialog({
                     <div className="space-y-2">
                       <p className="text-xs text-fg">
                         Delete this link? The video is removed immediately and cannot be restored, and{' '}
-                        <strong>the {selected.creditsCharged ?? selected.estimatedCost} credits are not
-                        returned</strong> — the term was paid for when it was published.
+                        <strong>
+                          the {selected.creditsCharged ?? selected.estimatedCost} credits are not returned
+                        </strong>{' '}
+                        — the term was paid for when it was published.
                       </p>
                       <div className="flex justify-end gap-2">
                         <Button variant="ghost" size="sm" onClick={() => setConfirmingDelete(null)}>
@@ -362,8 +356,8 @@ export function SharedLinksDialog({
                           </div>
 
                           <p className="text-xs text-muted">
-                            Viewers are counted per browser tab, so one person opening the link twice
-                            counts twice. No cookies or personal data are collected.
+                            Viewers are counted per browser tab, so one person opening the link twice counts twice. No
+                            cookies or personal data are collected.
                           </p>
 
                           {/* A day-by-day view, drawn from the series the API returns. */}
@@ -422,15 +416,7 @@ export function SharedLinksDialog({
   )
 }
 
-function LinkLine({
-  label,
-  value,
-  onCopied,
-}: {
-  label: string
-  value: string
-  onCopied?: (label: string) => void
-}) {
+function LinkLine({ label, value, onCopied }: { label: string; value: string; onCopied?: (label: string) => void }) {
   return (
     <div className="flex items-center justify-between gap-2 rounded-ctl border border-border/50 px-2 py-1">
       <span className="shrink-0 text-muted">{label}</span>
@@ -450,17 +436,7 @@ function LinkLine({
   )
 }
 
-function Stat({
-  icon,
-  label,
-  value,
-  sub,
-}: {
-  icon: React.ReactNode
-  label: string
-  value: string
-  sub?: string
-}) {
+function Stat({ icon, label, value, sub }: { icon: React.ReactNode; label: string; value: string; sub?: string }) {
   return (
     <div className="rounded-ctl border border-border/60 p-2.5">
       <div className="flex items-center gap-1.5 text-xs text-muted">

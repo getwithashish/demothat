@@ -60,7 +60,7 @@ describe('isFiller', () => {
   })
 
   it('takes extra words from the caller', () => {
-    expect(isFiller('y\'know')).toBe(false)
+    expect(isFiller("y'know")).toBe(false)
     expect(isFiller("y'know", ["y'know"])).toBe(true)
   })
 
@@ -139,9 +139,7 @@ describe('removeFillers', () => {
     }
 
     expect(removeFillers(stutter).transcript.segments[0]?.text).toBe('I I think the the file')
-    expect(
-      removeFillers(stutter, { dropStutters: true }).transcript.segments[0]?.text,
-    ).toBe('I think the file')
+    expect(removeFillers(stutter, { dropStutters: true }).transcript.segments[0]?.text).toBe('I think the file')
   })
 
   it('falls back to a text pass when the transcript has no word timings', () => {

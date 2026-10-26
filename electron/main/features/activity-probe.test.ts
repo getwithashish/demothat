@@ -115,11 +115,25 @@ suite('probeActivity against the bundled ffmpeg', () => {
     // recording has while someone is reading, then typing.
     recording = path.join(workDir, 'probe.mp4')
     execFileSync(FFMPEG, [
-      '-hide_banner', '-loglevel', 'error', '-y',
-      '-f', 'lavfi', '-i', 'color=c=black:size=320x180:duration=3:rate=15',
-      '-f', 'lavfi', '-i', 'testsrc=size=320x180:duration=3:rate=15',
-      '-filter_complex', '[0:v][1:v]concat=n=2:v=1:a=0',
-      '-c:v', 'libx264', '-pix_fmt', 'yuv420p', recording,
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-y',
+      '-f',
+      'lavfi',
+      '-i',
+      'color=c=black:size=320x180:duration=3:rate=15',
+      '-f',
+      'lavfi',
+      '-i',
+      'testsrc=size=320x180:duration=3:rate=15',
+      '-filter_complex',
+      '[0:v][1:v]concat=n=2:v=1:a=0',
+      '-c:v',
+      'libx264',
+      '-pix_fmt',
+      'yuv420p',
+      recording,
     ])
   }, 120_000)
 

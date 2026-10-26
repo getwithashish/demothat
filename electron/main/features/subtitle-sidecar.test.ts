@@ -73,9 +73,7 @@ describe('writeSubtitleSidecar', () => {
   it('writes captions a player can read', async () => {
     const result = await writeSubtitleSidecar(options({ cues: [cue('a', 0, 1.5, 'Hello there.')] }))
 
-    expect(await fsp.readFile(result.path as string, 'utf8')).toBe(
-      '1\n00:00:00,000 --> 00:00:01,500\nHello there.\n',
-    )
+    expect(await fsp.readFile(result.path as string, 'utf8')).toBe('1\n00:00:00,000 --> 00:00:01,500\nHello there.\n')
   })
 
   it('writes WebVTT when that is the format', async () => {
@@ -103,9 +101,7 @@ describe('writeSubtitleSidecar', () => {
   it('normalizes on the way out, not just on the way in', async () => {
     // The editor lets a cue be dragged into an overlap after it was created; the file
     // format's guarantees are about what is written.
-    const result = await writeSubtitleSidecar(
-      options({ cues: [cue('a', 0, 5, 'first'), cue('b', 2, 6, 'second')] }),
-    )
+    const result = await writeSubtitleSidecar(options({ cues: [cue('a', 0, 5, 'first'), cue('b', 2, 6, 'second')] }))
 
     const written = await fsp.readFile(result.path as string, 'utf8')
     const ranges = [...written.matchAll(/(\d\d:\d\d:\d\d,\d\d\d) --> (\d\d:\d\d:\d\d,\d\d\d)/g)]
@@ -116,9 +112,7 @@ describe('writeSubtitleSidecar', () => {
 
   it('reports a failure instead of throwing, because the video is already written', async () => {
     // A path whose directory does not exist.
-    const result = await writeSubtitleSidecar(
-      options({ outputPath: path.join(dir, 'missing-folder', 'out.mp4') }),
-    )
+    const result = await writeSubtitleSidecar(options({ outputPath: path.join(dir, 'missing-folder', 'out.mp4') }))
 
     expect(result.written).toBe(false)
     expect(result.error).toBeTruthy()

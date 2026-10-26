@@ -127,9 +127,7 @@ describe('publish (mock API)', () => {
     // The app's own quote, for the same numbers, agrees with what was charged. This is
     // the assertion that keeps the dialog honest.
     const capabilities = { ...publishCapabilities(), creditsPerGbYear: 1200 } as PublishingCapabilities
-    expect(
-      estimatePublishCredits(capabilities, { sizeBytes: 6_000_000, storageDays: 365, kind: 'links' }),
-    ).toBe(8)
+    expect(estimatePublishCredits(capabilities, { sizeBytes: 6_000_000, storageDays: 365, kind: 'links' })).toBe(8)
 
     expect(result.publication.status).toBe('active')
     expect(result.publication.title).toBe('A quarterly demo')
@@ -270,8 +268,22 @@ describe('the shared links list', () => {
     const small = await writeFile('one.mp4', 1_000_000)
     const larger = await writeFile('two.mp4', 1_200_000)
 
-    await publish({ filePath: small, kind: 'links', storageDays: 7, title: 'First', cancel: { cancelled: false }, onProgress: () => undefined })
-    await publish({ filePath: larger, kind: 'embed', storageDays: 7, title: 'Second', cancel: { cancelled: false }, onProgress: () => undefined })
+    await publish({
+      filePath: small,
+      kind: 'links',
+      storageDays: 7,
+      title: 'First',
+      cancel: { cancelled: false },
+      onProgress: () => undefined,
+    })
+    await publish({
+      filePath: larger,
+      kind: 'embed',
+      storageDays: 7,
+      title: 'Second',
+      cancel: { cancelled: false },
+      onProgress: () => undefined,
+    })
 
     const publications = await listPublications()
     expect(publications).toHaveLength(2)
@@ -324,10 +336,22 @@ describe('analytics', () => {
     server.state.publicationEvents.push(
       { publicationId: id, type: 'view', sessionId: 'viewer-one', at: new Date(now - 1000).toISOString() },
       { publicationId: id, type: 'play', sessionId: 'viewer-one', at: new Date(now - 900).toISOString() },
-      { publicationId: id, type: 'progress', sessionId: 'viewer-one', watchedSeconds: 40, at: new Date(now - 800).toISOString() },
+      {
+        publicationId: id,
+        type: 'progress',
+        sessionId: 'viewer-one',
+        watchedSeconds: 40,
+        at: new Date(now - 800).toISOString(),
+      },
       { publicationId: id, type: 'complete', sessionId: 'viewer-one', at: new Date(now - 700).toISOString() },
       { publicationId: id, type: 'view', sessionId: 'viewer-two', at: new Date(now - 600).toISOString() },
-      { publicationId: id, type: 'progress', sessionId: 'viewer-two', watchedSeconds: 20, at: new Date(now - 500).toISOString() },
+      {
+        publicationId: id,
+        type: 'progress',
+        sessionId: 'viewer-two',
+        watchedSeconds: 20,
+        at: new Date(now - 500).toISOString(),
+      },
       // Outside the 7-day window, so `all` and `7d` must disagree once it is moved.
       { publicationId: id, type: 'view', sessionId: 'old-viewer', at: new Date(now - 10 * 86_400_000).toISOString() },
     )

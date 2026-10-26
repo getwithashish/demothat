@@ -64,17 +64,45 @@ suite('the audio timeline against the bundled ffmpeg', () => {
     // A six-second recording with two audio streams, as the recorder produces.
     const webm = path.join(workDir, 'screen.webm')
     run([
-      '-y', '-hide_banner', '-loglevel', 'error',
-      '-f', 'lavfi', '-i', 'testsrc=size=320x180:rate=15',
-      '-f', 'lavfi', '-i', 'sine=frequency=880:sample_rate=48000:duration=6',
-      '-t', '6', '-c:v', 'libvpx-vp9', '-deadline', 'realtime', '-cpu-used', '8',
-      '-pix_fmt', 'yuv420p', '-c:a', 'libopus', webm,
+      '-y',
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-f',
+      'lavfi',
+      '-i',
+      'testsrc=size=320x180:rate=15',
+      '-f',
+      'lavfi',
+      '-i',
+      'sine=frequency=880:sample_rate=48000:duration=6',
+      '-t',
+      '6',
+      '-c:v',
+      'libvpx-vp9',
+      '-deadline',
+      'realtime',
+      '-cpu-used',
+      '8',
+      '-pix_fmt',
+      'yuv420p',
+      '-c:a',
+      'libopus',
+      webm,
     ])
     const mic = path.join(workDir, 'mic.m4a')
     run([
-      '-y', '-hide_banner', '-loglevel', 'error',
-      '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=44100:duration=6',
-      '-c:a', 'aac', mic,
+      '-y',
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-f',
+      'lavfi',
+      '-i',
+      'sine=frequency=440:sample_rate=44100:duration=6',
+      '-c:a',
+      'aac',
+      mic,
     ])
     recording = path.join(workDir, 'recording.mp4')
     run(buildMacMuxArgs({ screenWebmInput: webm, micAudioInput: mic, output: recording, webmHasSystemAudio: true }))
@@ -104,11 +132,18 @@ suite('the audio timeline against the bundled ffmpeg', () => {
     const file = path.join(workDir, `out-${Math.random().toString(36).slice(2, 8)}.m4a`)
 
     const result = run([
-      '-y', '-hide_banner', '-loglevel', 'error',
-      '-i', recording,
-      '-filter_complex', chains.join(';'),
-      '-map', '[original]',
-      '-c:a', 'aac',
+      '-y',
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-i',
+      recording,
+      '-filter_complex',
+      chains.join(';'),
+      '-map',
+      '[original]',
+      '-c:a',
+      'aac',
       file,
     ])
     return { code: result.code, file }

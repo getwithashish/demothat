@@ -43,7 +43,7 @@ describe('entitlement', () => {
 
   describe('unlock url', () => {
     it('falls back to the built-in default', () => {
-      expect(getUnlockUrl()).toBe('https://demothat.app/pro')
+      expect(getUnlockUrl()).toBe('https://demothat.yahodu.in/pro')
     })
 
     it('honours the environment variable', () => {
@@ -59,7 +59,7 @@ describe('entitlement', () => {
 
     it('ignores a blank setting', () => {
       storeState.data.set('pro.unlockUrl', '  ')
-      expect(getUnlockUrl()).toBe('https://demothat.app/pro')
+      expect(getUnlockUrl()).toBe('https://demothat.yahodu.in/pro')
     })
   })
 })

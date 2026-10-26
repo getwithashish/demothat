@@ -78,20 +78,25 @@ export interface CreditPack {
 }
 
 /**
- * The packs the app offers.
+ * The three price points the app offers, in the same shape as the server's catalogue.
  *
- * TODO(owner): replace the placeholder product ids with the real Dodo product
- * ids, and keep the credit amounts in step with `PRODUCTS` in demothat-api. The
- * server is the source of truth: it ignores anything here that disagrees.
+ * `GET /v1/products` is the source of truth — it carries Dodo's own ids and prices — and
+ * this list is only what the Buy-credits dialog falls back to when the API is
+ * unreachable. The ids must therefore stay in step with the API's `PRODUCTS` table and
+ * with Dodo itself, or the fallback would name products that cannot be bought.
+ *
+ * The first pack is the one that grants Pro (`first_purchase`); the others are top-ups.
+ * Credits are the published rate of 600 per USD, so the three price points
+ * ($5 / $50 / $500) buy 3,000 / 30,000 / 300,000.
  *
  * Packs only: the owner has dropped the design's custom-amount field and slider,
  * because the contract prices a purchase from the server-side product table and
  * an arbitrary amount is not purchasable without a new contract route.
  */
 export const CREDIT_PACKS: CreditPack[] = [
-  { productId: 'pdt_pro_1800', label: 'Pro', credits: 1800, priceUsd: 3 },
-  { productId: 'pdt_topup_5400', label: 'Top-up', credits: 5400, priceUsd: 9 },
-  { productId: 'pdt_topup_9000', label: 'Top-up', credits: 9000, priceUsd: 15 },
+  { productId: 'pdt_pro_3000', label: 'Pro', credits: 3000, priceUsd: 5 },
+  { productId: 'pdt_topup_30000', label: 'Top-up', credits: 30000, priceUsd: 50 },
+  { productId: 'pdt_topup_300000', label: 'Top-up', credits: 300000, priceUsd: 500 },
 ]
 
 /** Display name for a capabilities target key ("8k" → "8K"). */

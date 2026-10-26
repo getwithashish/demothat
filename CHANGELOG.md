@@ -1,3 +1,9 @@
+## [1.10.0](https://github.com/getwithashish/DemoThat/compare/v1.9.0...v1.10.0) (2026-10-26)
+
+### Features
+
+* **editor:** instant publishing, shared links and a captions panel ([#1](https://github.com/getwithashish/DemoThat/issues/1)) ([9b61b53](https://github.com/getwithashish/DemoThat/commit/9b61b53f76978e832366d28a95f12f0dcc939841))
+
 ## [1.9.0](https://github.com/getwithashish/DemoThat/compare/v1.8.0...v1.9.0) (2026-10-22)
 
 ### Features

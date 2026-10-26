@@ -75,28 +75,57 @@ export interface CreditPack {
   credits: number
   /** Display-only price in USD. */
   priceUsd: number
+  /**
+   * Which side of the first-purchase rule this pack sits on. The API enforces it: a
+   * copy that has never purchased can only buy the `first_purchase` pack, and a
+   * top-up needs a licence. The dialog mirrors that rule so it never offers a pack
+   * the server would refuse.
+   */
+  kind: 'first_purchase' | 'topup'
 }
 
 /**
- * The three price points the app offers, in the same shape as the server's catalogue.
+ * The catalogue the app offers, in the same shape as the server's.
  *
  * `GET /v1/products` is the source of truth — it carries Dodo's own ids and prices — and
  * this list is only what the Buy-credits dialog falls back to when the API is
  * unreachable. The ids must therefore stay in step with the API's `PRODUCTS` table and
  * with Dodo itself, or the fallback would name products that cannot be bought.
  *
- * The first pack is the one that grants Pro (`first_purchase`); the others are top-ups.
- * Credits are the published rate of 600 per USD, so the three price points
- * ($5 / $50 / $500) buy 3,000 / 30,000 / 300,000.
+ * $3 buys 1,800 credits and grants Pro. That is the only pack a copy that has never
+ * purchased can buy; the rest are top-ups, and the dialog keeps them out of sight until
+ * the copy holds Pro, because the API refuses a top-up without a licence.
+ *
+ * These ids are the test-mode ones. Swap them for the live ids when a production build
+ * is cut — the same swap the site's `pricing.json` needs.
  *
  * Packs only: the owner has dropped the design's custom-amount field and slider,
  * because the contract prices a purchase from the server-side product table and
  * an arbitrary amount is not purchasable without a new contract route.
  */
 export const CREDIT_PACKS: CreditPack[] = [
-  { productId: 'pdt_pro_3000', label: 'Pro', credits: 3000, priceUsd: 5 },
-  { productId: 'pdt_topup_30000', label: 'Top-up', credits: 30000, priceUsd: 50 },
-  { productId: 'pdt_topup_300000', label: 'Top-up', credits: 300000, priceUsd: 500 },
+  {
+    productId: 'pdt_0NqZNIRjOylEVB1LvtFwQ',
+    label: 'Pro',
+    credits: 1800,
+    priceUsd: 3,
+    kind: 'first_purchase',
+  },
+  { productId: 'pdt_0NqZNITpJgQCu833PuREi', label: 'Top-up', credits: 3000, priceUsd: 5, kind: 'topup' },
+  {
+    productId: 'pdt_0NqZNIWCdJaaNRu3L6Osg',
+    label: 'Top-up',
+    credits: 30000,
+    priceUsd: 50,
+    kind: 'topup',
+  },
+  {
+    productId: 'pdt_0NqZNIYCYXpjXXlK1fDN1',
+    label: 'Top-up',
+    credits: 300000,
+    priceUsd: 500,
+    kind: 'topup',
+  },
 ]
 
 /** Display name for a capabilities target key ("8k" → "8K"). */

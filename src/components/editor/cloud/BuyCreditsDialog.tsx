@@ -8,13 +8,13 @@ import { useEffect, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { ExternalLink } from 'tabler-icons-react'
 import { useEditorStore } from '../../../store/editorStore'
-import { CREDIT_PACKS, formatCredits, packNote } from '../../../../shared/license'
+import { formatCredits, packNote } from '../../../../shared/license'
 import { toCreditPackViews, type CreditPackView } from '../../../../shared/pricing'
 import { cn } from '../../../lib/utils'
 import { Button } from '../../ui/button'
 import { ICON_SIZE, ICON_STROKE } from '../../ui/icons'
 import { CloudDialog, CloudDialogSection } from './CloudDialog'
-import { fallbackPackViews, pickNoteTarget, recommendedPackIndex } from './credit-packs'
+import { fallbackPackViews, pickNoteTarget, recommendedPackIndex, visiblePacks } from './credit-packs'
 
 export interface BuyCreditsDialogProps {
   isOpen: boolean
@@ -27,14 +27,19 @@ export interface BuyCreditsDialogProps {
 const NOTE_FPS = 30
 
 export function BuyCreditsDialog({ isOpen, onClose, shortfall }: BuyCreditsDialogProps) {
-  const { balance, startPurchase, purchaseError } = useEditorStore(
+  const { plan, balance, startPurchase, purchaseError } = useEditorStore(
     useShallow((state) => ({
+      plan: state.plan,
       balance: state.balance,
       startPurchase: state.startPurchase,
       purchaseError: state.purchaseError,
     })),
   )
-  const [selected, setSelected] = useState(() => recommendedPackIndex(shortfall, CREDIT_PACKS))
+  // A licence is what makes the top-ups purchasable: the API refuses one without it.
+  const licensed = plan != null
+  const [selected, setSelected] = useState(() =>
+    recommendedPackIndex(shortfall, visiblePacks(fallbackPackViews(), licensed)),
+  )
   const [busy, setBusy] = useState(false)
   // Pack notes come from the server's own pricing table, never from guesses.
   const [creditsPerFrame, setCreditsPerFrame] = useState<Record<string, number> | undefined>(undefined)
@@ -45,7 +50,7 @@ export function BuyCreditsDialog({ isOpen, onClose, shortfall }: BuyCreditsDialo
   // Re-pick the pack each time the dialog opens for a new shortfall.
   useEffect(() => {
     if (!isOpen) return
-    setSelected(recommendedPackIndex(shortfall, CREDIT_PACKS))
+    setSelected(recommendedPackIndex(shortfall, visiblePacks(fallbackPackViews(), licensed)))
     setBusy(false)
     window.electronAPI
       .getCloudCapabilities?.()
@@ -58,14 +63,14 @@ export function BuyCreditsDialog({ isOpen, onClose, shortfall }: BuyCreditsDialo
         setPacks(views.length > 0 ? views : fallbackPackViews())
       })
       .catch(() => setPacks(fallbackPackViews()))
-  }, [isOpen, shortfall])
+  }, [isOpen, shortfall, licensed])
 
   if (!isOpen) return null
 
   // The server's catalogue while it is loading too: it is the real answer.
   const catalogue = packs ?? toCreditPackViews(null)
-  const options: CreditPackView[] = catalogue.length > 0 ? catalogue : fallbackPackViews()
-  const safeIndex = Math.min(selected, options.length - 1)
+  const options: CreditPackView[] = visiblePacks(catalogue.length > 0 ? catalogue : fallbackPackViews(), licensed)
+  const safeIndex = Math.min(selected, Math.max(0, options.length - 1))
   const pack = options[safeIndex]
   const covers = shortfall != null && shortfall > 0 && pack.credits >= shortfall
   const noteTarget = pickNoteTarget(creditsPerFrame)

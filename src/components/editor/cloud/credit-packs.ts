@@ -27,8 +27,25 @@ export function fallbackPackViews(packs: CreditPack[] = CREDIT_PACKS): CreditPac
     label: pack.label,
     credits: pack.credits,
     priceLabel: priceLabel(pack),
-    kind: pack.label === 'Pro' ? 'first_purchase' : 'topup',
+    kind: pack.kind,
   }))
+}
+
+/**
+ * The packs this copy may actually buy, in the order the dialog shows them.
+ *
+ * The API is the enforcement point — a first purchase needs no licence and a top-up
+ * needs one — so mirroring the rule here means the dialog never offers a pack the
+ * server would refuse. A copy that has not bought in yet sees the single entry pack
+ * instead of four buttons, three of which would fail.
+ *
+ * A catalogue that carries no entry pack is returned whole: showing what the server
+ * sells beats showing an empty dialog.
+ */
+export function visiblePacks<T extends { kind: 'first_purchase' | 'topup' }>(packs: T[], licensed: boolean): T[] {
+  if (licensed) return packs
+  const entry = packs.filter((pack) => pack.kind === 'first_purchase')
+  return entry.length > 0 ? entry : packs
 }
 
 /**

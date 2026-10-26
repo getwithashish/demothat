@@ -1,3 +1,9 @@
+## [1.11.0](https://github.com/getwithashish/DemoThat/compare/v1.10.0...v1.11.0) (2026-10-26)
+
+### Features
+
+* **packs:** the $3 entry pack, and top-ups only once Pro is held ([#2](https://github.com/getwithashish/DemoThat/issues/2)) ([e2927e1](https://github.com/getwithashish/DemoThat/commit/e2927e15dfa9eeb30274c572d4010ce217eed1df))
+
 ## [1.10.0](https://github.com/getwithashish/DemoThat/compare/v1.9.0...v1.10.0) (2026-10-26)
 
 ### Features

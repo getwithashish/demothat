@@ -7,6 +7,8 @@ import { PreviewControls } from '../components/editor/PreviewControls'
 import { UpdateNotification } from '../components/editor/UpdateNotification'
 import { ExportButton } from '../components/editor/ExportButton'
 import { ExportModal } from '../components/editor/ExportModal'
+import { PublishDialog } from '../components/editor/publish/PublishDialog'
+import { SharedLinksDialog } from '../components/editor/publish/SharedLinksDialog'
 import { WindowControls } from '../components/editor/WindowControls'
 import { SaveStatusIndicator } from '../components/editor/SaveStatusIndicator'
 import { ProjectMenu } from '../components/editor/ProjectMenu'
@@ -20,13 +22,15 @@ import { BuyCreditsDialog } from '../components/editor/cloud/BuyCreditsDialog'
 import { WaitingForPaymentDialog } from '../components/editor/cloud/WaitingForPaymentDialog'
 import { ResumeCloudDialog } from '../components/editor/cloud/ResumeCloudDialog'
 import { CREDIT_PACKS } from '../../shared/license'
-import { Stack3, Loader2, Check, Settings } from 'tabler-icons-react'
+import { Stack3, Loader2, Check, Settings, Share } from 'tabler-icons-react'
 import { ICON_SIZE, ICON_STROKE } from '../components/ui/icons'
 import { cn, formatTime } from '../lib/utils'
+import { projectNameFromPath } from '../lib/recent-projects'
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
 import { useAutoSave } from '../hooks/useAutoSave'
 import { useSessionGuard } from '../hooks/useSessionGuard'
 import { useExportProcess } from '../hooks/useExportProcess'
+import { usePublish } from '../hooks/usePublish'
 import { useLicenseSync } from '../hooks/useLicenseSync'
 import { usePurchaseFlow } from '../hooks/usePurchaseFlow'
 import { Button } from '../components/ui/button'
@@ -63,6 +67,9 @@ export function EditorPage() {
     buyCreditsOpen,
     buyCreditsShortfall,
     waitingForPayment,
+    subtitleCues,
+    balance,
+    videoPath,
   } = useEditorStore(
     useShallow((state) => ({
       presetSaveStatus: state.presetSaveStatus,
@@ -73,6 +80,9 @@ export function EditorPage() {
       buyCreditsOpen: state.buyCreditsOpen,
       buyCreditsShortfall: state.buyCreditsShortfall,
       waitingForPayment: state.waitingForPayment,
+      subtitleCues: state.subtitleCues,
+      balance: state.balance,
+      videoPath: state.videoPath,
     })),
   )
   // Top-bar meta (DESIGN_SPEC §5 shows "project | timecode · resolution"). Display only.
@@ -98,6 +108,20 @@ export function EditorPage() {
     dismissCloudResume,
   } = useExportProcess()
 
+  // Publishing: the library, the run in flight, and the terms the server offers.
+  const {
+    status: publishStatus,
+    isPublishing,
+    progress: publishProgress,
+    publications,
+    isLoadingList,
+    start: startPublish,
+    cancel: cancelPublish,
+    loadList: loadPublications,
+    remove: removePublication,
+    analytics: publicationAnalytics,
+  } = usePublish()
+
   // Saves in the background while the project has unsaved changes.
   useAutoSave()
   // Answers the main process before a session is replaced (open / close / quit).
@@ -113,6 +137,9 @@ export function EditorPage() {
   const [isSettingsModalOpen, setSettingsModalOpen] = useState(false)
   const [isActivateOpen, setActivateOpen] = useState(false)
   const [isDevicesOpen, setDevicesOpen] = useState(false)
+  const [isPublishOpen, setPublishOpen] = useState(false)
+  const [isSharedLinksOpen, setSharedLinksOpen] = useState(false)
+  const [publishTarget, setPublishTarget] = useState<{ path: string; sizeBytes: number } | null>(null)
   const [updateInfo, setUpdateInfo] = useState<{ version: string; url: string } | null>(null)
   const [platform, setPlatform] = useState<NodeJS.Platform | null>(null)
   const openExportModal = () => {
@@ -122,6 +149,25 @@ export function EditorPage() {
   useEffect(() => {
     if (!isExporting) setExportMinimized(false)
   }, [isExporting])
+
+  // Publishing sends the most recent export when there is one, and otherwise the
+  // project's own recording. The size comes from the main process because the renderer
+  // cannot stat a file, and the price has to be quoted before anything is uploaded.
+  const publishTargetPath = exportResult?.outputPath ?? videoPath ?? null
+  useEffect(() => {
+    if (publishTargetPath === null) {
+      setPublishTarget(null)
+      return
+    }
+    let cancelled = false
+    void window.electronAPI.probePublishFile(publishTargetPath).then((result) => {
+      if (cancelled) return
+      setPublishTarget(result.ok ? { path: publishTargetPath, sizeBytes: result.sizeBytes } : null)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [publishTargetPath, isPublishOpen])
 
   const handleDeleteSelectedRegion = useCallback(() => {
     const currentSelectedId = useEditorStore.getState().selectedRegionId
@@ -362,6 +408,22 @@ export function EditorPage() {
     const actions = [
       <ExportButton key="export" isExporting={isExporting} onClick={openExportModal} disabled={duration <= 0} />,
       <Button
+        key="publish"
+        variant="secondary"
+        size="sm"
+        onClick={() => setPublishOpen(true)}
+        disabled={duration <= 0 || publishTarget === null}
+        title={
+          publishTarget === null
+            ? 'Export this project first — publishing sends the exported video'
+            : 'Publish this video behind a share link'
+        }
+        className="h-8"
+      >
+        <Share size={ICON_SIZE} strokeWidth={ICON_STROKE} className="mr-2" />
+        Publish
+      </Button>,
+      <Button
         key="presets"
         variant="secondary"
         size="sm"
@@ -538,6 +600,41 @@ export function EditorPage() {
         onFallbackStandard={(request) => void fallbackToStandard(request)}
       />
       <PresetModal isOpen={isPresetModalOpen} onClose={() => setPresetModalOpen(false)} />
+
+      <PublishDialog
+        isOpen={isPublishOpen}
+        onClose={() => setPublishOpen(false)}
+        capabilities={publishStatus?.publishing ?? null}
+        pro={publishStatus?.pro ?? false}
+        configured={publishStatus?.configured ?? false}
+        isPublishing={isPublishing}
+        progress={publishProgress}
+        balance={balance}
+        filePath={publishTarget?.path ?? null}
+        fileSizeBytes={publishTarget?.sizeBytes ?? 0}
+        durationSec={duration}
+        cues={subtitleCues}
+        defaultTitle={projectNameFromPath(currentProjectPath ?? '')}
+        onPublish={startPublish}
+        onCancel={cancelPublish}
+        onUnlock={() => useEditorStore.getState().openBuyCredits()}
+        onOpenLibrary={() => {
+          setPublishOpen(false)
+          setSharedLinksOpen(true)
+        }}
+        onCopied={(label) => pushToast({ message: `${label} copied to the clipboard` })}
+      />
+
+      <SharedLinksDialog
+        isOpen={isSharedLinksOpen}
+        onClose={() => setSharedLinksOpen(false)}
+        publications={publications}
+        isLoadingList={isLoadingList}
+        onRefresh={loadPublications}
+        onDelete={removePublication}
+        onAnalytics={publicationAnalytics}
+        onCopied={(label) => pushToast({ message: `${label} copied to the clipboard` })}
+      />
       <SettingsModal isOpen={isSettingsModalOpen} onClose={() => setSettingsModalOpen(false)} />
       <ActivationDialog
         isOpen={isActivateOpen}

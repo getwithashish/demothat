@@ -73,8 +73,12 @@ export async function handleTranscribeStatus(): Promise<TranscribeStatus> {
 export interface TranscribeStartRequest {
   /** The recording (or rendered intermediate) to take the audio from. */
   sourcePath: string
-  /** Where the transcript JSON is written. */
-  transcriptPath: string
+  /**
+   * Where the transcript JSON is written. Optional: the transcript belongs to the
+   * project rather than to a file, so a caller that only wants the parsed document
+   * can omit this and get a temporary file that is cleaned up here.
+   */
+  transcriptPath?: string
   language?: string
   model?: string
 }
@@ -117,6 +121,12 @@ function tempAudioPath(sourcePath: string): string {
   return path.join(app.getPath('userData'), 'transcribe', `${Date.now()}-${base}.m4a`)
 }
 
+/** The throwaway transcript file, when the caller did not ask for one. */
+function tempTranscriptPath(sourcePath: string): string {
+  const base = path.basename(sourcePath).replace(/[^\w.-]+/g, '_')
+  return path.join(app.getPath('userData'), 'transcribe', `${Date.now()}-${base}.json`)
+}
+
 export async function handleTranscribeStart(
   event: IpcMainInvokeEvent,
   request: TranscribeStartRequest,
@@ -128,14 +138,17 @@ export async function handleTranscribeStart(
   registerCloudCancellation(cancel)
 
   const audioPath = tempAudioPath(request.sourcePath)
+  // A transcript the caller did not ask to keep is ours to delete.
+  const transcriptPath = request.transcriptPath ?? tempTranscriptPath(request.sourcePath)
+  const ownsTranscript = request.transcriptPath === undefined
   try {
     await fsp.mkdir(path.dirname(audioPath), { recursive: true })
-    await fsp.mkdir(path.dirname(request.transcriptPath), { recursive: true })
+    await fsp.mkdir(path.dirname(transcriptPath), { recursive: true })
 
     const result = await runTranscription({
       sourcePath: request.sourcePath,
       audioPath,
-      transcriptPath: request.transcriptPath,
+      transcriptPath,
       ...(request.language !== undefined ? { language: request.language } : {}),
       ...(request.model !== undefined ? { model: request.model } : {}),
       cancel,
@@ -170,8 +183,13 @@ export async function handleTranscribeStart(
     return { ok: false, reason: 'failed', error: message }
   } finally {
     clearCloudCancellation(cancel)
-    // The audio was only ever an upload artifact; the transcript is the deliverable.
+    // The audio was only ever an upload artifact; the transcript is the deliverable —
+    // unless the caller only wanted the parsed document, in which case this file was
+    // ours and the project is where it lives.
     await fsp.rm(audioPath, { force: true }).catch(() => undefined)
+    if (ownsTranscript) {
+      await fsp.rm(transcriptPath, { force: true }).catch(() => undefined)
+    }
   }
 }
 

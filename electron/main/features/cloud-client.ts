@@ -46,11 +46,21 @@ function asCloudError(error: unknown): CloudError {
   return new CloudError((error as Error)?.message ?? String(error), 'unknown')
 }
 
+/**
+ * Exported for the sibling feature clients (`publishing.ts`), which talk to the same
+ * API and must fail the same way — one error vocabulary in the main process, so the
+ * IPC layer can branch on `code` without knowing which feature raised it.
+ */
+export { asCloudError }
+
 function requireToken(): string {
   const token = getStoredToken()
   if (!token) throw new CloudError('This computer is not activated. Enter your license key first.', 'not_activated')
   return token
 }
+
+/** See `asCloudError`. */
+export { requireToken }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 

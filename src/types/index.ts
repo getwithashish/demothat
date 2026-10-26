@@ -6,7 +6,7 @@ import type { AudioTrack } from '../../shared/audio-tracks'
 
 export type BackgroundType = 'color' | 'gradient' | 'image' | 'wallpaper'
 export type AspectRatio = '16:9' | '9:16' | '4:3' | '3:4' | '1:1'
-export type SidePanelTab = 'general' | 'camera' | 'cursor' | 'audio' | 'animation' | 'settings'
+export type SidePanelTab = 'general' | 'camera' | 'cursor' | 'audio' | 'animation' | 'subtitles' | 'settings'
 
 export interface Background {
   type: BackgroundType

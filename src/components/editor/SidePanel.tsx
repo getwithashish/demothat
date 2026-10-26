@@ -12,6 +12,7 @@ import { cn } from '../../lib/utils'
 import { AudioSettings } from './sidepanel/AudioSettings'
 import { CameraMotionSettings } from './sidepanel/CameraMotionSettings'
 import { CompositionLayoutSettings } from './sidepanel/CompositionLayoutSettings'
+import { SubtitlesSettings } from './sidepanel/SubtitlesSettings'
 import { VisualEffectsSettings } from './sidepanel/VisualEffectsSettings'
 import { PanelHeader } from './PanelHeader'
 
@@ -27,6 +28,7 @@ const TABS: { id: SidePanelTab; label: string }[] = [
   { id: 'audio', label: 'Audio' },
   { id: 'animation', label: 'Motion' },
   { id: 'cursor', label: 'Cursor' },
+  { id: 'subtitles', label: 'Captions' },
 ]
 
 function FrameSettingsPanel() {
@@ -285,6 +287,15 @@ export function SidePanel() {
           hidden={activeSidePanelTab !== 'cursor'}
         >
           <CursorSettings />
+        </div>
+        <div
+          role="tabpanel"
+          id="inspector-panel-subtitles"
+          aria-labelledby="inspector-tab-subtitles"
+          className="h-full"
+          hidden={activeSidePanelTab !== 'subtitles'}
+        >
+          <SubtitlesSettings />
         </div>
       </div>
     </div>

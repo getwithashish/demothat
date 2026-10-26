@@ -1,5 +1,5 @@
 # contract/openapi.yaml
-# CONTRACT VERSION: 2.2.0
+# CONTRACT VERSION: 2.3.0
 #
 # OWNER: demothat-api. This file is the source of truth for the app -> API
 # contract. `demothat` vendors a pinned copy and its CI fails when the version
@@ -11,10 +11,10 @@
 openapi: 3.1.0
 info:
   title: DemoThat API
-  version: 2.2.0
+  version: 2.3.0
   description: >-
-    Pro licensing, credit ledger, cloud upscaling jobs and cloud transcription
-    for the DemoThat
+    Pro licensing, credit ledger, cloud upscaling jobs, cloud transcription and
+    instant publishing for the DemoThat
     desktop app. This file is the app-to-API contract; the API-to-worker contract
     lives in contract/worker-protocol.md plus the JSON Schemas in contract/schemas/.
   contact:
@@ -39,6 +39,16 @@ tags:
     description: Cloud upscaling jobs
   - name: transcription
     description: Cloud transcription jobs (audio in, timestamped transcript out)
+  - name: publishing
+    description: >-
+      Instant publishing: hosted landing pages, direct download links and embeddable
+      players, with per-publication analytics. Charged from the credit balance for a
+      term of storage; deleting a publication never refunds it.
+  - name: public
+    description: >-
+      What a viewer's browser touches: the landing page, the embeddable player, the
+      video and caption downloads, and the analytics beacon. Unauthenticated by
+      design, rate limited, and reachable by anyone the link was shared with.
   - name: internal
     description: Worker callbacks and operator tasks
 
@@ -522,6 +532,394 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /v1/publications:
+    post:
+      operationId: createPublication
+      tags: [publishing]
+      summary: Price a publication from the declared size, then hand out upload URLs
+      description: >-
+        The credit preflight and the upload plan, in the same two-phase shape as
+        `POST /v1/jobs`. **Nothing is charged here.** The price is recomputed from
+        the size the store reports once the upload completes, because a
+        client-declared size is never what a price comes from.
+
+        `storageDays` is the term the user buys, and it is also how long the link
+        lives — one number, because the link is what the storage is for.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePublicationRequest'
+      responses:
+        '200':
+          description: Publication created, upload plan returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatePublicationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '402':
+          description: >-
+            The balance cannot cover the quoted price. `details.cost` and
+            `details.balance` say by how much.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Publishing is disabled for this deployment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    get:
+      operationId: listPublications
+      tags: [publishing]
+      summary: Every publication on this license, newest first
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Publications
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicationList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/publications/{id}:
+    get:
+      operationId: getPublication
+      tags: [publishing]
+      summary: One publication, with its links and which surfaces it serves
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PublicationId'
+      responses:
+        '200':
+          description: Publication
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicationView'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: revokePublication
+      tags: [publishing]
+      summary: Delete a publication — immediately, and without refunding it
+      description: >-
+        The bytes are deleted and the link stops resolving at once: the object is
+        never served from a long-lived URL, which is what makes this instant. The
+        credits do not come back, because the storage term was bought at
+        activation; `creditsRefunded` is always 0 and is in the response so the app
+        can say so plainly. Analytics are kept.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PublicationId'
+      responses:
+        '200':
+          description: Revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [publicationId, status, creditsRefunded]
+                properties:
+                  publicationId:
+                    type: string
+                  status:
+                    $ref: '#/components/schemas/PublicationStatus'
+                  creditsRefunded:
+                    type: integer
+                    description: Always 0. Present so the app can state it.
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/publications/{id}/upload/complete:
+    post:
+      operationId: completePublicationUpload
+      tags: [publishing]
+      summary: Finish the upload, price the stored object and charge for the term
+      description: >-
+        `HEAD`s the object, prices the **real** size, debits the balance and
+        activates the publication in one transaction. A publication that is already
+        active returns the same view rather than charging again, so a retried
+        request is safe. A completion whose upload never landed, or whose real
+        price the balance cannot cover, deletes the object and charges nothing.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PublicationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                parts:
+                  type: array
+                  description: Required for a multipart upload; ignored for a single PUT.
+                  items:
+                    type: object
+                    required: [partNumber, etag]
+                    properties:
+                      partNumber:
+                        type: integer
+                      etag:
+                        type: string
+                captionsVtt:
+                  type: string
+                  maxLength: 2000000
+                  description: >-
+                    The caption track as WebVTT text. It travels here rather than as
+                    an upload because it is a document, not media — tens of
+                    kilobytes — and because it is then served same-origin, where a
+                    `<track>` fetch needs no bucket CORS configuration to work.
+                    Its first line must be `WEBVTT`.
+
+                    Not part of the price: the rate is per GB of video.
+      responses:
+        '200':
+          description: Active
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PublicationView'
+                  - type: object
+                    required: [balance]
+                    properties:
+                      balance:
+                        type: integer
+                        description: The license balance after the charge.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '402':
+          description: >-
+            The stored object costs more than the balance covers. The object is
+            deleted and nothing is charged.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: The publication is not awaiting an upload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1/publications/{id}/analytics:
+    get:
+      operationId: getPublicationAnalytics
+      tags: [publishing]
+      summary: Who watched, from where, and how much
+      description: >-
+        Read-time aggregation over the publication's events, so the numbers cannot
+        drift from the events they describe. **Unique viewers are sessions, not
+        people**: the player mints a random id per browser tab, and a viewer who opens
+        the link twice counts twice. No cookie, no login, no fingerprint, and no IP is
+        stored — the country comes from Cloudflare's `CF-IPCountry`. Requests that
+        identify as a bot are not recorded at all, so link unfurlers and monitors do
+        not arrive as views, and a download is counted as a download rather than as a
+        viewer who watched nothing.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PublicationId'
+        - name: range
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [7d, 30d, 90d, all]
+            default: 30d
+      responses:
+        '200':
+          description: Analytics for the window
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicationAnalytics'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /p/{slug}:
+    get:
+      operationId: getLandingPage
+      tags: [public]
+      summary: The hosted landing page (HTML)
+      description: >-
+        The `page` kind's landing page: the player, the downloads and the expiry line,
+        and nothing else — no sign-up and no cookie banner, because playing a video
+        and counting a view need neither. A link that is gone, revoked or expired
+        renders a page saying so with a 404, not an error envelope.
+
+        The page never contains a lasting credential: the video's URL is a short-lived
+        signed URL minted per request, which is what makes deleting a link take effect
+        immediately.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/PublicationSlug'
+      responses:
+        '200':
+          description: The page
+          content:
+            text/html:
+              schema:
+                type: string
+        '404':
+          description: The publication is not servable; the body is still a page
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /e/{slug}:
+    get:
+      operationId: getEmbedPlayer
+      tags: [public]
+      summary: The embeddable player (HTML, meant to be framed)
+      description: >-
+        Served with `frame-ancestors *`, scoped to this route alone: everything else on
+        this origin refuses framing. It is the target of the `embedCode` the app hands
+        the user.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/PublicationSlug'
+      responses:
+        '200':
+          description: The player page
+          content:
+            text/html:
+              schema:
+                type: string
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v/{slug}/video.mp4:
+    get:
+      operationId: streamPublicationVideo
+      tags: [public]
+      summary: The player's video source — a 302 to a short-lived signed URL
+      description: >-
+        The bytes come straight from the object store, so this service never proxies a
+        video; the redirect is re-minted per request, which is what makes a deleted
+        link stop working at once. Range requests go to the store directly.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/PublicationSlug'
+      responses:
+        '302':
+          description: A signed URL for the object
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v/{slug}/captions.vtt:
+    get:
+      operationId: getPublicationCaptions
+      tags: [public]
+      summary: The caption track, served same-origin
+      description: >-
+        Served from the database rather than redirected to the store, because a
+        `<track>` fetch is a CORS request and a signed object URL would need bucket CORS
+        headers to be readable at all. Here it is plain `text/vtt` with
+        `access-control-allow-origin: *` and no storage credential.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/PublicationSlug'
+      responses:
+        '200':
+          description: The WebVTT track
+          content:
+            text/vtt:
+              schema:
+                type: string
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /d/{slug}/video.mp4:
+    get:
+      operationId: downloadPublicationVideo
+      tags: [public]
+      summary: The video download link — a 302, recorded as a download
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/PublicationSlug'
+      responses:
+        '302':
+          description: A signed URL with an attachment disposition
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /d/{slug}/captions.vtt:
+    get:
+      operationId: downloadPublicationCaptions
+      tags: [public]
+      summary: The caption download link, recorded as a download
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/PublicationSlug'
+      responses:
+        '200':
+          description: The WebVTT track as an attachment
+          content:
+            text/vtt:
+              schema:
+                type: string
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /a/{slug}/event:
+    post:
+      operationId: recordPublicationEvent
+      tags: [public]
+      summary: The viewer beacon (unauthenticated, rate limited)
+      description: >-
+        Sent by the player's inline script with `navigator.sendBeacon`, which is why
+        `text/plain` is accepted as well as JSON — that is what avoids a CORS preflight
+        on every event. The body is parsed as JSON either way.
+
+        Answers 204 for a publication that is gone rather than 404: the page is already
+        open in a stranger's browser, and an error they cannot act on is noise.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/PublicationSlug'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PublishEventRequest'
+          text/plain:
+            schema:
+              type: string
+              description: The same JSON, sent by `sendBeacon`.
+      responses:
+        '204':
+          description: Recorded, or deliberately dropped
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          description: Too many beacons from this client
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /internal/jobs/{id}/probe-result:
     post:
       operationId: workerProbeResult
@@ -633,6 +1031,22 @@ paths:
 
 components:
   parameters:
+    PublicationId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: The publication id returned by `POST /v1/publications`.
+    PublicationSlug:
+      name: slug
+      in: path
+      required: true
+      schema:
+        type: string
+      description: >-
+        The unguessable public id from the share link. It is the only thing a viewer
+        sees, and it is the only thing that grants access.
     WorkerSignature:
       name: X-Signature
       in: header
@@ -825,6 +1239,8 @@ components:
           type: integer
         transcription:
           $ref: '#/components/schemas/TranscriptionCapabilities'
+        publishing:
+          $ref: '#/components/schemas/PublishingCapabilities'
     TranscriptionCapabilities:
       type: object
       description: >-
@@ -852,6 +1268,399 @@ components:
         maxAudioSeconds:
           type: integer
           description: Longest audio the worker will accept.
+    PublishingCapabilities:
+      type: object
+      description: >-
+        What the publishing service publishes so the app can quote a publication
+        before it uploads anything. `creditsPerGbYear` is the same rate the server
+        charges from; the app mirrors it for the estimate and never sends a price
+        of its own.
+
+        The published units are decimal — 1 GB is 1,000,000,000 bytes — which is
+        the unit the rate is quoted in, and using GiB here would overcharge by 7.4%.
+      required:
+        [enabled, creditsPerGbYear, landingPageCredits, minCredits, durationsDays, defaultDurationDays, maxSizeBytes, baseUrl, kinds]
+      properties:
+        enabled:
+          type: boolean
+          description: False when publishing is switched off for this deployment.
+        creditsPerGbYear:
+          type: number
+          minimum: 0
+          description: >-
+            Credits per GB per year of storage. 1200 is $2.00/GB/year at 600
+            credits per dollar.
+        landingPageCredits:
+          type: integer
+          description: Flat surcharge for the hosted landing page, on top of storage.
+        minCredits:
+          type: integer
+          minimum: 1
+          description: The floor charged for any publication at all.
+        durationsDays:
+          type: array
+          items:
+            type: integer
+          description: The terms on offer, in days, ascending. The app renders these.
+        defaultDurationDays:
+          type: integer
+          description: The term the app preselects — the longest one offered.
+        maxSizeBytes:
+          type: integer
+          description: Largest video a publication may carry.
+        baseUrl:
+          type: string
+          format: uri
+          description: The origin the share links, landing pages and embeds are built on.
+        kinds:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublicationKind'
+    PublicationKind:
+      type: string
+      description: >-
+        What a publication serves. `page` is the hosted landing page plus the
+        player, the embed snippet and the direct links; `embed` is the player and
+        the direct links, with no landing page; `links` is the direct download
+        links alone. All three are priced from the same storage term, and only
+        `page` carries the landing-page surcharge.
+      enum: [page, links, embed]
+    PublicationStatus:
+      type: string
+      enum: [awaiting_upload, active, revoked, expired, failed]
+      description: >-
+        `awaiting_upload` is created but not charged; `active` is uploaded, charged
+        and served; `revoked` was deleted by the user; `expired` ran out its term
+        and had its bytes deleted; `failed` was never charged (an upload that never
+        landed, or one the balance could not cover).
+    PublicationLinks:
+      type: object
+      description: >-
+        Where a publication can be reached. Every one of these is on our own
+        origin: the object URL is minted per request after the publication is
+        checked, so deleting a publication takes effect immediately and the embed
+        snippet carries nothing that could outlive it.
+      required: [videoDownloadUrl]
+      properties:
+        pageUrl:
+          type: string
+          format: uri
+          description: The landing page. Absent for `links` and `embed`.
+        embedUrl:
+          type: string
+          format: uri
+          description: The embeddable player. Absent for `links`.
+        embedCode:
+          type: string
+          description: HTML to paste. Same-origin iframe; no credentials inside.
+        videoDownloadUrl:
+          type: string
+          format: uri
+        captionsDownloadUrl:
+          type: string
+          format: uri
+          description: Present only when the publication really carries captions.
+    CreatePublicationRequest:
+      type: object
+      required: [kind, fileSizeBytes, storageDays]
+      properties:
+        kind:
+          $ref: '#/components/schemas/PublicationKind'
+        fileSizeBytes:
+          type: integer
+          minimum: 1
+          description: >-
+            The video's size as the app knows it. A preflight only — the price is
+            recomputed from the size the store reports at completion.
+        storageDays:
+          type: integer
+          description: >-
+            The term bought, and how long the link lives. One of
+            `PublishingCapabilities.durationsDays`.
+        title:
+          type: string
+          description: Shown on the landing page and in the player. Defaults if omitted.
+        durationSec:
+          type: number
+          description: The video's length, for the analytics' "watched 40% of it".
+        captionLanguage:
+          type: string
+    CreatePublicationResponse:
+      type: object
+      required: [publicationId, slug, estimatedCost, storageDays, upload, expiresAt]
+      properties:
+        publicationId:
+          type: string
+        slug:
+          type: string
+          description: The unguessable public id the share links are built from.
+        estimatedCost:
+          type: integer
+          description: The quote, from the declared size. Not a charge.
+        storageDays:
+          type: integer
+        upload:
+          oneOf:
+            - type: object
+              required: [type, url]
+              properties:
+                type:
+                  type: string
+                  enum: [single]
+                url:
+                  type: string
+                  format: uri
+            - type: object
+              required: [type, uploadId, partSize, partUrls]
+              properties:
+                type:
+                  type: string
+                  enum: [multipart]
+                uploadId:
+                  type: string
+                partSize:
+                  type: integer
+                partUrls:
+                  type: array
+                  items:
+                    type: string
+                    format: uri
+        expiresAt:
+          type: string
+          format: date-time
+          description: >-
+            Provisional until activation: the term starts when the bytes land, not
+            when the user picked a video.
+    PublicationView:
+      type: object
+      required:
+        [publicationId, kind, slug, title, status, storageDays, estimatedCost, hasCaptions, createdAt, expiresAt, served, links]
+      properties:
+        publicationId:
+          type: string
+        kind:
+          $ref: '#/components/schemas/PublicationKind'
+        slug:
+          type: string
+        title:
+          type: string
+        status:
+          $ref: '#/components/schemas/PublicationStatus'
+        sizeBytes:
+          type: integer
+          description: The size the store reported. The price basis. Present once charged.
+        durationSec:
+          type: number
+        storageDays:
+          type: integer
+        creditsCharged:
+          type: integer
+          description: What was actually charged, once the publication is active.
+        estimatedCost:
+          type: integer
+        hasCaptions:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        activatedAt:
+          type: string
+          format: date-time
+          description: When the term started, and therefore from when it is counted.
+        expiresAt:
+          type: string
+          format: date-time
+        revokedAt:
+          type: string
+          format: date-time
+        served:
+          type: object
+          required: [page, embed, links]
+          properties:
+            page:
+              type: boolean
+            embed:
+              type: boolean
+            links:
+              type: boolean
+        links:
+          $ref: '#/components/schemas/PublicationLinks'
+    PublicationList:
+      type: object
+      required: [publications]
+      properties:
+        publications:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublicationView'
+    PublishEventRequest:
+      type: object
+      description: >-
+        One beacon from the player. Every field ends up in an aggregate, never in a
+        person: there is no cookie, no login, and the session id is a random string the
+        server cannot map back to anyone.
+      required: [type, sessionId]
+      properties:
+        type:
+          type: string
+          enum: [view, play, progress, complete, download_video, download_captions]
+          description: >-
+            `view` when the page loads, `play` on the first play, `progress` on a
+            heartbeat while playing (so watch time survives a closed tab), `complete`
+            at the end, and the two `download_*` types from the download routes.
+        sessionId:
+          type: string
+          minLength: 8
+          maxLength: 64
+          pattern: '^[A-Za-z0-9_-]+$'
+          description: Random per browser tab, minted by the player. The unit of "unique viewer".
+        referrer:
+          type: string
+          maxLength: 2048
+          description: >-
+            `document.referrer` — the page the viewer came from, not the beacon's own.
+            Reduced to a host before it is stored, so search terms and private paths
+            never land in the database.
+        watchedSeconds:
+          type: number
+          minimum: 0
+          maximum: 86400
+          description: The furthest point reached, so seeking does not inflate watch time.
+        watchedRatio:
+          type: number
+          minimum: 0
+          maximum: 1
+    PublicationAnalytics:
+      type: object
+      required:
+        [publicationId, slug, title, status, range, since, until, totals, timeseries, countries, referrers, devices, browsers, recent]
+      properties:
+        publicationId:
+          type: string
+        slug:
+          type: string
+        title:
+          type: string
+        status:
+          $ref: '#/components/schemas/PublicationStatus'
+        durationSec:
+          type: number
+          nullable: true
+        range:
+          type: string
+          enum: [7d, 30d, 90d, all]
+        since:
+          type: string
+          format: date-time
+        until:
+          type: string
+          format: date-time
+        totals:
+          $ref: '#/components/schemas/AnalyticsTotals'
+        timeseries:
+          type: array
+          description: One point per day that had activity, ascending.
+          items:
+            type: object
+            required: [date, views, uniqueViewers, watchedSeconds]
+            properties:
+              date:
+                type: string
+                description: '`YYYY-MM-DD`, UTC.'
+              views:
+                type: integer
+              uniqueViewers:
+                type: integer
+              watchedSeconds:
+                type: integer
+        countries:
+          type: array
+          description: By `CF-IPCountry`. Empty when the deployment is not behind Cloudflare.
+          items:
+            $ref: '#/components/schemas/AnalyticsDimensionRow'
+        referrers:
+          type: array
+          items:
+            type: object
+            required: [key, class, uniqueViewers]
+            properties:
+              key:
+                type: string
+                description: The referring host, or `unknown`.
+              class:
+                type: string
+                enum: [direct, search, social, internal, other]
+              uniqueViewers:
+                type: integer
+        devices:
+          type: array
+          items:
+            $ref: '#/components/schemas/AnalyticsDimensionRow'
+        browsers:
+          type: array
+          items:
+            $ref: '#/components/schemas/AnalyticsDimensionRow'
+        recent:
+          type: array
+          description: The last 50 events, newest first.
+          items:
+            type: object
+            required: [at, type]
+            properties:
+              at:
+                type: string
+                format: date-time
+              type:
+                type: string
+                enum: [view, play, progress, complete, download_video, download_captions]
+              country:
+                type: string
+              referrerHost:
+                type: string
+              device:
+                type: string
+              browser:
+                type: string
+              watchedSeconds:
+                type: integer
+    AnalyticsTotals:
+      type: object
+      description: >-
+        `uniqueViewers`, `avgWatchSeconds`, `avgWatchRatio` and `completionRate` are
+        per session; `views`, `plays`, `completions` and `downloads` are event counts.
+        Watch time is the sum of each session's furthest point, never the sum of the
+        player's heartbeats — a viewer whose player sent thirty beacons watched one
+        video, not thirty.
+      required:
+        [views, uniqueViewers, plays, completions, downloads, watchedSeconds, avgWatchSeconds, avgWatchRatio, completionRate]
+      properties:
+        views:
+          type: integer
+        uniqueViewers:
+          type: integer
+        plays:
+          type: integer
+        completions:
+          type: integer
+        downloads:
+          type: integer
+        watchedSeconds:
+          type: integer
+        avgWatchSeconds:
+          type: integer
+        avgWatchRatio:
+          type: number
+        completionRate:
+          type: number
+    AnalyticsDimensionRow:
+      type: object
+      required: [key, uniqueViewers]
+      properties:
+        key:
+          type: string
+          description: The bucket, or `unknown` when the header did not say.
+        uniqueViewers:
+          type: integer
     ProductPrice:
       type: object
       description: >-

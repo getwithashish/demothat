@@ -10,6 +10,17 @@ import type {
 } from '../shared/license'
 import type { Product } from '../shared/pricing'
 import type { SessionSummary } from '../shared/session'
+import type { components } from '../shared/api-types'
+
+/**
+ * Publishing shapes come straight from the vendored contract, so the renderer cannot
+ * drift from what the API actually returns.
+ */
+type PublishCapabilities = components['schemas']['PublishingCapabilities']
+type PublicationKind = components['schemas']['PublicationKind']
+type PublicationView = components['schemas']['PublicationView']
+type PublicationAnalytics = components['schemas']['PublicationAnalytics']
+type PublicationAnalyticsRange = '7d' | '30d' | '90d' | 'all'
 
 // Define the type for the callback value
 type RecordingResult = {
@@ -417,7 +428,8 @@ export const electronAPI = {
    */
   startTranscription: (request: {
     sourcePath: string
-    transcriptPath: string
+    /** Omitted: the transcript belongs to the project, and the file is temporary. */
+    transcriptPath?: string
     language?: string
     model?: string
   }): Promise<
@@ -426,6 +438,82 @@ export const electronAPI = {
   > => ipcRenderer.invoke('transcribe:start', request),
 
   cancelTranscription: (): void => ipcRenderer.send('transcribe:cancel'),
+
+  // --- Instant publishing (share links, landing pages, embeds) ---
+  /** Whether this device can publish, and the prices and terms the server offers. */
+  publishStatus: (): Promise<{
+    configured: boolean
+    pro: boolean
+    publishing: PublishCapabilities | null
+    error: string | null
+  }> => ipcRenderer.invoke('publish:status'),
+
+  /**
+   * Publish a rendered video, then resolve when it is live. Progress arrives on
+   * `onPublishProgress` meanwhile. Nothing is charged until the upload has landed.
+   */
+  startPublish: (request: {
+    filePath: string
+    kind: PublicationKind
+    storageDays: number
+    title?: string
+    durationSec?: number
+    captions?: { id: string; start: number; end: number; text: string }[]
+  }): Promise<
+    | { ok: true; publication: PublicationView; captionsIncluded: boolean }
+    | { ok: false; reason: 'canceled' | 'failed' | 'rejected'; error: string; cost?: number; balance?: number }
+  > => ipcRenderer.invoke('publish:start', request),
+
+  cancelPublish: (): void => ipcRenderer.send('publish:cancel'),
+
+  /** The size of the file a publication would carry, for the price quote. */
+  probePublishFile: (
+    filePath: string,
+  ): Promise<{ ok: true; sizeBytes: number } | { ok: false; error: string }> =>
+    ipcRenderer.invoke('publish:probe', { filePath }),
+
+  /** Everything this license has published, newest last. */
+  listPublications: (): Promise<
+    { ok: true; publications: PublicationView[] } | { ok: false; error: string }
+  > => ipcRenderer.invoke('publish:list'),
+
+  /** Delete a publication. The bytes go at once; the credits are not returned. */
+  deletePublication: (
+    publicationId: string,
+  ): Promise<
+    { ok: true; publication: PublicationView; creditsRefunded: number } | { ok: false; error: string }
+  > => ipcRenderer.invoke('publish:delete', { publicationId }),
+
+  /** Who watched a publication, from where, and for how long. */
+  publicationAnalytics: (
+    publicationId: string,
+    range: PublicationAnalyticsRange = '30d',
+  ): Promise<{ ok: true; analytics: PublicationAnalytics } | { ok: false; error: string }> =>
+    ipcRenderer.invoke('publish:analytics', { publicationId, range }),
+
+  onPublishProgress: (
+    callback: (payload: { stage: string; stagePercent: number; estimatedCost?: number }) => void,
+  ) => {
+    const listener = (_event: IpcRendererEvent, payload: any) => callback(payload)
+    ipcRenderer.on('publish:progress', listener)
+    return () => ipcRenderer.removeListener('publish:progress', listener)
+  },
+
+  onPublishComplete: (
+    callback: (payload: {
+      success: boolean
+      publication?: unknown
+      captionsIncluded?: boolean
+      error?: string
+      reason?: string
+      cost?: number
+      balance?: number
+    }) => void,
+  ) => {
+    const listener = (_event: IpcRendererEvent, payload: any) => callback(payload)
+    ipcRenderer.on('publish:complete', listener)
+    return () => ipcRenderer.removeListener('publish:complete', listener)
+  },
 
   // --- The preview's audio tracks ---
   /**

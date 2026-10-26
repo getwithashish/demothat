@@ -5,9 +5,39 @@
 //   input 0: screen capture (mp4) — may already contain mic audio
 //   input 1: system audio (webm/opus) — optional
 //
-// When both mic and system audio are present, they are mixed via amix.
-// When only system audio is present, it is mapped through aresample for
-// drift correction. When neither extra audio applies, we just stream-copy.
+// The two audio sources are kept as **separate streams**, not mixed: the editor
+// shows one lane per source, each with its own mute and volume, and the auto-speed
+// pass reads them independently (a quiet mic is not the same as a quiet desktop).
+// Mixing them here would destroy both, irreversibly and before the user ever sees
+// the recording.
+//
+// Stream order and titles are part of the recording's contract with the app:
+// audio stream 0 is the microphone, stream 1 is the system audio, and each carries
+// a `title` tag naming it. Order alone is not enough — a platform where only one
+// source exists produces a file with a single stream at index 0 — so the app reads
+// the titles, and the titles are what it trusts.
+//
+// When only system audio is present it is mapped through aresample for drift
+// correction. When neither extra audio applies, we just stream-copy.
+
+/** The `title` tag each audio stream carries, so the app can identify it. */
+export const AUDIO_TRACK_TITLES = { mic: 'mic', system: 'system' } as const
+
+export type AudioTrackKind = keyof typeof AUDIO_TRACK_TITLES
+
+/**
+ * Name one audio stream.
+ *
+ * `handler_name` and not `title`, because this lands in an MP4: FFmpeg's mp4
+ * muxer silently drops a stream's `title` tag and keeps `handler_name`, which is
+ * the QuickTime track name and what `ffmpeg -i` shows back. Both are written — the
+ * `title` costs nothing and is what a Matroska or WebM consumer would read — but
+ * `handler_name` is the one that survives the container this actually uses.
+ */
+function trackNameArgs(index: number, kind: AudioTrackKind): string[] {
+  const name = AUDIO_TRACK_TITLES[kind]
+  return ['-metadata:s:a:' + String(index), 'handler_name=' + name, '-metadata:s:a:' + String(index), 'title=' + name]
+}
 
 export interface BuildMuxArgsOptions {
   screenInput: string
@@ -21,12 +51,22 @@ export function buildMuxArgs(opts: BuildMuxArgsOptions): string[] {
 
   // No system audio file: nothing to mux. Stream-copy to a renamed output.
   if (!systemAudioInput) {
-    return ['-y', '-i', screenInput, '-c', 'copy', output]
+    // A copy still accepts metadata, so the single stream is named too. It is the
+    // microphone here: this path is the one where FFmpeg itself recorded the mic
+    // into the screen file.
+    return ['-y', '-i', screenInput, '-c', 'copy', ...(hasMicAudio ? trackNameArgs(0, 'mic') : []), output]
   }
 
+  // Both sources: two streams, mic first. `apad` keeps each stream running to the
+  // end of the video, so a source that stops early (the user stops sharing audio)
+  // is silence for the rest of the recording rather than a shorter file that
+  // `-shortest` would then cut the video down to.
   const filterGraph = hasMicAudio
-    ? '[0:a][1:a]amix=inputs=2:duration=first:dropout_transition=0,aresample=async=1[a]'
-    : '[1:a]aresample=async=1[a]'
+    ? '[0:a]aresample=async=1,apad[mic];[1:a]aresample=async=1,apad[sys]'
+    : '[1:a]aresample=async=1,apad[sys]'
+
+  const maps = hasMicAudio ? ['-map', '[mic]', '-map', '[sys]'] : ['-map', '[sys]']
+  const titles = hasMicAudio ? [...trackNameArgs(0, 'mic'), ...trackNameArgs(1, 'system')] : trackNameArgs(0, 'system')
 
   return [
     '-y',
@@ -38,14 +78,14 @@ export function buildMuxArgs(opts: BuildMuxArgsOptions): string[] {
     filterGraph,
     '-map',
     '0:v',
-    '-map',
-    '[a]',
+    ...maps,
     '-c:v',
     'copy',
     '-c:a',
     'aac',
     '-b:a',
     '192k',
+    ...titles,
     '-shortest',
     output,
   ]
@@ -60,9 +100,9 @@ export function buildMuxArgs(opts: BuildMuxArgsOptions): string[] {
 //   input 1: mic audio (m4a/aac)  — optional
 //
 // Video is always re-encoded VP9 → H.264. Audio strategy:
-//   - webm has system audio + mic present → amix the two, encode AAC
-//   - webm has system audio only         → aresample, encode AAC
-//   - mic only (no system audio in webm) → copy mic stream from input 1
+//   - webm has system audio + mic present → two streams: mic, then system
+//   - webm has system audio only         → aresample, encode AAC, titled system
+//   - mic only (no system audio in webm) → copy mic stream from input 1, titled mic
 //   - neither                            → output has no audio track
 
 export interface BuildMacMuxArgsOptions {
@@ -98,20 +138,25 @@ export function buildMacMuxArgs(opts: BuildMacMuxArgsOptions): string[] {
   const withCrop = (graph: string): string => (videoGraph ? `${graph};${videoGraph}` : graph)
 
   if (webmHasSystemAudio && micAudioInput) {
-    // Mix the two audio sources. duration=first keeps the output as long as
-    // the screen video; aresample corrects clock drift between sources.
+    // Two streams, mic first — the mirror image of buildMuxArgs, where the screen
+    // file carries the mic instead. `apad` keeps each stream as long as the video
+    // so a source that stops early becomes silence, not a shorter recording.
     args.push(
       '-filter_complex',
-      withCrop('[0:a][1:a]amix=inputs=2:duration=first:dropout_transition=0,aresample=async=1[a]'),
+      withCrop('[1:a]aresample=async=1,apad[mic];[0:a]aresample=async=1,apad[sys]'),
       '-map',
       videoMap,
       '-map',
-      '[a]',
+      '[mic]',
+      '-map',
+      '[sys]',
       ...videoEncode,
       '-c:a',
       'aac',
       '-b:a',
       '192k',
+      ...trackNameArgs(0, 'mic'),
+      ...trackNameArgs(1, 'system'),
       '-shortest',
       output,
     )
@@ -121,16 +166,17 @@ export function buildMacMuxArgs(opts: BuildMacMuxArgsOptions): string[] {
   if (webmHasSystemAudio) {
     args.push(
       '-filter_complex',
-      withCrop('[0:a]aresample=async=1[a]'),
+      withCrop('[0:a]aresample=async=1,apad[sys]'),
       '-map',
       videoMap,
       '-map',
-      '[a]',
+      '[sys]',
       ...videoEncode,
       '-c:a',
       'aac',
       '-b:a',
       '192k',
+      ...trackNameArgs(0, 'system'),
       '-shortest',
       output,
     )
@@ -150,12 +196,24 @@ export function buildMacMuxArgs(opts: BuildMacMuxArgsOptions): string[] {
         ...videoEncode,
         '-c:a',
         'copy',
+        ...trackNameArgs(0, 'mic'),
         '-shortest',
         output,
       )
       return args
     }
-    args.push('-map', '0:v', '-map', '1:a', ...videoEncode, '-c:a', 'copy', '-shortest', output)
+    args.push(
+      '-map',
+      '0:v',
+      '-map',
+      '1:a',
+      ...videoEncode,
+      '-c:a',
+      'copy',
+      ...trackNameArgs(0, 'mic'),
+      '-shortest',
+      output,
+    )
     return args
   }
 

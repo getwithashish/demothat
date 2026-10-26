@@ -1,9 +1,12 @@
 // --- Types ---
 import type { CreditStatus, DeviceView } from '../../shared/license'
+import type { TranscriptDocument } from '../../shared/transcript'
+import type { SubtitleCue, SubtitleFormat } from '../../shared/subtitles'
+import type { AudioTrack } from '../../shared/audio-tracks'
 
 export type BackgroundType = 'color' | 'gradient' | 'image' | 'wallpaper'
 export type AspectRatio = '16:9' | '9:16' | '4:3' | '3:4' | '1:1'
-export type SidePanelTab = 'general' | 'camera' | 'cursor' | 'audio' | 'animation' | 'settings'
+export type SidePanelTab = 'general' | 'camera' | 'cursor' | 'audio' | 'animation' | 'subtitles' | 'settings'
 
 export interface Background {
   type: BackgroundType
@@ -203,6 +206,33 @@ export interface ProjectState {
   platform: NodeJS.Platform | null
   cursorTheme: CursorTheme | null
   hasAudioTrack: boolean
+  /**
+   * The recording's audio sources, one entry per source. A recording made before
+   * the sources were separated has a single `mixed` track.
+   */
+  audioTracks: AudioTrack[]
+  /**
+   * True when `audioTracks` came from the recording's own manifest.
+   *
+   * When it is false the manifest predates the split and could not say how many
+   * sources there were, so the tracks are provisional until the player reports
+   * whether the recording has audio at all. Not serialized: it describes where the
+   * tracks came from, not the edit.
+   */
+  audioTracksFromManifest: boolean
+  /**
+   * The cloud transcription of this recording, in **source time**, or null when it
+   * has not been transcribed. It is part of the project rather than a transient:
+   * a transcription costs credits, so re-running it after a reload would charge the
+   * user twice for the same audio.
+   */
+  transcript: TranscriptDocument | null
+  /** The captions on the exported video's timeline, in export time. */
+  subtitleCues: SubtitleCue[]
+  /** Whether a sidecar is written beside the exported video. */
+  subtitlesEnabled: boolean
+  /** Which sidecar format to write. */
+  subtitleFormat: SubtitleFormat
   /** Path of the `.dthat` this session was saved to / opened from. */
   currentProjectPath: string | null
   /** True when the project has changes since the last save/open. */
@@ -244,6 +274,23 @@ export interface ProjectActions {
   setPostProcessingCursorScale: (scale: number) => Promise<void>
   reloadCursorTheme: (themeName: string) => Promise<void>
   setHasAudioTrack: (hasAudio: boolean) => void
+  /** Replace the recording's tracks — from a manifest, or from an opened project. */
+  setAudioTracks: (tracks: AudioTrack[]) => void
+  /** Change one track's volume or mute, leaving the others alone. */
+  updateAudioTrack: (id: string, patch: Partial<Pick<AudioTrack, 'volume' | 'muted'>>) => void
+  /** Store a transcription (or clear it). It is part of the project, so this marks
+   *  the project dirty: a transcription cost credits, and losing it on reload would
+   *  mean paying for it twice. */
+  setTranscript: (transcript: TranscriptDocument | null) => void
+  /** Replace the caption list — from a transcription, or from an opened project. */
+  setSubtitleCues: (cues: SubtitleCue[]) => void
+  /** Change one cue's text or timing, leaving the others alone. */
+  updateSubtitleCue: (id: string, patch: { start?: number; end?: number; text?: string }) => void
+  /** Remove one cue. */
+  removeSubtitleCue: (id: string) => void
+  /** Turn the sidecar on or off, and choose its format. */
+  setSubtitlesEnabled: (enabled: boolean) => void
+  setSubtitleFormat: (format: SubtitleFormat) => void
   /** Applies a project opened from a `.dthat` archive over a fresh load. */
   applyOpenedProject: (
     project: Record<string, unknown>,
@@ -390,6 +437,11 @@ export interface TimelineActions {
   addZoomRegion: () => void
   addCutRegion: (regionData?: Partial<CutRegion>) => void
   addSpeedRegion: () => void
+  /**
+   * Find the dead stretches in the recording and add a speed region over each.
+   * Resolves with how many were added, and how many were considered.
+   */
+  tidyUp: () => Promise<{ added: number; suggested: number }>
   addVideoClip: (clip: Omit<VideoClip, 'id' | 'order' | 'sourceStart'>) => void
   updateVideoClip: (id: string, updates: Partial<VideoClip>) => void
   deleteVideoClip: (id: string) => void

@@ -18,6 +18,7 @@ import {
   type ExportSettingsInput,
   buildCloudFallbackArgs,
 } from './build-export-args'
+import { writeSubtitleSidecar } from './subtitle-sidecar'
 import { getEncoderCapabilities } from './encoder-capabilities'
 import { getEntitlement } from './entitlement'
 import { recordExportPerf } from './export-perf'
@@ -481,7 +482,18 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
             throughput: framesWritten / elapsedSeconds,
           })
         }
-        editorWindow.webContents.send('export:complete', { success: true, outputPath })
+        // The captions go beside the video, not into it. The notification waits for
+        // the file so the user is not told the export is done before the sidecar is
+        // there — and a failure here must not fail the export: the video is written,
+        // and it is what the user asked for.
+        void writeSubtitleSidecar({
+          outputPath,
+          cues: projectState.subtitleCues ?? [],
+          format: projectState.subtitleFormat ?? 'srt',
+          enabled: projectState.subtitlesEnabled === true,
+        }).finally(() => {
+          editorWindow.webContents.send('export:complete', { success: true, outputPath })
+        })
       } else {
         editorWindow.webContents.send('export:complete', { success: false, error: `FFmpeg exited with code ${code}` })
       }

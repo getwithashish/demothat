@@ -10,9 +10,11 @@ import { Scissors } from 'tabler-icons-react'
 import { formatTime, calculateRulerInterval } from '../../lib/utils'
 import { useTimelineInteraction } from '../../hooks/useTimelineInteraction'
 import { FlipScissorsIcon } from '../ui/icons'
-import { Camera, Music, GripVertical, Search } from 'tabler-icons-react'
+import { Camera, Music, GripVertical, Search, Volume, VolumeOff } from 'tabler-icons-react'
 import { AudioTimelinePreview } from './timeline/AudioTimelinePreview'
 import { ICON_SIZE, ICON_STROKE } from '../ui/icons'
+import { Slider } from '../ui/slider'
+import { buildTrackRows, SUBTITLE_ROW_KEY } from './timeline/track-rows'
 import { COMPOSITION_LAYOUTS } from '../../lib/constants'
 
 // Timeline geometry (DESIGN_SPEC §8): 34px rows, 26px clips, 22px ruler, 108px track header.
@@ -27,6 +29,7 @@ const TRACK_HEADER_WIDTH = 108
 const FIXED_ROWS: { key: string; label: string; height: number }[] = [
   { key: 'screen', label: 'Screen', height: ROW_HEIGHT },
   { key: 'recorded-audio', label: 'Recorded audio', height: ROW_HEIGHT },
+  { key: SUBTITLE_ROW_KEY, label: 'Subtitles', height: ROW_HEIGHT },
   { key: 'music', label: 'Music', height: ROW_HEIGHT },
   { key: 'clicks', label: 'Click sounds', height: ROW_HEIGHT },
   { key: 'camera', label: '3D camera', height: ROW_HEIGHT },
@@ -201,7 +204,16 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
   const updateVideoClip = useEditorStore((state) => state.updateVideoClip)
   const mouseClickSoundsEnabled = useEditorStore((state) => state.mouseClickSoundsEnabled)
   const videoPath = useEditorStore((state) => state.videoPath)
-  const hasAudioTrack = useEditorStore((state) => state.hasAudioTrack)
+  const audioTracks = useEditorStore((state) => state.audioTracks)
+  const subtitleCues = useEditorStore((state) => state.subtitleCues)
+  const removeSubtitleCue = useEditorStore((state) => state.removeSubtitleCue)
+  const updateSubtitleCue = useEditorStore((state) => state.updateSubtitleCue)
+  // Which caption is being retyped, and what has been typed so far. Editing in place
+  // on the bar: the caption and the moment it belongs to are the same thing, so the
+  // place to correct it is where it sits.
+  const [editingCueId, setEditingCueId] = useState<string | null>(null)
+  const [cueDraft, setCueDraft] = useState('')
+  const updateAudioTrack = useEditorStore((state) => state.updateAudioTrack)
   const clickClips = useMemo(() => audioClips.filter((clip) => clip.kind === 'click'), [audioClips])
 
   // Imported clips are stacked top-first: the top row is drawn last (on top),
@@ -209,10 +221,16 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
   const displayVideoClips = useMemo(() => [...videoClips].sort((a, b) => (b.order ?? 0) - (a.order ?? 0)), [videoClips])
 
   const trackLayout = useMemo(() => {
-    const rows = [
-      ...displayVideoClips.map((clip) => ({ key: clip.id, label: 'Video', height: ROW_HEIGHT })),
-      ...FIXED_ROWS,
-    ]
+    const rows = buildTrackRows({
+      videoClipIds: displayVideoClips.map((clip) => clip.id),
+      // One row per audio source: each has its own volume and mute, and a lane is
+      // how the editor says so. A recording made before the sources were separated
+      // has one `mixed` track and gets one lane, which is what it is.
+      audioTracks: audioTracks.map((track) => ({ id: track.id, label: track.label })),
+      subtitleCueIds: subtitleCues.map((cue) => cue.id),
+      fixedRows: FIXED_ROWS,
+      rowHeight: ROW_HEIGHT,
+    })
     let top = 0
     const positioned = rows.map((row) => {
       const positionedRow = { ...row, top }
@@ -224,7 +242,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
       topByKey: Object.fromEntries(positioned.map((row) => [row.key, row.top])) as Record<string, number>,
       height: top,
     }
-  }, [displayVideoClips])
+  }, [displayVideoClips, audioTracks, subtitleCues])
 
   // Dragging a clip's grip handle moves it up/down the stack. The row under the
   // cursor becomes its new index, and the store keeps the bottom-first order.
@@ -412,20 +430,131 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
                   />
                 )}
 
-                {/* Audio captured with the recording (mic / system audio) on its own lane. */}
-                {hasAudioTrack && duration > 0 && (
+                {/* One lane per audio source captured with the recording. The bar is
+                    interactive where the old single strip was not: a source you cannot
+                    silence is not a track, it is a decoration. */}
+                {audioTracks.map((track) => (
                   <div
-                    className="pointer-events-none absolute rounded-clip border border-line bg-clip-audio"
+                    key={track.id}
+                    data-audio-track={track.id}
+                    className={cn(
+                      'absolute flex items-center gap-2 overflow-hidden rounded-clip border bg-clip-audio pr-2 pl-1',
+                      track.muted ? 'border-line opacity-55' : 'border-line',
+                    )}
                     style={{
-                      top: `${trackLayout.topByKey['recorded-audio'] + LANE_INSET}px`,
+                      top: `${(trackLayout.topByKey[track.id] ?? 0) + LANE_INSET}px`,
                       left: 0,
                       width: `${timeToPx(duration)}px`,
                       height: CLIP_HEIGHT,
-                      zIndex: 8,
+                      zIndex: 9,
                     }}
-                    aria-hidden="true"
-                  />
-                )}
+                    // The timeline seeks on mousedown; a control inside a lane is not a
+                    // seek target.
+                    onMouseDown={(event) => event.stopPropagation()}
+                  >
+                    <button
+                      type="button"
+                      title={track.muted ? `Unmute ${track.label}` : `Mute ${track.label}`}
+                      aria-label={track.muted ? `Unmute ${track.label}` : `Mute ${track.label}`}
+                      aria-pressed={track.muted}
+                      className={cn(
+                        'flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-[3px] border',
+                        track.muted ? 'border-line bg-ctl text-muted' : 'border-line bg-clip-audio text-fg',
+                      )}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        updateAudioTrack(track.id, { muted: !track.muted })
+                      }}
+                    >
+                      {track.muted ? (
+                        <VolumeOff size={ICON_SIZE} strokeWidth={ICON_STROKE} />
+                      ) : (
+                        <Volume size={ICON_SIZE} strokeWidth={ICON_STROKE} />
+                      )}
+                    </button>
+                    <div className="w-24 shrink-0" title={`${track.label} volume`}>
+                      <Slider
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        value={track.volume}
+                        disabled={track.muted}
+                        onChange={(volume) => updateAudioTrack(track.id, { volume })}
+                      />
+                    </div>
+                    <span className="truncate font-mono text-sm tabular-nums text-muted">
+                      {track.muted ? 'muted' : `${Math.round(track.volume * 100)}%`}
+                    </span>
+                  </div>
+                ))}
+
+                {/* The captions, one bar per cue. Clicking one seeks to where it was
+                    clicked, which is the timeline's own behaviour and the one a caption
+                    should have: the text and the moment it belongs to are the same
+                    thing. The × is the delete, on the bar rather than behind a menu,
+                    because removing a caption is the edit that gets made most. */}
+                {subtitleCues.map((cue) => (
+                  <div
+                    key={cue.id}
+                    className="group absolute flex items-center overflow-hidden rounded-clip border border-line bg-clip-screen pr-1 pl-2 text-sm text-fg"
+                    style={{
+                      top: `${(trackLayout.topByKey[SUBTITLE_ROW_KEY] ?? 0) + LANE_INSET}px`,
+                      left: `${timeToPx(cue.start)}px`,
+                      width: `${Math.max(28, timeToPx(cue.end - cue.start))}px`,
+                      height: CLIP_HEIGHT,
+                      zIndex: editingCueId === cue.id ? 120 : 10,
+                    }}
+                    title={`${cue.text}\n${formatTime(cue.start)} – ${formatTime(cue.end)}\nDouble-click to edit`}
+                    onDoubleClick={(event) => {
+                      event.stopPropagation()
+                      setCueDraft(cue.text)
+                      setEditingCueId(cue.id)
+                    }}
+                  >
+                    {editingCueId === cue.id ? (
+                      <input
+                        autoFocus
+                        value={cueDraft}
+                        aria-label="Caption text"
+                        className="w-full min-w-0 bg-transparent pr-1 text-sm text-fg outline-none"
+                        // The timeline seeks on mousedown; typing in a caption is not a seek.
+                        onMouseDown={(event) => event.stopPropagation()}
+                        onChange={(event) => setCueDraft(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.currentTarget.blur()
+                          }
+                          if (event.key === 'Escape') {
+                            setEditingCueId(null)
+                          }
+                        }}
+                        onBlur={() => {
+                          const text = cueDraft.trim()
+                          // Emptying a caption is a delete, not a blank caption: a cue
+                          // with no words is one the player shows as nothing at all.
+                          if (text.length === 0) removeSubtitleCue(cue.id)
+                          else if (text !== cue.text) updateSubtitleCue(cue.id, { text })
+                          setEditingCueId(null)
+                        }}
+                      />
+                    ) : (
+                      <span className="truncate">{cue.text}</span>
+                    )}
+                    <button
+                      type="button"
+                      aria-label={`Delete caption: ${cue.text}`}
+                      title="Delete caption"
+                      className="ml-auto shrink-0 cursor-pointer px-1 text-muted opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                      onClick={(event) => {
+                        // Not a seek: this button is not the caption's timeline.
+                        event.stopPropagation()
+                        removeSubtitleCue(cue.id)
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
                 {videoClips.map((clip) => {
                   const selected = selectedRegionId === clip.id
                   return (

@@ -77,6 +77,10 @@ describe('buildMacMuxArgs — Wayland area crop', () => {
       'yuv420p',
       '-c:a',
       'copy',
+      '-metadata:s:a:0',
+      'handler_name=mic',
+      '-metadata:s:a:0',
+      'title=mic',
       '-shortest',
       OUT,
     ])
@@ -92,11 +96,11 @@ describe('buildMacMuxArgs — Wayland area crop', () => {
     })
 
     const graph = args[args.indexOf('-filter_complex') + 1]
-    expect(graph).toBe(`[0:a]aresample=async=1[a];[0:v]${FILTER}[v]`)
+    expect(graph).toBe(`[0:a]aresample=async=1,apad[sys];[0:v]${FILTER}[v]`)
     expect(args[args.indexOf('-map') + 1]).toBe('[v]')
   })
 
-  test('webm system audio + mic: crop and amix share one graph', () => {
+  test('webm system audio + mic: crop and both audio streams share one graph', () => {
     const args = buildMacMuxArgs({
       screenWebmInput: WEBM,
       micAudioInput: MIC,
@@ -106,10 +110,14 @@ describe('buildMacMuxArgs — Wayland area crop', () => {
     })
 
     const graph = args[args.indexOf('-filter_complex') + 1]
-    expect(graph).toContain('[0:a][1:a]amix=inputs=2')
+    // Two separate streams, not a mix: the crop is just a third link in the graph.
+    expect(graph).toContain('[1:a]aresample=async=1,apad[mic]')
+    expect(graph).toContain('[0:a]aresample=async=1,apad[sys]')
     expect(graph).toContain(`[0:v]${FILTER}[v]`)
     expect(args[args.indexOf('-map') + 1]).toBe('[v]')
-    expect(args).toContain('[a]')
+    // Both streams are mapped, mic first.
+    expect(args).toContain('[mic]')
+    expect(args.indexOf('[mic]')).toBeLessThan(args.indexOf('[sys]'))
   })
 
   test('never passes -vf and -filter_complex to the same output', () => {

@@ -6,6 +6,7 @@ import log from 'electron-log/main'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { getFFmpegPath, getBinaryPath } from '../../lib/utils'
+import { probeActivity } from '../../features/activity-probe'
 import { getCursorScale, setCursorScale } from '../../features/cursor-manager'
 import { loadCursorThemeFromFile } from '../../lib/cursor-theme-parser'
 import { mapCursorNameToIDC } from '../../lib/win-cursor-manager'
@@ -301,6 +302,21 @@ export async function handleOpenVideoFiles(
     files.push({ filePath: importedPath, fileName: path.basename(sourcePath) })
   }
   return { canceled: false, files }
+}
+
+/**
+ * How much the recording's picture changed, second by second.
+ *
+ * The half of the auto-speed detector that needs no guessing: a spinner, a progress
+ * bar and someone typing all look the same from here, and all three are time the
+ * viewer is waiting. Never rejects — no samples means the caller falls back to the
+ * audio, which is the half that can be known for certain.
+ */
+export async function handleDetectActivity(
+  _event: IpcMainInvokeEvent,
+  videoPath: string,
+): Promise<{ time: number; activity: number }[]> {
+  return probeActivity(videoPath)
 }
 
 export async function handleDetectSilence(

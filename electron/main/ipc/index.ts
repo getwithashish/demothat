@@ -2,6 +2,9 @@ import { ipcMain } from 'electron'
 import * as appHandlers from './handlers/app'
 import * as checkoutHandlers from './handlers/checkout'
 import * as cloudHandlers from './handlers/cloud'
+import * as transcribeHandlers from './handlers/transcribe'
+import * as publishHandlers from './handlers/publish'
+import * as audioHandlers from './handlers/audio'
 import * as desktopHandlers from './handlers/desktop'
 import * as exportHandlers from './handlers/export'
 import * as fsHandlers from './handlers/file-system'
@@ -39,6 +42,7 @@ export function registerIpcHandlers() {
   ipcMain.handle('dialog:openAudioFile', desktopHandlers.handleOpenAudioFile)
   ipcMain.handle('dialog:openVideoFiles', desktopHandlers.handleOpenVideoFiles)
   ipcMain.handle('video:detectSilence', desktopHandlers.handleDetectSilence)
+  ipcMain.handle('video:detectActivity', desktopHandlers.handleDetectActivity)
   ipcMain.handle('dialog:showMessageBox', desktopHandlers.showMessageBox)
   ipcMain.handle('permission:check-screen-recording', desktopHandlers.checkScreenRecordingPermission)
   ipcMain.handle('video:get-frame', desktopHandlers.getVideoFrame)
@@ -80,6 +84,15 @@ export function registerIpcHandlers() {
 
   // Cloud (AI) upscaling: status, consent, and the retry / fallback paths.
   cloudHandlers.registerCloudHandlers()
+
+  // Cloud transcription: status, start, progress and cancel.
+  transcribeHandlers.registerTranscribeHandlers()
+
+  // Instant publishing: status, start, progress, cancel, the list, and analytics.
+  publishHandlers.registerPublishHandlers()
+
+  // The preview's audio tracks: one playable file per track of the recording.
+  audioHandlers.registerAudioHandlers()
 
   // License, credit balance and devices.
   licenseHandlers.registerLicenseHandlers()

@@ -7,7 +7,7 @@
 // signing key) live only in the API repo's environment and never reach the app.
 
 /** Production API host. Overridable for local development. */
-export const DEFAULT_API_BASE_URL = 'https://api.demothat.app'
+export const DEFAULT_API_BASE_URL = 'https://api.demothat.yahodu.in'
 
 /**
  * The API base URL, honouring `DEMOTHAT_API_BASE_URL` so the app can be pointed
@@ -56,7 +56,7 @@ export function isAllowedCheckoutUrl(raw: unknown): boolean {
  * private key stays in the API deployment.
  */
 export const LICENSE_TOKEN_PUBLIC_KEY_PEM = `-----BEGIN PUBLIC KEY-----
-MCowBQYDK2VwAyEALiP2zcxtuHj63ldcMHEZMu3B9AVdd93wooPE62V3IkA=
+MCowBQYDK2VwAyEAOqdPcXqffhSb77hFYjZ6qg4iML1uQ/6SyQG/6CH2na0=
 -----END PUBLIC KEY-----`
 
 /**

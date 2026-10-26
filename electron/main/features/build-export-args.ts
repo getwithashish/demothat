@@ -7,6 +7,7 @@
 import type { ResolutionKey } from '../../../shared/export-resolutions'
 import { selectExportCodec } from '../../../shared/export-codec'
 import { videoEncodeArgs, type ExportQuality } from './export-video-args'
+import { buildAudioTimelineSegments, buildRecordingAudioChains, timelineDuration } from './audio-timeline'
 
 export interface ExportRegion {
   startTime: number
@@ -43,6 +44,19 @@ export interface ExportProjectState {
   hasAudioTrack?: boolean
   isMuted?: boolean
   volume?: number
+  /**
+   * The recording's audio sources, each with its own gain.
+   *
+   * Absent for a project saved before the sources were separated; the single stream
+   * such a recording has is the whole of its audio.
+   */
+  audioTracks?: Array<{ index: number; volume: number; muted: boolean }>
+  /** The captions to write beside the exported video, in export time. */
+  subtitleCues?: Array<{ id: string; start: number; end: number; text: string }>
+  /** Whether a sidecar is written at all. */
+  subtitlesEnabled?: boolean
+  /** Which sidecar format to write. */
+  subtitleFormat?: 'srt' | 'vtt'
   mouseClickSoundsEnabled?: boolean
   mouseClickSoundPath?: string | null
   mouseClickSoundVolume?: number
@@ -82,31 +96,42 @@ export interface BuildExportArgsOptions {
 }
 
 /** Output clip length after cuts and speed regions. */
+/**
+ * How long the exported video is.
+ *
+ * Measured from the timeline the picture and the audio are both rendered against:
+ * the source split at every cut and speed boundary, the stretches inside cuts
+ * dropped, each survivor counted at its own speed.
+ *
+ * The previous arithmetic walked the regions instead — subtracting each cut's whole
+ * duration and adding back each speed region's whole saving. That double-counts
+ * wherever the two overlap: a speed region with a cut inside it lost the cut's
+ * seconds twice, and the renderer was handed fewer frames than the video has, so the
+ * export ended early. Counting the timeline cannot disagree with itself.
+ */
 export function computeExportDuration(projectState: ExportProjectState): number {
-  let exportDuration = Math.max(0, Number(projectState.duration) || 0)
-  for (const region of Object.values(projectState.cutRegions ?? {}) as ExportRegion[]) {
-    exportDuration -= Number(region.duration) || 0
-  }
-  for (const region of Object.values(projectState.speedRegions ?? {}) as ExportSpeedRegion[]) {
-    exportDuration -= Number(region.duration) || 0
-    exportDuration += (Number(region.duration) || 0) / Math.max(0.01, Number(region.speed) || 1)
-  }
-  return Math.max(0, exportDuration)
+  return timelineDuration(buildAudioTimelineSegments(projectState))
 }
 
+/**
+ * Where a moment of the recording lands in the exported video.
+ *
+ * The inverse of the renderer's `mapExportTimeToSourceTime`, and deliberately the
+ * same walk: the segments in order, each contributing its length divided by its
+ * speed. A source time inside a cut maps to the moment the cut was removed at, which
+ * is where the material either side of it joins.
+ */
 export function mapSourceTimeToExportTime(sourceTime: number, projectState: ExportProjectState): number {
-  let exportTime = Math.max(0, sourceTime)
-  for (const region of Object.values(projectState.cutRegions ?? {}) as ExportRegion[]) {
-    if (region.startTime + region.duration <= sourceTime) exportTime -= region.duration
-    else if (region.startTime < sourceTime) exportTime -= sourceTime - region.startTime
+  const segments = buildAudioTimelineSegments(projectState)
+  let exportTime = 0
+
+  for (const segment of segments) {
+    if (sourceTime <= segment.sourceStart) break
+    const end = Math.min(sourceTime, segment.sourceEnd)
+    exportTime += (end - segment.sourceStart) / segment.speed
+    if (sourceTime <= segment.sourceEnd) break
   }
-  for (const region of Object.values(projectState.speedRegions ?? {}) as ExportSpeedRegion[]) {
-    if (region.startTime + region.duration <= sourceTime) exportTime += region.duration - region.duration / region.speed
-    else if (region.startTime < sourceTime) {
-      const elapsed = sourceTime - region.startTime
-      exportTime += elapsed - elapsed / region.speed
-    }
-  }
+
   return Math.max(0, exportTime)
 }
 
@@ -228,19 +253,63 @@ export function buildExportArgs(options: BuildExportArgsOptions): string[] {
 
   if (isMp4) {
     let inputIndex = 1
-    if (
-      projectState.hasAudioTrack &&
-      projectState.videoPath &&
-      !projectState.isMuted &&
-      Number(projectState.volume) > 0
-    ) {
-      ffmpegArgs.push('-i', projectState.videoPath)
-      const originalVolume = Math.max(0, Math.min(1, Number(projectState.volume) || 0))
-      audioFilterParts.push(
-        `[${inputIndex}:a]atrim=duration=${exportDuration},asetpts=PTS-STARTPTS,volume=${originalVolume}[original]`,
-      )
-      audioLabels.push('[original]')
-      inputIndex++
+    const masterVolume = Math.max(0, Math.min(1, Number(projectState.volume) || 0))
+    /**
+     * The recording's audio sources, each with its own gain.
+     *
+     * The recording file holds one stream per source, and `[N:a]` addresses only the
+     * first of them — so mapping it once, as this did, silently drops every source
+     * but one. Each kept source gets its own chain, and they are mixed together with
+     * the imported clips below.
+     *
+     * A project saved before the sources were separated has no `audioTracks`, and its
+     * single stream is the whole of the recording's audio. An empty list is a
+     * different thing: it is a recording the editor believes has no audio, and
+     * falling back to stream 0 there would export audio the editor says is not
+     * there.
+     */
+    const recordingTracks: { index: number; volume: number; muted: boolean }[] = Array.isArray(projectState.audioTracks)
+      ? projectState.audioTracks.map((track) => ({
+          index: Math.max(0, Math.trunc(Number(track.index) || 0)),
+          volume: Math.max(0, Math.min(1, Number(track.volume))),
+          muted: track.muted === true,
+        }))
+      : [{ index: 0, volume: 1, muted: false }]
+    // A muted or silent source contributes nothing, and a chain that multiplies by
+    // zero is a decoder pass over the whole recording for no audio at all.
+    const keptTracks = recordingTracks.filter((track) => !track.muted && track.volume > 0)
+
+    if (projectState.hasAudioTrack && projectState.videoPath && !projectState.isMuted) {
+      // The audio is cut and warped exactly as the picture is, so the two cannot run
+      // on different clocks once a cut or a speed region is in play.
+      const segments = buildAudioTimelineSegments(projectState)
+      const chains: { label: string; filters: string[] }[] = []
+      keptTracks.forEach((track, position) => {
+        const label = position === 0 ? 'original' : `original${position}`
+        const filters = buildRecordingAudioChains({
+          inputIndex,
+          streamIndex: track.index,
+          segments,
+          volume: masterVolume * track.volume,
+          label,
+          // Unique per source: a graph with two of them would otherwise define
+          // `[seg0]` twice, which FFmpeg rejects.
+          segmentPrefix: `${label}_seg`,
+        })
+        if (filters.length > 0) chains.push({ label, filters })
+      })
+
+      // The recording is only added as an input when something will actually be
+      // mapped from it — otherwise every later input's index would be off by one and
+      // an imported clip would be read out of the recording's file.
+      if (chains.length > 0) {
+        ffmpegArgs.push('-i', projectState.videoPath)
+        for (const chain of chains) {
+          audioFilterParts.push(...chain.filters)
+          audioLabels.push(`[${chain.label}]`)
+        }
+        inputIndex++
+      }
     }
 
     const clips = (projectState.audioClips ?? []).filter(

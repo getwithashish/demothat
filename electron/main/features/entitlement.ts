@@ -16,7 +16,7 @@ export type { Entitlement }
 
 const LICENSE_KEY_SETTING = 'pro.licenseKey'
 const UNLOCK_URL_SETTING = 'pro.unlockUrl'
-const DEFAULT_UNLOCK_URL = 'https://demothat.app/pro'
+const DEFAULT_UNLOCK_URL = 'https://demothat.yahodu.in/pro'
 
 const store = new Store()
 

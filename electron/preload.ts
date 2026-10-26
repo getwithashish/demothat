@@ -10,6 +10,17 @@ import type {
 } from '../shared/license'
 import type { Product } from '../shared/pricing'
 import type { SessionSummary } from '../shared/session'
+import type { components } from '../shared/api-types'
+
+/**
+ * Publishing shapes come straight from the vendored contract, so the renderer cannot
+ * drift from what the API actually returns.
+ */
+type PublishCapabilities = components['schemas']['PublishingCapabilities']
+type PublicationKind = components['schemas']['PublicationKind']
+type PublicationView = components['schemas']['PublicationView']
+type PublicationAnalytics = components['schemas']['PublicationAnalytics']
+type PublicationAnalyticsRange = '7d' | '30d' | '90d' | 'all'
 
 // Define the type for the callback value
 type RecordingResult = {
@@ -402,12 +413,165 @@ export const electronAPI = {
     return () => ipcRenderer.removeListener('export:complete', listener)
   },
 
+  // --- Cloud transcription ---
+  /** Whether this device can transcribe, and the price and limits the server publishes. */
+  transcribeStatus: (): Promise<{
+    configured: boolean
+    transcription: { enabled?: boolean; creditsPerMinute?: number; models?: string[]; maxAudioSeconds?: number } | null
+    error: string | null
+  }> => ipcRenderer.invoke('transcribe:status'),
+
+  /**
+   * Extract the recording's audio, transcribe it in the cloud and write the
+   * transcript. Resolves when the run is over; progress arrives on
+   * `onTranscribeProgress` meanwhile.
+   */
+  startTranscription: (request: {
+    sourcePath: string
+    /** Omitted: the transcript belongs to the project, and the file is temporary. */
+    transcriptPath?: string
+    language?: string
+    model?: string
+  }): Promise<
+    | { ok: true; transcriptPath: string; transcript: unknown; charge: number; refund: number; audioSeconds: number }
+    | {
+        ok: false
+        reason: 'canceled' | 'failed' | 'rejected'
+        error: string
+        charge?: number
+        refund?: number
+        cost?: number
+      }
+  > => ipcRenderer.invoke('transcribe:start', request),
+
+  cancelTranscription: (): void => ipcRenderer.send('transcribe:cancel'),
+
+  // --- Instant publishing (share links, landing pages, embeds) ---
+  /** Whether this device can publish, and the prices and terms the server offers. */
+  publishStatus: (): Promise<{
+    configured: boolean
+    pro: boolean
+    publishing: PublishCapabilities | null
+    error: string | null
+  }> => ipcRenderer.invoke('publish:status'),
+
+  /**
+   * Publish a rendered video, then resolve when it is live. Progress arrives on
+   * `onPublishProgress` meanwhile. Nothing is charged until the upload has landed.
+   */
+  startPublish: (request: {
+    filePath: string
+    kind: PublicationKind
+    storageDays: number
+    title?: string
+    durationSec?: number
+    captions?: { id: string; start: number; end: number; text: string }[]
+  }): Promise<
+    | { ok: true; publication: PublicationView; captionsIncluded: boolean }
+    | { ok: false; reason: 'canceled' | 'failed' | 'rejected'; error: string; cost?: number; balance?: number }
+  > => ipcRenderer.invoke('publish:start', request),
+
+  cancelPublish: (): void => ipcRenderer.send('publish:cancel'),
+
+  /** The size of the file a publication would carry, for the price quote. */
+  probePublishFile: (filePath: string): Promise<{ ok: true; sizeBytes: number } | { ok: false; error: string }> =>
+    ipcRenderer.invoke('publish:probe', { filePath }),
+
+  /** Everything this license has published, newest last. */
+  listPublications: (): Promise<{ ok: true; publications: PublicationView[] } | { ok: false; error: string }> =>
+    ipcRenderer.invoke('publish:list'),
+
+  /** Delete a publication. The bytes go at once; the credits are not returned. */
+  deletePublication: (
+    publicationId: string,
+  ): Promise<{ ok: true; publication: PublicationView; creditsRefunded: number } | { ok: false; error: string }> =>
+    ipcRenderer.invoke('publish:delete', { publicationId }),
+
+  /** Who watched a publication, from where, and for how long. */
+  publicationAnalytics: (
+    publicationId: string,
+    range: PublicationAnalyticsRange = '30d',
+  ): Promise<{ ok: true; analytics: PublicationAnalytics } | { ok: false; error: string }> =>
+    ipcRenderer.invoke('publish:analytics', { publicationId, range }),
+
+  onPublishProgress: (callback: (payload: { stage: string; stagePercent: number; estimatedCost?: number }) => void) => {
+    const listener = (_event: IpcRendererEvent, payload: any) => callback(payload)
+    ipcRenderer.on('publish:progress', listener)
+    return () => ipcRenderer.removeListener('publish:progress', listener)
+  },
+
+  onPublishComplete: (
+    callback: (payload: {
+      success: boolean
+      publication?: unknown
+      captionsIncluded?: boolean
+      error?: string
+      reason?: string
+      cost?: number
+      balance?: number
+    }) => void,
+  ) => {
+    const listener = (_event: IpcRendererEvent, payload: any) => callback(payload)
+    ipcRenderer.on('publish:complete', listener)
+    return () => ipcRenderer.removeListener('publish:complete', listener)
+  },
+
+  // --- The preview's audio tracks ---
+  /**
+   * Extract the recording's tracks into files the preview can play, one per track.
+   * Tracks that could not be extracted are absent from the result.
+   */
+  extractAudioTracks: (request: {
+    filePath: string
+    tracks: { id: string; kind: string; index: number; label: string; volume: number; muted: boolean }[]
+  }): Promise<{ tracks: { id: string; index: number; url: string }[] }> =>
+    ipcRenderer.invoke('audio:extractTracks', request),
+
+  onTranscribeProgress: (
+    callback: (payload: {
+      stage: string
+      stagePercent: number
+      reserved?: number
+      consumed?: number
+      audioSeconds?: number
+      audioSecondsDone?: number
+      etaSeconds?: number | null
+    }) => void,
+  ) => {
+    const listener = (_event: IpcRendererEvent, payload: any) => callback(payload)
+    ipcRenderer.on('transcribe:progress', listener)
+    return () => ipcRenderer.removeListener('transcribe:progress', listener)
+  },
+
+  onTranscribeComplete: (
+    callback: (payload: {
+      success: boolean
+      transcriptPath?: string
+      error?: string
+      reason?: string
+      charge?: number
+      refund?: number
+      cost?: number
+      audioSeconds?: number
+    }) => void,
+  ) => {
+    const listener = (_event: IpcRendererEvent, payload: any) => callback(payload)
+    ipcRenderer.on('transcribe:complete', listener)
+    return () => ipcRenderer.removeListener('transcribe:complete', listener)
+  },
+
   openAudioFile: (): Promise<{ canceled: boolean; filePath?: string; fileName?: string }> =>
     ipcRenderer.invoke('dialog:openAudioFile'),
   openVideoFiles: (): Promise<{ canceled: boolean; files?: { filePath: string; fileName: string }[] }> =>
     ipcRenderer.invoke('dialog:openVideoFiles'),
   detectSilence: (videoPath: string): Promise<{ start: number; end: number; duration: number }[]> =>
     ipcRenderer.invoke('video:detectSilence', videoPath),
+  /**
+   * How much the picture changed, second by second, for the auto-speed detector. A
+   * file that cannot be measured yields no samples rather than an error.
+   */
+  detectActivity: (videoPath: string): Promise<{ time: number; activity: number }[]> =>
+    ipcRenderer.invoke('video:detectActivity', videoPath),
 
   showSaveDialog: (options: Electron.SaveDialogOptions): Promise<Electron.SaveDialogReturnValue> => {
     return ipcRenderer.invoke('dialog:showSaveDialog', options)

@@ -194,6 +194,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/jobs/transcribe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Credit preflight for a transcription, then the audio upload URL
+         * @description The same shape as `POST /v1/jobs`, for an audio file instead of a video. The preflight prices the *declared* audio length; the server re-prices from its own probe of the uploaded audio and that number is final (0.8). Settlement follows the same reserve/settle/refund rules as an upscale (0.3), priced per minute of audio rather than per frame. The transcript is delivered as a JSON object and fetched through the same `downloadUrl` on the job view.
+         */
+        post: operations["createTranscribeJob"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/jobs/{id}": {
         parameters: {
             query?: never;
@@ -240,6 +260,225 @@ export interface paths {
         put?: never;
         /** Begin validation and hand the job to the worker; returns immediately */
         post: operations["startJob"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/publications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every publication on this license, newest first */
+        get: operations["listPublications"];
+        put?: never;
+        /**
+         * Price a publication from the declared size, then hand out upload URLs
+         * @description The credit preflight and the upload plan, in the same two-phase shape as `POST /v1/jobs`. **Nothing is charged here.** The price is recomputed from the size the store reports once the upload completes, because a client-declared size is never what a price comes from.
+         *     `storageDays` is the term the user buys, and it is also how long the link lives — one number, because the link is what the storage is for.
+         */
+        post: operations["createPublication"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/publications/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One publication, with its links and which surfaces it serves */
+        get: operations["getPublication"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a publication — immediately, and without refunding it
+         * @description The bytes are deleted and the link stops resolving at once: the object is never served from a long-lived URL, which is what makes this instant. The credits do not come back, because the storage term was bought at activation; `creditsRefunded` is always 0 and is in the response so the app can say so plainly. Analytics are kept.
+         */
+        delete: operations["revokePublication"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/publications/{id}/upload/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Finish the upload, price the stored object and charge for the term
+         * @description `HEAD`s the object, prices the **real** size, debits the balance and activates the publication in one transaction. A publication that is already active returns the same view rather than charging again, so a retried request is safe. A completion whose upload never landed, or whose real price the balance cannot cover, deletes the object and charges nothing.
+         */
+        post: operations["completePublicationUpload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/publications/{id}/analytics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Who watched, from where, and how much
+         * @description Read-time aggregation over the publication's events, so the numbers cannot drift from the events they describe. **Unique viewers are sessions, not people**: the player mints a random id per browser tab, and a viewer who opens the link twice counts twice. No cookie, no login, no fingerprint, and no IP is stored — the country comes from Cloudflare's `CF-IPCountry`. Requests that identify as a bot are not recorded at all, so link unfurlers and monitors do not arrive as views, and a download is counted as a download rather than as a viewer who watched nothing.
+         */
+        get: operations["getPublicationAnalytics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/p/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The hosted landing page (HTML)
+         * @description The `page` kind's landing page: the player, the downloads and the expiry line, and nothing else — no sign-up and no cookie banner, because playing a video and counting a view need neither. A link that is gone, revoked or expired renders a page saying so with a 404, not an error envelope.
+         *     The page never contains a lasting credential: the video's URL is a short-lived signed URL minted per request, which is what makes deleting a link take effect immediately.
+         */
+        get: operations["getLandingPage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/e/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The embeddable player (HTML, meant to be framed)
+         * @description Served with `frame-ancestors *`, scoped to this route alone: everything else on this origin refuses framing. It is the target of the `embedCode` the app hands the user.
+         */
+        get: operations["getEmbedPlayer"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v/{slug}/video.mp4": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The player's video source — a 302 to a short-lived signed URL
+         * @description The bytes come straight from the object store, so this service never proxies a video; the redirect is re-minted per request, which is what makes a deleted link stop working at once. Range requests go to the store directly.
+         */
+        get: operations["streamPublicationVideo"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v/{slug}/captions.vtt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The caption track, served same-origin
+         * @description Served from the database rather than redirected to the store, because a `<track>` fetch is a CORS request and a signed object URL would need bucket CORS headers to be readable at all. Here it is plain `text/vtt` with `access-control-allow-origin: *` and no storage credential.
+         */
+        get: operations["getPublicationCaptions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/d/{slug}/video.mp4": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The video download link — a 302, recorded as a download */
+        get: operations["downloadPublicationVideo"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/d/{slug}/captions.vtt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The caption download link, recorded as a download */
+        get: operations["downloadPublicationCaptions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/a/{slug}/event": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The viewer beacon (unauthenticated, rate limited)
+         * @description Sent by the player's inline script with `navigator.sendBeacon`, which is why `text/plain` is accepted as well as JSON — that is what avoids a CORS preflight on every event. The body is parsed as JSON either way.
+         *     Answers 204 for a publication that is gone rather than 404: the page is already open in a stranger's browser, and an error they cannot act on is noise.
+         */
+        post: operations["recordPublicationEvent"];
         delete?: never;
         options?: never;
         head?: never;
@@ -398,6 +637,226 @@ export interface components {
             minChargeCredits: number;
             cloudEnabled: boolean;
             multipartThresholdBytes?: number;
+            transcription?: components["schemas"]["TranscriptionCapabilities"];
+            publishing?: components["schemas"]["PublishingCapabilities"];
+        };
+        /** @description What the transcription service publishes so the app can quote a price before it uploads anything. `creditsPerMinute` is the same number the server charges from; the app mirrors it for the estimate and never sends a price of its own. */
+        TranscriptionCapabilities: {
+            /** @description False when cloud transcription is switched off for this deployment. */
+            enabled: boolean;
+            /** @description Credits per minute of probed audio, `ceil`ed. Defaults to the cost of a 30 fps 1080p cloud upscale of the same clip, so transcription starts out priced like the export it accompanies. */
+            creditsPerMinute: number;
+            /** @description Model names `CreateTranscribeJobRequest.model` accepts. */
+            models: string[];
+            /** @description Longest audio the worker will accept. */
+            maxAudioSeconds?: number;
+        };
+        /**
+         * @description What the publishing service publishes so the app can quote a publication before it uploads anything. `creditsPerGbYear` is the same rate the server charges from; the app mirrors it for the estimate and never sends a price of its own.
+         *     The published units are decimal — 1 GB is 1,000,000,000 bytes — which is the unit the rate is quoted in, and using GiB here would overcharge by 7.4%.
+         */
+        PublishingCapabilities: {
+            /** @description False when publishing is switched off for this deployment. */
+            enabled: boolean;
+            /** @description Credits per GB per year of storage. 1200 is $2.00/GB/year at 600 credits per dollar. */
+            creditsPerGbYear: number;
+            /** @description Flat surcharge for the hosted landing page, on top of storage. */
+            landingPageCredits: number;
+            /** @description The floor charged for any publication at all. */
+            minCredits: number;
+            /** @description The terms on offer, in days, ascending. The app renders these. */
+            durationsDays: number[];
+            /** @description The term the app preselects — the longest one offered. */
+            defaultDurationDays: number;
+            /** @description Largest video a publication may carry. */
+            maxSizeBytes: number;
+            /**
+             * Format: uri
+             * @description The origin the share links, landing pages and embeds are built on.
+             */
+            baseUrl: string;
+            kinds: components["schemas"]["PublicationKind"][];
+        };
+        /**
+         * @description What a publication serves. `page` is the hosted landing page plus the player, the embed snippet and the direct links; `embed` is the player and the direct links, with no landing page; `links` is the direct download links alone. All three are priced from the same storage term, and only `page` carries the landing-page surcharge.
+         * @enum {string}
+         */
+        PublicationKind: "page" | "links" | "embed";
+        /**
+         * @description `awaiting_upload` is created but not charged; `active` is uploaded, charged and served; `revoked` was deleted by the user; `expired` ran out its term and had its bytes deleted; `failed` was never charged (an upload that never landed, or one the balance could not cover).
+         * @enum {string}
+         */
+        PublicationStatus: "awaiting_upload" | "active" | "revoked" | "expired" | "failed";
+        /** @description Where a publication can be reached. Every one of these is on our own origin: the object URL is minted per request after the publication is checked, so deleting a publication takes effect immediately and the embed snippet carries nothing that could outlive it. */
+        PublicationLinks: {
+            /**
+             * Format: uri
+             * @description The landing page. Absent for `links` and `embed`.
+             */
+            pageUrl?: string;
+            /**
+             * Format: uri
+             * @description The embeddable player. Absent for `links`.
+             */
+            embedUrl?: string;
+            /** @description HTML to paste. Same-origin iframe; no credentials inside. */
+            embedCode?: string;
+            /** Format: uri */
+            videoDownloadUrl: string;
+            /**
+             * Format: uri
+             * @description Present only when the publication really carries captions.
+             */
+            captionsDownloadUrl?: string;
+        };
+        CreatePublicationRequest: {
+            kind: components["schemas"]["PublicationKind"];
+            /** @description The video's size as the app knows it. A preflight only — the price is recomputed from the size the store reports at completion. */
+            fileSizeBytes: number;
+            /** @description The term bought, and how long the link lives. One of `PublishingCapabilities.durationsDays`. */
+            storageDays: number;
+            /** @description Shown on the landing page and in the player. Defaults if omitted. */
+            title?: string;
+            /** @description The video's length, for the analytics' "watched 40% of it". */
+            durationSec?: number;
+            captionLanguage?: string;
+        };
+        CreatePublicationResponse: {
+            publicationId: string;
+            /** @description The unguessable public id the share links are built from. */
+            slug: string;
+            /** @description The quote, from the declared size. Not a charge. */
+            estimatedCost: number;
+            storageDays: number;
+            upload: {
+                /** @enum {string} */
+                type: "single";
+                /** Format: uri */
+                url: string;
+            } | {
+                /** @enum {string} */
+                type: "multipart";
+                uploadId: string;
+                partSize: number;
+                partUrls: string[];
+            };
+            /**
+             * Format: date-time
+             * @description Provisional until activation: the term starts when the bytes land, not when the user picked a video.
+             */
+            expiresAt: string;
+        };
+        PublicationView: {
+            publicationId: string;
+            kind: components["schemas"]["PublicationKind"];
+            slug: string;
+            title: string;
+            status: components["schemas"]["PublicationStatus"];
+            /** @description The size the store reported. The price basis. Present once charged. */
+            sizeBytes?: number;
+            durationSec?: number;
+            storageDays: number;
+            /** @description What was actually charged, once the publication is active. */
+            creditsCharged?: number;
+            estimatedCost: number;
+            hasCaptions: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description When the term started, and therefore from when it is counted.
+             */
+            activatedAt?: string;
+            /** Format: date-time */
+            expiresAt: string;
+            /** Format: date-time */
+            revokedAt?: string;
+            served: {
+                page: boolean;
+                embed: boolean;
+                links: boolean;
+            };
+            links: components["schemas"]["PublicationLinks"];
+        };
+        PublicationList: {
+            publications: components["schemas"]["PublicationView"][];
+        };
+        /** @description One beacon from the player. Every field ends up in an aggregate, never in a person: there is no cookie, no login, and the session id is a random string the server cannot map back to anyone. */
+        PublishEventRequest: {
+            /**
+             * @description `view` when the page loads, `play` on the first play, `progress` on a heartbeat while playing (so watch time survives a closed tab), `complete` at the end, and the two `download_*` types from the download routes.
+             * @enum {string}
+             */
+            type: "view" | "play" | "progress" | "complete" | "download_video" | "download_captions";
+            /** @description Random per browser tab, minted by the player. The unit of "unique viewer". */
+            sessionId: string;
+            /** @description `document.referrer` — the page the viewer came from, not the beacon's own. Reduced to a host before it is stored, so search terms and private paths never land in the database. */
+            referrer?: string;
+            /** @description The furthest point reached, so seeking does not inflate watch time. */
+            watchedSeconds?: number;
+            watchedRatio?: number;
+        };
+        PublicationAnalytics: {
+            publicationId: string;
+            slug: string;
+            title: string;
+            status: components["schemas"]["PublicationStatus"];
+            durationSec?: number | null;
+            /** @enum {string} */
+            range: "7d" | "30d" | "90d" | "all";
+            /** Format: date-time */
+            since: string;
+            /** Format: date-time */
+            until: string;
+            totals: components["schemas"]["AnalyticsTotals"];
+            /** @description One point per day that had activity, ascending. */
+            timeseries: {
+                /** @description `YYYY-MM-DD`, UTC. */
+                date: string;
+                views: number;
+                uniqueViewers: number;
+                watchedSeconds: number;
+            }[];
+            /** @description By `CF-IPCountry`. Empty when the deployment is not behind Cloudflare. */
+            countries: components["schemas"]["AnalyticsDimensionRow"][];
+            referrers: {
+                /** @description The referring host, or `unknown`. */
+                key: string;
+                /** @enum {string} */
+                class: "direct" | "search" | "social" | "internal" | "other";
+                uniqueViewers: number;
+            }[];
+            devices: components["schemas"]["AnalyticsDimensionRow"][];
+            browsers: components["schemas"]["AnalyticsDimensionRow"][];
+            /** @description The last 50 events, newest first. */
+            recent: {
+                /** Format: date-time */
+                at: string;
+                /** @enum {string} */
+                type: "view" | "play" | "progress" | "complete" | "download_video" | "download_captions";
+                country?: string;
+                referrerHost?: string;
+                device?: string;
+                browser?: string;
+                watchedSeconds?: number;
+            }[];
+        };
+        /** @description `uniqueViewers`, `avgWatchSeconds`, `avgWatchRatio` and `completionRate` are per session; `views`, `plays`, `completions` and `downloads` are event counts. Watch time is the sum of each session's furthest point, never the sum of the player's heartbeats — a viewer whose player sent thirty beacons watched one video, not thirty. */
+        AnalyticsTotals: {
+            views: number;
+            uniqueViewers: number;
+            plays: number;
+            completions: number;
+            downloads: number;
+            watchedSeconds: number;
+            avgWatchSeconds: number;
+            avgWatchRatio: number;
+            completionRate: number;
+        };
+        AnalyticsDimensionRow: {
+            /** @description The bucket, or `unknown` when the header did not say. */
+            key: string;
+            uniqueViewers: number;
         };
         /** @description A price as rendered, not as charged. `amountMinor` is an integer in the smallest denomination of `currency`, so divide by 10^`minorUnitExponent` — 2 for USD, but 0 for zero-decimal currencies such as JPY, which is why the exponent is published instead of assumed. */
         ProductPrice: {
@@ -433,6 +892,15 @@ export interface components {
             targetWidth: number;
             targetHeight: number;
         };
+        CreateTranscribeJobRequest: {
+            /** @description Declared length of the audio about to be uploaded. Used for the preflight only; the charge comes from the server's own probe. */
+            audioSeconds: number;
+            fileSizeBytes: number;
+            /** @description ISO-639-1 hint, or `auto` to let the model decide. */
+            language?: string;
+            /** @description One of `Capabilities.transcription.models`; omit for the server default. */
+            model?: string;
+        };
         CreateJobResponse: {
             jobId: string;
             estimatedCost: number;
@@ -450,12 +918,23 @@ export interface components {
             };
         };
         JobView: {
+            /**
+             * @description What this job does. `upscale` jobs report `framesDone`/`totalFrames`; `transcribe` jobs report `audioSecondsDone`/`audioSeconds` instead.
+             * @enum {string}
+             */
+            kind: "upscale" | "transcribe";
             /** @enum {string} */
             status: "created" | "uploading" | "uploaded" | "validating" | "rejected" | "queued" | "running" | "canceling" | "canceled" | "succeeded" | "failed" | "expired";
             stage: string;
             progress: number;
-            framesDone: number;
-            totalFrames: number;
+            /** @description Frames written to the encoder. Present for `upscale` jobs only. */
+            framesDone?: number;
+            /** @description Present for `upscale` jobs only. */
+            totalFrames?: number;
+            /** @description Audio length the worker probed, and the basis of the charge. Present for `transcribe` jobs only. */
+            audioSeconds?: number;
+            /** @description Audio processed so far. Present for `transcribe` jobs only. */
+            audioSecondsDone?: number;
             reserved: number;
             consumed: number;
             etaSeconds?: number;
@@ -509,6 +988,10 @@ export interface components {
         };
     };
     parameters: {
+        /** @description The publication id returned by `POST /v1/publications`. */
+        PublicationId: string;
+        /** @description The unguessable public id from the share link. It is the only thing a viewer sees, and it is the only thing that grants access. */
+        PublicationSlug: string;
         /** @description HMAC-SHA256 of `{timestamp}.{raw body}` with the per-job callback secret */
         WorkerSignature: string;
         /** @description Unix seconds; stale requests are rejected */
@@ -842,6 +1325,68 @@ export interface operations {
             };
         };
     };
+    createTranscribeJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTranscribeJobRequest"];
+            };
+        };
+        responses: {
+            /** @description Job created, upload plan returned */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateJobResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            /** @description Insufficient credits (carries estimatedCost and balance) */
+            402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description A job is already running for this license */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Daily job limit reached */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Cloud transcription disabled */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     getJob: {
         parameters: {
             query?: never;
@@ -959,6 +1504,395 @@ export interface operations {
             };
             /** @description Cloud upscaling disabled */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listPublications: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Publications */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicationList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createPublication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePublicationRequest"];
+            };
+        };
+        responses: {
+            /** @description Publication created, upload plan returned */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatePublicationResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            /** @description The balance cannot cover the quoted price. `details.cost` and `details.balance` say by how much. */
+            402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Publishing is disabled for this deployment */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getPublication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The publication id returned by `POST /v1/publications`. */
+                id: components["parameters"]["PublicationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Publication */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicationView"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    revokePublication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The publication id returned by `POST /v1/publications`. */
+                id: components["parameters"]["PublicationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        publicationId: string;
+                        status: components["schemas"]["PublicationStatus"];
+                        /** @description Always 0. Present so the app can state it. */
+                        creditsRefunded: number;
+                    };
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    completePublicationUpload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The publication id returned by `POST /v1/publications`. */
+                id: components["parameters"]["PublicationId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Required for a multipart upload; ignored for a single PUT. */
+                    parts?: {
+                        partNumber: number;
+                        etag: string;
+                    }[];
+                    /**
+                     * @description The caption track as WebVTT text. It travels here rather than as an upload because it is a document, not media — tens of kilobytes — and because it is then served same-origin, where a `<track>` fetch needs no bucket CORS configuration to work. Its first line must be `WEBVTT`.
+                     *     Not part of the price: the rate is per GB of video.
+                     */
+                    captionsVtt?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Active */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicationView"] & {
+                        /** @description The license balance after the charge. */
+                        balance: number;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            /** @description The stored object costs more than the balance covers. The object is deleted and nothing is charged. */
+            402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The publication is not awaiting an upload */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getPublicationAnalytics: {
+        parameters: {
+            query?: {
+                range?: "7d" | "30d" | "90d" | "all";
+            };
+            header?: never;
+            path: {
+                /** @description The publication id returned by `POST /v1/publications`. */
+                id: components["parameters"]["PublicationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Analytics for the window */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicationAnalytics"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getLandingPage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The unguessable public id from the share link. It is the only thing a viewer sees, and it is the only thing that grants access. */
+                slug: components["parameters"]["PublicationSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The page */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description The publication is not servable; the body is still a page */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+        };
+    };
+    getEmbedPlayer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The unguessable public id from the share link. It is the only thing a viewer sees, and it is the only thing that grants access. */
+                slug: components["parameters"]["PublicationSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The player page */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    streamPublicationVideo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The unguessable public id from the share link. It is the only thing a viewer sees, and it is the only thing that grants access. */
+                slug: components["parameters"]["PublicationSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A signed URL for the object */
+            302: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getPublicationCaptions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The unguessable public id from the share link. It is the only thing a viewer sees, and it is the only thing that grants access. */
+                slug: components["parameters"]["PublicationSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The WebVTT track */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/vtt": string;
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    downloadPublicationVideo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The unguessable public id from the share link. It is the only thing a viewer sees, and it is the only thing that grants access. */
+                slug: components["parameters"]["PublicationSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A signed URL with an attachment disposition */
+            302: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    downloadPublicationCaptions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The unguessable public id from the share link. It is the only thing a viewer sees, and it is the only thing that grants access. */
+                slug: components["parameters"]["PublicationSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The WebVTT track as an attachment */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/vtt": string;
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    recordPublicationEvent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The unguessable public id from the share link. It is the only thing a viewer sees, and it is the only thing that grants access. */
+                slug: components["parameters"]["PublicationSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublishEventRequest"];
+                "text/plain": string;
+            };
+        };
+        responses: {
+            /** @description Recorded, or deliberately dropped */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            /** @description Too many beacons from this client */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

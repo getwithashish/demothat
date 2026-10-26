@@ -46,11 +46,21 @@ function asCloudError(error: unknown): CloudError {
   return new CloudError((error as Error)?.message ?? String(error), 'unknown')
 }
 
+/**
+ * Exported for the sibling feature clients (`publishing.ts`), which talk to the same
+ * API and must fail the same way — one error vocabulary in the main process, so the
+ * IPC layer can branch on `code` without knowing which feature raised it.
+ */
+export { asCloudError }
+
 function requireToken(): string {
   const token = getStoredToken()
   if (!token) throw new CloudError('This computer is not activated. Enter your license key first.', 'not_activated')
   return token
 }
+
+/** See `asCloudError`. */
+export { requireToken }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -153,6 +163,47 @@ export async function createJob(input: CreateJobInput): Promise<CloudJobCreated>
   } catch (error) {
     throw asCloudError(error)
   }
+}
+
+/**
+ * `POST /v1/jobs/transcribe` (contract 2.2.0): the same preflight shape as a job,
+ * priced per minute of the declared audio. The server re-prices from its own probe
+ * of the upload; a 402 arrives as a CloudError with code `insufficient_credits`.
+ */
+export interface CreateTranscribeJobInput {
+  /** Declared length of the audio about to be uploaded: the preflight only. */
+  audioSeconds: number
+  fileSizeBytes: number
+  language?: string
+  model?: string
+}
+
+export async function createTranscribeJob(input: CreateTranscribeJobInput): Promise<CloudJobCreated> {
+  try {
+    return await apiRequest<CloudJobCreated>(getApiBaseUrl(), {
+      method: 'POST',
+      path: '/v1/jobs/transcribe',
+      body: input,
+      token: requireToken(),
+      retries: 1,
+    })
+  } catch (error) {
+    throw asCloudError(error)
+  }
+}
+
+/**
+ * The transcript behind a succeeded transcription job.
+ *
+ * `downloadResult` is reused rather than reimplemented: the object is fetched from a
+ * presigned URL like any other result, and it is the *view* that knows it is JSON.
+ */
+export async function downloadTranscript(
+  downloadUrl: string,
+  destPath: string,
+  options: { onProgress?: (percent: number) => void; cancel?: CloudCancellation } = {},
+): Promise<number> {
+  return await downloadResult(downloadUrl, destPath, options)
 }
 
 /** `POST /v1/jobs/:id/upload/complete`. Required for a multipart upload. */

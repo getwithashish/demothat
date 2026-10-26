@@ -14,6 +14,7 @@ import { initialFrameState, recalculateCanvasDimensions } from './frameSlice'
 import { prepareCursorBitmaps } from '../../lib/utils'
 import { collectSavePayload, whenSaveIdle, withSaveGuard } from '../../lib/project-file'
 import { projectNameFromPath } from '../../lib/recent-projects'
+import { audioTracksFromManifest, legacyTracks } from '../../../shared/audio-tracks'
 import type { EditorState } from '../../types'
 
 export const initialProjectState: ProjectState = {
@@ -32,6 +33,12 @@ export const initialProjectState: ProjectState = {
   platform: null,
   cursorTheme: null,
   hasAudioTrack: false,
+  audioTracks: [],
+  audioTracksFromManifest: false,
+  transcript: null,
+  subtitleCues: [],
+  subtitlesEnabled: false,
+  subtitleFormat: 'srt',
   currentProjectPath: null,
   isDirty: false,
   saveStatus: 'untitled',
@@ -67,6 +74,11 @@ function projectSignature(state: EditorState): string {
     webcamStyles,
     isWebcamVisible,
     cursorStyles,
+    transcript,
+    audioTracks,
+    subtitleCues,
+    subtitlesEnabled,
+    subtitleFormat,
   } = state
   return JSON.stringify({
     frameStyles,
@@ -87,6 +99,11 @@ function projectSignature(state: EditorState): string {
     webcamStyles,
     isWebcamVisible,
     cursorStyles,
+    transcript,
+    audioTracks,
+    subtitleCues,
+    subtitlesEnabled,
+    subtitleFormat,
   })
 }
 
@@ -300,6 +317,12 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
       const metadataContent = await window.electronAPI.readFile(metadataPath)
       const parsedData = JSON.parse(metadataContent)
 
+      // The recording's own manifest says what its audio is. A manifest written
+      // before the sources were separated says nothing about them, so its single
+      // track is provisional until the player reports whether there is audio.
+      const manifestHasTracks = Array.isArray(parsedData.audioTracks)
+      const audioTracks = audioTracksFromManifest(parsedData, true)
+
       const processedMetadata = (parsedData.events || []).map((item: MetaDataItem) => ({
         ...item,
         timestamp: item.timestamp / 1000,
@@ -311,6 +334,9 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
       set((state) => {
         state.platform = platform
         state.metadata = processedMetadata
+        state.audioTracks = audioTracks
+        state.audioTracksFromManifest = manifestHasTracks
+        state.hasAudioTrack = audioTracks.length > 0
         // Represent each mouse click as an independent, removable audio clip.
         state.audioClips = state.audioClips.filter((clip) => clip.kind !== 'click')
         processedMetadata
@@ -463,6 +489,85 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
   setHasAudioTrack: (hasAudio) => {
     set((state) => {
       state.hasAudioTrack = hasAudio
+      // A manifest that predates the split could not say how many sources there
+      // were, so its tracks were provisional: the player's answer is the one fact
+      // available, and it decides whether there is a track at all.
+      if (!state.audioTracksFromManifest) {
+        state.audioTracks = legacyTracks(hasAudio)
+      }
+    })
+  },
+  setAudioTracks: (tracks) => {
+    set((state) => {
+      state.audioTracks = tracks
+      state.audioTracksFromManifest = true
+      state.hasAudioTrack = tracks.length > 0
+    })
+  },
+  updateAudioTrack: (id, patch) => {
+    set((state) => {
+      const index = state.audioTracks.findIndex((candidate) => candidate.id === id)
+      if (index === -1) return
+      const current = state.audioTracks[index]
+      if (!current) return
+      const next = { ...current }
+      if (patch.volume !== undefined) next.volume = Math.min(1, Math.max(0, patch.volume))
+      if (patch.muted !== undefined) next.muted = patch.muted
+      // A new array, not a mutated one: the preview mixer subscribes to the tracks,
+      // and a mutated array keeps its identity, so the change would never reach it.
+      state.audioTracks = state.audioTracks.map((track, position) => (position === index ? next : track))
+    })
+  },
+  setTranscript: (transcript) => {
+    set((state) => {
+      state.transcript = transcript
+      // A transcription cost credits. It is part of the project, so it is a change
+      // the user would lose by closing without saving.
+      state.isDirty = true
+    })
+  },
+  setSubtitleCues: (cues) => {
+    set((state) => {
+      state.subtitleCues = cues
+      state.isDirty = true
+    })
+  },
+  updateSubtitleCue: (id, patch) => {
+    set((state) => {
+      const index = state.subtitleCues.findIndex((cue) => cue.id === id)
+      if (index === -1) return
+      const current = state.subtitleCues[index]
+      if (!current) return
+      const next = { ...current }
+      if (patch.text !== undefined) next.text = patch.text
+      if (patch.start !== undefined) next.start = Math.max(0, patch.start)
+      // A cue that ends before it starts is not a cue; the editor keeps the pair
+      // ordered rather than writing a file no player can read.
+      if (patch.end !== undefined) next.end = Math.max(patch.end, next.start + 0.05)
+      if (patch.start !== undefined && next.end <= next.start) next.end = next.start + 0.05
+      // A new array: subscribers to the cues are compared by identity.
+      state.subtitleCues = state.subtitleCues.map((cue, position) => (position === index ? next : cue))
+      state.isDirty = true
+    })
+  },
+  removeSubtitleCue: (id) => {
+    set((state) => {
+      const remaining = state.subtitleCues.filter((cue) => cue.id !== id)
+      if (remaining.length === state.subtitleCues.length) return
+      state.subtitleCues = remaining
+      state.isDirty = true
+    })
+  },
+  setSubtitlesEnabled: (enabled) => {
+    set((state) => {
+      state.subtitlesEnabled = enabled
+      state.isDirty = true
+    })
+  },
+  setSubtitleFormat: (format) => {
+    set((state) => {
+      state.subtitleFormat = format
+      state.isDirty = true
     })
   },
   applyOpenedProject: async (project, projectPath, options) => {
@@ -490,6 +595,16 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
       if (opened.mouseClickSoundName !== undefined) state.mouseClickSoundName = opened.mouseClickSoundName
       if (opened.mouseClickSoundVolume !== undefined) state.mouseClickSoundVolume = opened.mouseClickSoundVolume
       if (opened.hasAudioTrack !== undefined) state.hasAudioTrack = opened.hasAudioTrack
+      if (opened.audioTracks) {
+        state.audioTracks = opened.audioTracks
+        // Saved tracks are the recording's own: the manifest was already read when
+        // they were built, so nothing here is provisional.
+        state.audioTracksFromManifest = true
+      }
+      if (opened.transcript !== undefined) state.transcript = opened.transcript ?? null
+      if (opened.subtitleCues) state.subtitleCues = opened.subtitleCues
+      if (opened.subtitlesEnabled !== undefined) state.subtitlesEnabled = opened.subtitlesEnabled
+      if (opened.subtitleFormat !== undefined) state.subtitleFormat = opened.subtitleFormat
       if (opened.volume !== undefined) state.volume = opened.volume
       if (opened.isMuted !== undefined) state.isMuted = opened.isMuted
       if (opened.zoomRegions) state.zoomRegions = opened.zoomRegions

@@ -1,4 +1,5 @@
 import { TIMELINE, ZOOM } from '../../lib/constants'
+import { suggestSpeedRegions } from '../../../shared/auto-speed'
 import type { TimelineState, TimelineActions, Slice } from '../../types'
 import type { CutRegion, ZoomRegion, SpeedRegion } from '../../types'
 
@@ -159,6 +160,75 @@ export const createTimelineSlice: Slice<TimelineState, TimelineActions> = (set, 
       state.selectedRegionId = id
       recalculateZIndices(state)
     })
+  },
+  /**
+   * Find the dead stretches and add a speed region over each.
+   *
+   * The silences come from the recording's own audio, which is the only part of this
+   * that can be known for certain: nobody is speaking, so nothing is lost by playing
+   * it faster. The activity half of the detector needs a measure of how much the
+   * screen is changing, which this does not have yet, so what it proposes here is the
+   * conservative half.
+   *
+   * A stretch that already has a speed region over it is left alone: the user's own
+   * region is a decision, and this is a suggestion.
+   */
+  tidyUp: async () => {
+    const { videoPath, duration } = get()
+    if (!videoPath || !(duration > 0)) return { added: 0, suggested: 0 }
+
+    let silences: { start: number; end: number }[] = []
+    try {
+      const detected = await window.electronAPI.detectSilence(videoPath)
+      silences = detected.map((range) => ({ start: range.start, end: range.end }))
+    } catch (error) {
+      // Without the audio there is nothing to be sure about, and guessing would put
+      // speed changes over material the viewer was watching.
+      console.warn('[TidyUp] Could not read the recording’s silences:', error)
+      return { added: 0, suggested: 0 }
+    }
+
+    // The other half: how much the picture changed. Typing, a spinner and a progress
+    // bar all sit below the threshold and all three are dead time. A recording whose
+    // picture cannot be measured simply contributes nothing here — the audio half
+    // still stands on its own.
+    let samples: { time: number; activity: number }[] = []
+    try {
+      samples = await window.electronAPI.detectActivity(videoPath)
+    } catch (error) {
+      console.warn('[TidyUp] Could not measure the recording’s picture:', error)
+    }
+
+    const suggested = suggestSpeedRegions({ silences, samples, duration })
+    const existing = Object.values(get().speedRegions)
+    const additions = suggested.filter(
+      (candidate) =>
+        !existing.some(
+          (region) =>
+            candidate.startTime < region.startTime + region.duration &&
+            region.startTime < candidate.startTime + candidate.duration,
+        ),
+    )
+
+    if (additions.length > 0) {
+      set((state) => {
+        additions.forEach((region, index) => {
+          const id = `speed-auto-${Date.now()}-${index}`
+          state.speedRegions[id] = {
+            id,
+            type: 'speed',
+            startTime: region.startTime,
+            duration: region.duration,
+            speed: region.speed,
+            zIndex: 0,
+          }
+        })
+        recalculateZIndices(state)
+        state.isDirty = true
+      })
+    }
+
+    return { added: additions.length, suggested: suggested.length }
   },
   updateRegion: (id, updates) => {
     set((state) => {

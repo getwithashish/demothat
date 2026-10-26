@@ -9,11 +9,13 @@ describe('recommendedPackIndex', () => {
   })
 
   it('picks the smallest pack that covers the shortfall', () => {
-    // 1200 credits short: the 1,800 pack is the cheapest that covers it.
+    // The packs are 3,000 / 30,000 / 300,000 credits ($5 / $50 / $500).
+    // 1,200 short: the cheapest pack already covers it.
     expect(recommendedPackIndex(1200)).toBe(0)
-    // 2,000 short: the 1,800 pack no longer covers it.
-    expect(recommendedPackIndex(2000)).toBe(1)
-    expect(recommendedPackIndex(6000)).toBe(2)
+    // 3,500 short: the 3,000 pack no longer covers it.
+    expect(recommendedPackIndex(3500)).toBe(1)
+    // 40,000 short: only the largest pack reaches.
+    expect(recommendedPackIndex(40_000)).toBe(2)
   })
 
   it('falls back to the largest pack when nothing covers the shortfall', () => {

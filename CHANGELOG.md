@@ -1,3 +1,9 @@
+## [1.12.0](https://github.com/getwithashish/DemoThat/compare/v1.11.0...v1.12.0) (2026-10-27)
+
+### Features
+
+* **license:** fetch the signing key set instead of embedding it ([#3](https://github.com/getwithashish/DemoThat/issues/3)) ([164211a](https://github.com/getwithashish/DemoThat/commit/164211a28c597704048f6945e2ab303a86bff72b))
+
 ## [1.11.0](https://github.com/getwithashish/DemoThat/compare/v1.10.0...v1.11.0) (2026-10-26)
 
 ### Features

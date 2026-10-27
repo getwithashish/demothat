@@ -1,23 +1,40 @@
-# DemoThat
+<p align="center">
+  <img src="docs/assets/small-banner.png" alt="DemoThat" width="120" />
+</p>
 
-A free, open-source desktop app that records your screen, trims the filler words out of the captions, and can publish a clip as a shareable landing page.
+<h1 align="center">DemoThat</h1>
 
-[![Checks](https://github.com/getwithashish/DemoThat/actions/workflows/checks.yml/badge.svg)](https://github.com/getwithashish/DemoThat/actions/workflows/checks.yml)
-[![Release](https://github.com/getwithashish/DemoThat/actions/workflows/release.yml/badge.svg)](https://github.com/getwithashish/DemoThat/actions/workflows/release.yml)
-[![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
+<p align="center">
+  <strong>Record your screen, let DemoThat auto-zoom the action, and publish a shareable clip.</strong><br />
+  <sub>Free and open source · cinematic pan-and-zoom, with no manual keyframing.</sub>
+</p>
 
-## What it does
+<p align="center">
+  <a href="https://github.com/getwithashish/DemoThat/actions/workflows/checks.yml"><img src="https://shieldcn.dev/github/ci/getwithashish/DemoThat?workflow=checks.yml&label=checks&variant=secondary" alt="Checks status" /></a>
+  <a href="https://github.com/getwithashish/DemoThat/actions/workflows/release.yml"><img src="https://shieldcn.dev/github/ci/getwithashish/DemoThat?workflow=release.yml&label=release&variant=secondary" alt="Release status" /></a>
+  <a href="LICENSE"><img src="https://shieldcn.dev/github/license/getwithashish/DemoThat?variant=secondary" alt="License: GPL-3.0" /></a>
+  <a href="https://nodejs.org/en/about/previous-releases"><img src="https://shieldcn.dev/badge/node-22.x-339933?logo=nodedotjs&logoColor=white&variant=secondary" alt="Node 22.x" /></a>
+</p>
 
-- Records the full screen, a window, or a custom region, with optional webcam and microphone.
-- Tracks the mouse and generates pan-and-zoom effects around your clicks, with no manual keyframing.
-- Edits on a visual timeline: trim, backgrounds, frames, shadows, aspect ratios (16:9 / 9:16 / 1:1), and reusable presets.
-- Transcribes the audio and removes filler words (um, uh, ...) from the captions.
-- Exports to MP4 or GIF at up to 2K.
-- Publishes a finished clip as a landing page or embed through the DemoThat cloud service.
+---
+
+## 🎥 Demo
+
+![DemoThat in action](docs/assets/demothat-demo.gif)
+
+## ✨ What it does
+
+- **Flexible capture** — record the full screen, a window, or a custom region, with optional webcam and microphone.
+- **Cinematic mouse tracking** — follows your mouse and clicks, generating smooth pan-and-zoom effects with no manual keyframing.
+- **Visual editor** — trim on a timeline, then style with backgrounds, frames, shadows, and reusable presets.
+- **Instant aspect ratios** — switch between 16:9, 9:16 (Shorts/TikTok), and 1:1 (Instagram) in one click.
+- **Caption cleanup** — transcribes the audio and removes filler words (um, uh, ...) from the captions.
+- **High-quality export** — export to MP4 or GIF at up to 2K.
+- **Publishing** — publish a finished clip as a landing page or embed through the DemoThat cloud service.
 
 Some features (credits, cloud upscaling, publishing, Pro licensing) talk to a DemoThat API. The app ships pointing at the production API; see [Working against a local API](#working-against-a-local-api) to run it against a mock instead.
 
-## Prerequisites
+## ✅ Prerequisites
 
 - **Node.js 22** (`engines` pins `>=18 <=22`). Use 22, not 24: the `postinstall` step (`electron-builder install-app-deps`) fails on Node 24. CI and the release workflow both pin 22.
 - **FFmpeg binaries** for your OS, placed under `binaries/<os>/` (see [Install](#install)).
@@ -28,7 +45,7 @@ Some features (credits, cloud upscaling, publishing, Pro licensing) talk to a De
 
 The repo ships a `package-lock.json`, so use **npm**.
 
-## Install
+## 📦 Install
 
 ```bash
 git clone https://github.com/getwithashish/DemoThat.git
@@ -54,16 +71,16 @@ wget https://github.com/tamnguyenvan/screenarc-assets/releases/download/v0.0.1/f
 wget https://github.com/tamnguyenvan/screenarc-assets/releases/download/v0.0.1/ffmpeg.exe -O binaries/windows/ffmpeg.exe
 ```
 
-## Run
+## 🚀 Run
 
 ```bash
 npm run dev       # Vite dev server with HMR and the Electron shell
 ```
 
-## Build
+## 🏗️ Build
 
 ```bash
-npm run build     # typecheck (tsc) + Vite production build into dist/ and dist-electron/
+npm run build        # typecheck (tsc) + Vite production build into dist/ and dist-electron/
 npm run dist:linux   # packaged Linux installers (AppImage, deb, rpm, zip)
 npm run dist:win     # packaged Windows installer (NSIS)
 npm run dist:mac     # packaged macOS dmg + zip (universal)
@@ -71,7 +88,7 @@ npm run dist:mac     # packaged macOS dmg + zip (universal)
 
 Packaging runs `tsc`, the Vite build, and then `electron-builder` (configured by the `build` block in `package.json`). The Linux `dist:*` scripts compile the native cursor helper first via `build:helper`. The `publish-*` scripts are for maintainers pushing release assets.
 
-## Scripts
+## 🧰 Scripts
 
 | Script                                                      | What it does                                                                                                                            |
 | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
@@ -91,7 +108,7 @@ Packaging runs `tsc`, the Vite build, and then `electron-builder` (configured by
 | `patch:electron-info-plist`                                 | Apply the macOS `Info.plist` patch (also runs in `postinstall`).                                                                        |
 | `postinstall`                                               | Rebuild native deps and patch `Info.plist`.                                                                                             |
 
-## Project structure
+## 🗂️ Project structure
 
 | Path                                         | Contents                                                                                                        |
 | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
@@ -104,7 +121,7 @@ Packaging runs `tsc`, the Vite build, and then `electron-builder` (configured by
 | `native/`, `build/`, `resources/`, `public/` | Native helper source, electron-builder resources/icons, macOS entitlements, static assets.                      |
 | `docs/`                                      | Development notes, project structure, and platform plans.                                                       |
 
-## Testing
+## 🧪 Testing
 
 ```bash
 npm test          # vitest run
@@ -113,7 +130,7 @@ npm run test:watch
 
 The Vitest suite (`vitest.config.ts`) covers `electron/**`, `src/**`, and `shared/**`. Tests run in a plain Node environment with `electron` and `electron-log` stubbed, so they exercise the pure logic: caption/filler-word removal, transcript and subtitle handling, export codecs/resolutions/caps, upscale and cloud-job planning, pricing and publish cost, license token handling, and API config. No coverage threshold is configured, so no coverage number is claimed here.
 
-## Working against a local API
+## 🔌 Working against a local API
 
 The app reads its API base URL from `DEMOTHAT_API_BASE_URL` and otherwise uses the production host. For local development, a mock server implements the endpoints the app calls (checkout, license activation, cloud jobs, publishing, JWKS) with the same shapes and error codes as the pinned contract:
 
@@ -124,7 +141,7 @@ DEMOTHAT_API_BASE_URL=http://localhost:8788 npm run dev
 
 `DEMOTHAT_FORCE_PRO=1` unlocks Pro features without a key for development. Server-side behaviour is out of scope for this repo; `scripts/mock-api-server.mjs` is the reference for what the app expects.
 
-## Contributing
+## 🤝 Contributing
 
 1. Fork the repo and create a descriptive branch: `feature/your-feature` or `fix/issue-number`.
 2. Make your change; verify `npm run dev` still works and `npm test` passes.
@@ -138,6 +155,11 @@ Commits use the [Conventional Commits](https://www.conventionalcommits.org/) typ
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
-## License
+## 📜 License
 
-[GPL-3.0](LICENSE). DemoThat is a fork of [ScreenArc](https://github.com/tamnguyenvan/screenarc) by Tam Nguyen, modified and maintained by Ashish Sam; original copyright notices are retained.
+DemoThat is licensed under the [GNU General Public License v3.0](LICENSE) (GPL-3.0).
+
+- Copyright (C) 2025 Tam Nguyen (original ScreenArc)
+- Copyright (C) 2026 Ashish Sam (modifications in DemoThat)
+
+DemoThat is a fork of [ScreenArc](https://github.com/tamnguyenvan/screenarc) by Tam Nguyen, modified and maintained by Ashish Sam; original copyright notices are retained as required by the GPL, and the complete corresponding source for every release is available in this repository.

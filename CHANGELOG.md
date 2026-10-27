@@ -1,3 +1,9 @@
+## [1.12.1](https://github.com/getwithashish/DemoThat/compare/v1.12.0...v1.12.1) (2026-10-27)
+
+### Bug Fixes
+
+* **billing:** name the live-mode Dodo products ([#5](https://github.com/getwithashish/DemoThat/issues/5)) ([b53f2e9](https://github.com/getwithashish/DemoThat/commit/b53f2e9962003d864104d3289d3c2e23f777904f))
+
 ## [1.12.0](https://github.com/getwithashish/DemoThat/compare/v1.11.0...v1.12.0) (2026-10-27)
 
 ### Features

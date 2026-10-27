@@ -6,6 +6,25 @@ on:
       - main
   workflow_dispatch:
 
+# Least privilege for the whole workflow. The `release` job runs semantic-release,
+# which pushes the version-bump commit, tags it and creates the GitHub release, so
+# the token needs write access to contents. The @semantic-release/github plugin
+# also comments on the released pull requests and issues, which is what the
+# pull-requests and issues scopes are for. Nothing else is granted: the build job
+# only needs contents, and it narrows itself further with its own job-level block.
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+# A release must never be cancelled half-way through pushing a tag and creating a
+# release, so — unlike the CI/checks workflows — cancel-in-progress is false. A
+# single group means two releases queue and run one after the other rather than
+# one clobbering the other.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   # --- JOB 1: Create Release using Semantic Release (runs on every push to main) ---
   release:

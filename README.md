@@ -1,266 +1,143 @@
-# DemoThat 🎬
+# DemoThat
+
+A free, open-source desktop app that records your screen, trims the filler words out of the captions, and can publish a clip as a shareable landing page.
+
+[![Checks](https://github.com/getwithashish/DemoThat/actions/workflows/checks.yml/badge.svg)](https://github.com/getwithashish/DemoThat/actions/workflows/checks.yml)
+[![Release](https://github.com/getwithashish/DemoThat/actions/workflows/release.yml/badge.svg)](https://github.com/getwithashish/DemoThat/actions/workflows/release.yml)
+[![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
+
+## What it does
+
+- Records the full screen, a window, or a custom region, with optional webcam and microphone.
+- Tracks the mouse and generates pan-and-zoom effects around your clicks, with no manual keyframing.
+- Edits on a visual timeline: trim, backgrounds, frames, shadows, aspect ratios (16:9 / 9:16 / 1:1), and reusable presets.
+- Transcribes the audio and removes filler words (um, uh, ...) from the captions.
+- Exports to MP4 or GIF at up to 2K.
+- Publishes a finished clip as a landing page or embed through the DemoThat cloud service.
 
-<div align="center">
-  <img src="docs/assets/small-banner.png" alt="DemoThat Banner">
-</div>
+Some features (credits, cloud upscaling, publishing, Pro licensing) talk to a DemoThat API. The app ships pointing at the production API; see [Working against a local API](#working-against-a-local-api) to run it against a mock instead.
 
-<div align="center">
-  <img src="https://img.shields.io/github/v/release/getwithashish/DemoThat?style=for-the-badge" alt="Latest Release" />
-  <img src="https://img.shields.io/github/license/getwithashish/DemoThat?style=for-the-badge" alt="License" />
-  <img src="https://img.shields.io/github/downloads/getwithashish/DemoThat/total?style=for-the-badge&color=green" alt="Total Downloads" />
-  <a href="https://github.com/sponsors/getwithashish"><img src="https://img.shields.io/badge/Sponsor-%E2%9D%A4-ea4aaa?style=for-the-badge&logo=githubsponsors" alt="Sponsor this project" /></a>
-</div>
+## Prerequisites
 
-<div align="center">
-  <h3>✨ Create cinematic screen recordings with automatic pan-and-zoom effects ✨</h3>
-</div>
+- **Node.js 22** (`engines` pins `>=18 <=22`). Use 22, not 24: the `postinstall` step (`electron-builder install-app-deps`) fails on Node 24. CI and the release workflow both pin 22.
+- **FFmpeg binaries** for your OS, placed under `binaries/<os>/` (see [Install](#install)).
+- **Platform build tooling** for the native optional dependencies:
+  - **Windows:** [Build Tools for Visual Studio 2022](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with the "Desktop development with C++" workload, and Python 3.8 on `PATH`.
+  - **macOS:** Xcode Command Line Tools, and Python 3.8 on `PATH`.
+  - **Linux:** X11 and Wayland both work; Wayland capture needs `xdg-desktop-portal` and PipeWire (default on recent GNOME, KDE, and Sway installs).
 
-**DemoThat** is a smart screen recording and editing tool that makes professional video creation effortless. It automatically tracks your mouse movements and clicks, creating smooth cinematic animations that keep viewers focused on what matters. **No manual keyframing needed!**
+The repo ships a `package-lock.json`, so use **npm**.
 
-Perfect for developers, educators, and content creators who want to produce stunning tutorials, demos, and presentations.
+## Install
 
-## 🎥 Demo
+```bash
+git clone https://github.com/getwithashish/DemoThat.git
+cd DemoThat
+npm ci
+```
 
-![Demo Video](docs/assets/demothat-demo.gif)
+`npm ci` runs `postinstall`, which rebuilds native app dependencies and patches Electron's `Info.plist`.
 
----
+FFmpeg is not vendored; download it into `binaries/<os>/`:
 
-## ⭐ Features
+```bash
+# Linux
+wget https://github.com/tamnguyenvan/screenarc-assets/releases/download/v0.0.1/ffmpeg-linux-x64 -O binaries/linux/ffmpeg && chmod +x binaries/linux/ffmpeg
 
-- 🎥 **Flexible Capture**: Record your full screen, a specific window, or a custom area with seamless multi-monitor support.
-- 👤 **Webcam Overlay**: Add a personal touch by including your webcam feed in the recording.
-- 🎬 **Cinematic Mouse Tracking**: Automatically generates smooth pan-and-zoom effects that follow your mouse clicks, keeping the action front and center.
-- 🎨 **Powerful Editor**: A visual timeline to easily trim clips, customize frames, backgrounds (colors, gradients, wallpapers), shadows, and more.
-- 📏 **Instant Aspect Ratios**: Switch between 16:9 (YouTube), 9:16 (Shorts/TikTok), and 1:1 (Instagram) with a single click.
-- 💾 **Preset System**: Save your favorite styles and apply them instantly to future projects for a consistent look.
-- 📤 **High-Quality Export**: Export your masterpiece as an MP4 or GIF with resolutions up to 2K.
+# macOS (Apple Silicon)
+wget https://github.com/tamnguyenvan/screenarc-assets/releases/download/v0.0.1/ffmpeg-darwin-arm64 -O binaries/darwin/ffmpeg-arm64 && chmod +x binaries/darwin/ffmpeg-arm64
 
----
+# macOS (Intel)
+wget https://github.com/tamnguyenvan/screenarc-assets/releases/download/v0.0.1/ffmpeg-darwin-x64 -O binaries/darwin/ffmpeg-x64 && chmod +x binaries/darwin/ffmpeg-x64
 
-## 🚀 Installation
+# Windows
+wget https://github.com/tamnguyenvan/screenarc-assets/releases/download/v0.0.1/ffmpeg.exe -O binaries/windows/ffmpeg.exe
+```
 
-Grab the latest version for your OS from the [**Releases Page**](https://github.com/getwithashish/DemoThat/releases/latest).
+## Run
 
-### 🐧 Linux Instructions
+```bash
+npm run dev       # Vite dev server with HMR and the Electron shell
+```
 
-#### Prerequisites
+## Build
 
-- **X11 and Wayland both work.** On Wayland your desktop asks which screen to share when you start recording. Requires `xdg-desktop-portal` and PipeWire, which are default on Ubuntu 22.10+, Fedora 34+, Debian 13 and any recent GNOME, KDE or Sway install.
-  - Check your session type: `echo $XDG_SESSION_TYPE`
-  - If Wayland gives you trouble, force the X11 path: `DEMOTHAT_OZONE_PLATFORM=x11 ./DemoThat-*-linux-x64.AppImage`
-- **Cursor effects on Wayland** need a desktop that tracks the pointer separately — GNOME and KDE do, and everything works there. Where the desktop cannot (Sway and other wlroots-based sessions), the pointer is recorded into the video and cursor effects are unavailable; DemoThat notices this once and goes straight to that path from then on.
-  - Click effects need one-time read access to your mouse: see the note under Troubleshooting.
-- **Wayland screen recording needs a desktop compositor that can serve frames.** Software-rendered Wayland sessions often cannot share the screen at all — that is the desktop's doing, not DemoThat's, and it affects every recorder. X11 recordings work on any of these machines.
+```bash
+npm run build     # typecheck (tsc) + Vite production build into dist/ and dist-electron/
+npm run dist:linux   # packaged Linux installers (AppImage, deb, rpm, zip)
+npm run dist:win     # packaged Windows installer (NSIS)
+npm run dist:mac     # packaged macOS dmg + zip (universal)
+```
 
-#### Installation Steps
+Packaging runs `tsc`, the Vite build, and then `electron-builder` (configured by the `build` block in `package.json`). The Linux `dist:*` scripts compile the native cursor helper first via `build:helper`. The `publish-*` scripts are for maintainers pushing release assets.
 
-1. **Download** the latest AppImage:
+## Scripts
 
-   ```bash
-   wget https://github.com/getwithashish/DemoThat/releases/latest/download/DemoThat-*-linux-x64.AppImage
-   ```
+| Script                                                      | What it does                                                                                                                            |
+| ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `dev`                                                       | Start Vite + Electron in development with HMR.                                                                                          |
+| `build`                                                     | Clean, typecheck (`tsc`), and run the Vite production build.                                                                            |
+| `clean`                                                     | Remove `dist/` and `dist-electron/`.                                                                                                    |
+| `preview`                                                   | Serve the built renderer with `vite preview`.                                                                                           |
+| `test` / `test:watch`                                       | Run the Vitest suite once / in watch mode.                                                                                              |
+| `lint` / `lint:fix`                                         | ESLint over `ts`/`tsx` (zero warnings) / auto-fix.                                                                                      |
+| `format` / `format:check`                                   | Prettier write / check.                                                                                                                 |
+| `build:helper`                                              | Compile the native cursor helper (`scripts/build-cursor-helper.sh`).                                                                    |
+| `dist`                                                      | Full packaged build for the current platform.                                                                                           |
+| `dist:linux` / `dist:win` / `dist:mac`                      | Packaged builds per platform (`dist:appimage`, `dist:deb`, `dist:rpm`, `dist:zip`, `dist:flatpak`, `dist:mac-arm64` target one format). |
+| `publish-linux-app` / `publish-win-app` / `publish-mac-app` | Packaged build plus upload to the current GitHub release.                                                                               |
+| `contract:check`                                            | Verify the vendored API contract version is pinned and consistent.                                                                      |
+| `contract:types`                                            | Regenerate `shared/api-types.ts` from `contract/openapi.yaml`.                                                                          |
+| `patch:electron-info-plist`                                 | Apply the macOS `Info.plist` patch (also runs in `postinstall`).                                                                        |
+| `postinstall`                                               | Rebuild native deps and patch `Info.plist`.                                                                                             |
 
-2. **Make it executable**:
+## Project structure
 
-   ```bash
-   chmod +x DemoThat-*-linux-x64.AppImage
-   ```
+| Path                                         | Contents                                                                                                        |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `src/`                                       | React renderer: recorder, editor, and renderer pages, Zustand store, UI components.                             |
+| `electron/`                                  | Electron main process, preload bridge, and their unit tests.                                                    |
+| `shared/`                                    | Framework-free TypeScript (captions, fillers, export, pricing, cloud plans) used by both processes, with tests. |
+| `contract/`                                  | Pinned vendored copy of the DemoThat API OpenAPI contract plus generated types.                                 |
+| `scripts/`                                   | Build, contract, and FFmpeg helpers, plus a mock API server.                                                    |
+| `binaries/`                                  | Per-OS FFmpeg and cursor-helper binaries (not committed builds; fetched or compiled).                           |
+| `native/`, `build/`, `resources/`, `public/` | Native helper source, electron-builder resources/icons, macOS entitlements, static assets.                      |
+| `docs/`                                      | Development notes, project structure, and platform plans.                                                       |
 
-3. **Run DemoThat**:
-   - Double-click the file in your file manager, or
-   - Run from terminal:
-     ```bash
-     ./DemoThat-*-linux-x64.AppImage
-     ```
+## Testing
 
-#### Troubleshooting
+```bash
+npm test          # vitest run
+npm run test:watch
+```
 
-- If you get permission errors, ensure the file is executable
-- For AppImage issues, try running with `--no-sandbox` flag
-- **`dlopen(): error loading libfuse.so.2` / "AppImages require FUSE to run"**: some distributions (Ubuntu 22.04+, Debian 13) ship FUSE 3 only, while AppImages need the FUSE 2 runtime. Either install it:
+The Vitest suite (`vitest.config.ts`) covers `electron/**`, `src/**`, and `shared/**`. Tests run in a plain Node environment with `electron` and `electron-log` stubbed, so they exercise the pure logic: caption/filler-word removal, transcript and subtitle handling, export codecs/resolutions/caps, upscale and cloud-job planning, pricing and publish cost, license token handling, and API config. No coverage threshold is configured, so no coverage number is claimed here.
 
-  ```bash
-  sudo apt install libfuse2t64   # Debian 13 / Ubuntu 24.04+
-  sudo apt install libfuse2      # older releases
-  ```
+## Working against a local API
 
-  or run the AppImage without FUSE at all:
+The app reads its API base URL from `DEMOTHAT_API_BASE_URL` and otherwise uses the production host. For local development, a mock server implements the endpoints the app calls (checkout, license activation, cloud jobs, publishing, JWKS) with the same shapes and error codes as the pinned contract:
 
-  ```bash
-  ./DemoThat-*-linux-x64.AppImage --appimage-extract-and-run
-  # or: APPIMAGE_EXTRACT_AND_RUN=1 ./DemoThat-*-linux-x64.AppImage
-  ```
+```bash
+node scripts/mock-api-server.mjs          # listens on :8788 by default
+DEMOTHAT_API_BASE_URL=http://localhost:8788 npm run dev
+```
 
-  The `.deb`, `.rpm` and `.zip` builds do not use FUSE and need nothing extra.
+`DEMOTHAT_FORCE_PRO=1` unlocks Pro features without a key for development. Server-side behaviour is out of scope for this repo; `scripts/mock-api-server.mjs` is the reference for what the app expects.
 
-- **Click effects on Wayland** need read access to your mouse, because Wayland has no portal for button events. Recording works without it; clicks are simply not detected. The one-time setup (a udev rule for pointer devices only — never keyboards) is in [docs/wayland-native-cursor-plan.md](docs/wayland-native-cursor-plan.md).
+## Contributing
 
-### 🪟 Windows Instructions
+1. Fork the repo and create a descriptive branch: `feature/your-feature` or `fix/issue-number`.
+2. Make your change; verify `npm run dev` still works and `npm test` passes.
+3. Commit using [Conventional Commits](https://www.conventionalcommits.org/) (e.g. `feat: add webcam overlay`). Releases are automated from these messages.
+4. Run the gates locally before pushing: `npm run lint`, `npm run format:check`, `npx tsc --noEmit`, `npm test`.
+5. Open a pull request against `main` and fill in the PR template. PRs are squash-merged.
 
-#### Security Notice
+CI (`.github/workflows/checks.yml`) runs on every pull request and push to `main`: contract-version check, ESLint, Prettier check, typecheck, tests, and a diff check that `shared/api-types.ts` is regenerated from the pinned contract. A change that fails any of these cannot merge.
 
-> **🔒 Important:** As a new open-source project, we don't have a code signing certificate yet. You may see security warnings during installation.
->
-> **To proceed safely:**
->
-> - In your browser, click "Keep" or "Keep anyway" when downloading
-> - On the SmartScreen prompt, click "More info" → "Run anyway"
->
-> Our code is [fully open source](https://github.com/getwithashish/DemoThat) for your review.
-
-#### Installation Steps
-
-1. **Download** the latest Windows installer:
-   - Visit our [Releases Page](https://github.com/getwithashish/DemoThat/releases/latest)
-   - Download the `DemoThat-*-Setup.exe` file
-
-2. **Run the installer**:
-   - Locate the downloaded file (usually in your `Downloads` folder)
-   - Double-click to start the installation
-   - Follow the on-screen instructions
-
-### 🍏 macOS Instructions
-
-#### Security Notice
+Commits use the [Conventional Commits](https://www.conventionalcommits.org/) types (`fix`/`perf` → patch, `feat` → minor, `feat!` or `BREAKING CHANGE:` → major; `docs`, `chore`, `refactor`, `test`, `ci`, `style` produce no release). On merge to `main`, `.github/workflows/release.yml` runs semantic-release and, when a release is cut, builds and attaches artifacts for Linux, Windows, and macOS.
 
-> **🔒 Important:** As a new open-source project, we don't have a code signing certificate yet. You'll need to authorize the app to run on your Mac.
->
-> **To proceed safely:**
->
-> 1. After downloading and attempting to open the app, you'll see a security warning
-> 2. Close the warning dialog
-> 3. Open System Settings > Privacy & Security
-> 4. Scroll down to the "Security" section
-> 5. Click "Open Anyway" next to the warning about DemoThat
-> 6. Click "Open" in the confirmation dialog
->
-> Our code is [fully open source](https://github.com/getwithashish/DemoThat) for your review
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
-#### Installation Steps
+## License
 
-1. **Download** the appropriate macOS package for your system:
-   - Visit our [Releases Page](https://github.com/getwithashish/DemoThat/releases/latest)
-   - For Apple Silicon (M1/M2/M3) Macs: Download `DemoThat-*-arm64.dmg`
-   - For Intel Macs: Download `DemoThat-*-x64.dmg`
-
-2. **Install DemoThat**:
-   - Open the downloaded `.dmg` file
-   - Drag the DemoThat app to your Applications folder
-   - Open from Launchpad or Applications folder
-
----
-
-## 🛠️ Tech Stack
-
-- **⚡ Core Framework**: Electron, Vite, TypeScript
-- **💅 Frontend**: React, TailwindCSS
-- **📦 State Management**: Zustand with Immer & Zundo (for undo/redo)
-- **🎥 Backend & Video Processing**: Node.js, FFmpeg
-
----
-
-## 🔧 Development Setup Guide
-
-### Prerequisites
-
-- **Linux:** Wayland and X11 both work. On a Wayland session the app relaunches itself once with `--ozone-platform-hint=wayland` (Electron 31 chooses its backend before the app's code runs, so the flag has to be on the real command line). Nothing extra to install for X11; for Wayland capture you need `xdg-desktop-portal` and PipeWire, as above.
-- **Windows:**
-  1.  Install [Build Tools for Visual Studio 2022](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with the "Desktop development with C++" workload.
-  2.  Install [Python 3.8](https://www.python.org/downloads/release/python-3810/) and add it to your PATH.
-- **macOS:**
-  1. Install [Xcode Command Line Tools](https://developer.apple.com/xcode/resources/)
-  2. Install [Python 3.8](https://www.python.org/downloads/release/python-3810/) and add it to your PATH.
-
-### Setup Steps
-
-1.  **Clone the repo:**
-    ```bash
-    git clone https://github.com/getwithashish/DemoThat.git
-    cd DemoThat
-    ```
-2.  **Install dependencies:**
-    ```bash
-    rm package-lock.json
-    npm install
-    ```
-3.  **Set up FFmpeg:**
-    - Download the appropriate FFmpeg executable from [screenarc-assets](https://github.com/tamnguyenvan/screenarc-assets/releases/tag/v0.0.1) and place it in the `binaries/[os]` directory.
-
-    ```bash
-    # Linux
-    wget https://github.com/tamnguyenvan/screenarc-assets/releases/download/v0.0.1/ffmpeg-linux-x64 -O binaries/linux/ffmpeg
-    chmod +x binaries/linux/ffmpeg
-
-    # macOS (Apple Silicon)
-    wget https://github.com/tamnguyenvan/screenarc-assets/releases/download/v0.0.1/ffmpeg-darwin-arm64 -O binaries/darwin/ffmpeg-arm64
-    chmod +x binaries/darwin/ffmpeg-arm64
-
-    # macOS (Intel)
-    wget https://github.com/tamnguyenvan/screenarc-assets/releases/download/v0.0.1/ffmpeg-darwin-x64 -O binaries/darwin/ffmpeg-x64
-    chmod +x binaries/darwin/ffmpeg-x64
-
-    # Windows
-    wget https://github.com/tamnguyenvan/screenarc-assets/releases/download/v0.0.1/ffmpeg.exe -O binaries/windows/ffmpeg.exe
-    ```
-
-4.  **Run in development mode:**
-    ```bash
-    npm run dev
-    ```
-
-### ☁️ Working on the cloud / Pro work
-
-The Pro licensing, credits and cloud-upscaling work reads its specification from two files in this repo:
-
-- `docs/SHARED_SPEC.md` — **Section 0, the shared spec.** Applies to all three repos (`demothat`, `demothat-api`, `demothat-worker`).
-- `docs/AGENT_PROMPT.md` — the brief for this repo: ground rules, contract, and tasks C1 to C5.
-
-`demothat-api` owns the contract (`contract/openapi.yaml`, `contract/worker-protocol.md` plus JSON Schemas). This repo vendors a pinned copy with a version header. Contract changes are made in the API repo first.
-
-## 💖 Sponsor This Project
-
-DemoThat is free and open source. If it saves you time, please consider [sponsoring the project](https://github.com/sponsors/getwithashish) to support continued development.
-
----
-
-## 🤝 Contributing
-
-A huge thank you to everyone who has contributed to making DemoThat better!
-
-Commits follow the [Conventional Commits](https://www.conventionalcommits.org/) format, because releases are fully automated from them. Every push to `main` is analysed and, when it contains releasable changes, a new [semantic version](https://semver.org/) is published:
-
-| Commit                                                   | Release                   |
-| -------------------------------------------------------- | ------------------------- |
-| `fix: ...`, `perf: ...`                                  | Patch (`1.0.0` → `1.0.1`) |
-| `feat: ...`                                              | Minor (`1.0.0` → `1.1.0`) |
-| `feat!: ...`, or a `BREAKING CHANGE:` footer             | Major (`1.0.0` → `2.0.0`) |
-| `docs:`, `chore:`, `refactor:`, `test:`, `ci:`, `style:` | No release                |
-
-<a href="https://github.com/getwithashish/DemoThat/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=getwithashish/DemoThat" />
-</a>
-
-<br/>
-
----
-
-## 🙏 Acknowledgements
-
-DemoThat is a fork of [ScreenArc](https://github.com/tamnguyenvan/screenarc) by Tam Nguyen, and is modified and maintained by Ashish Sam. Thank you to the original author for releasing it as free software.
-
-DemoThat stands on the shoulders of giants. This project would not be possible without the incredible work of the open-source community. A special thank you to the authors and maintainers of these key libraries & tools that handle low-level system interactions:
-
-- [global-mouse-events](https://github.com/xanderfrangos/global-mouse-events): Mouse event listener on Windows
-- [node-x11](https://github.com/sidorares/node-x11): X11 Node.js binding
-- [Cursorful](https://cursorful.com/): I borrowed the Timeline design idea from them.
-
----
-
-## 📜 License
-
-This project is licensed under the [GPL-3.0 License](LICENSE).
-
-- Copyright (C) 2025 Tam Nguyen (original ScreenArc)
-- Copyright (C) 2026 Ashish Sam (modifications in DemoThat)
-
-DemoThat is a modified version of ScreenArc. The original copyright notices are retained as required by the GPL, and the complete corresponding source for every release is available in this repository.
+[GPL-3.0](LICENSE). DemoThat is a fork of [ScreenArc](https://github.com/tamnguyenvan/screenarc) by Tam Nguyen, modified and maintained by Ashish Sam; original copyright notices are retained.

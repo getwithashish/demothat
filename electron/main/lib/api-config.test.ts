@@ -1,11 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import {
-  CHECKOUT_HOST_ALLOWLIST,
-  DEFAULT_API_BASE_URL,
-  LICENSE_TOKEN_PUBLIC_KEY_PEM,
-  getApiBaseUrl,
-  isAllowedCheckoutUrl,
-} from './api-config'
+import { CHECKOUT_HOST_ALLOWLIST, DEFAULT_API_BASE_URL, getApiBaseUrl, isAllowedCheckoutUrl } from './api-config'
 
 describe('getApiBaseUrl', () => {
   afterEach(() => {
@@ -51,12 +45,5 @@ describe('isAllowedCheckoutUrl', () => {
     expect(isAllowedCheckoutUrl('')).toBe(false)
     expect(isAllowedCheckoutUrl(null)).toBe(false)
     expect(isAllowedCheckoutUrl(42)).toBe(false)
-  })
-})
-
-describe('embedded license public key', () => {
-  it('is an SPKI Ed25519 public key', () => {
-    expect(LICENSE_TOKEN_PUBLIC_KEY_PEM).toContain('-----BEGIN PUBLIC KEY-----')
-    expect(LICENSE_TOKEN_PUBLIC_KEY_PEM).toContain('-----END PUBLIC KEY-----')
   })
 })

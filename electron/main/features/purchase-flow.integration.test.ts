@@ -3,7 +3,7 @@
 //
 // This is the whole point of the flow, so it is exercised end to end — checkout
 // URL validation, the poll, automatic activation, and the license token the mock
-// server signs being verifiable with its published public key.
+// server signs being verifiable with the key set it publishes (.well-known/jwks.json).
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -27,7 +27,7 @@ vi.mock('node-machine-id', () => ({ machineIdSync: () => 'MOCK-MACHINE-ID' }))
 import { getEntitlement } from './license-client'
 import { getPendingPurchase, pollPurchase, startCheckout } from './purchase-flow'
 
-type MockServer = { url: string; close: () => Promise<void>; publicKeyPem: string }
+type MockServer = { url: string; close: () => Promise<void> }
 
 async function startMock(options: Record<string, unknown> = {}): Promise<MockServer> {
   const module = (await import(new URL('../../../scripts/mock-api-server.mjs', import.meta.url).href)) as unknown as {
@@ -41,7 +41,6 @@ let server: MockServer
 async function setupServer(options: Record<string, unknown> = {}): Promise<void> {
   server = await startMock(options)
   process.env.DEMOTHAT_API_BASE_URL = server.url
-  process.env.DEMOTHAT_LICENSE_PUBLIC_KEY = server.publicKeyPem
 }
 
 beforeEach(() => {
@@ -50,7 +49,6 @@ beforeEach(() => {
 
 afterEach(async () => {
   delete process.env.DEMOTHAT_API_BASE_URL
-  delete process.env.DEMOTHAT_LICENSE_PUBLIC_KEY
   delete process.env.DEMOTHAT_FORCE_PRO
   await server?.close()
 })
@@ -69,7 +67,7 @@ describe('first purchase', () => {
     expect(outcome).toEqual({ kind: 'succeeded', balance: 1800, firstPurchase: true })
 
     // Activated automatically: the key the API returned once is stored, and the
-    // token it signed verifies against the server's published public key.
+    // token it signed verifies against the key set the server publishes.
     expect(secrets.data.get('licenseKey')).toBe('DODO-TEST-0001-0002')
     expect(await getEntitlement()).toEqual({ pro: true, credits: 1800 })
     // A settled purchase leaves nothing behind to resume.

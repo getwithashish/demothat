@@ -17,7 +17,7 @@
 //   GET    /v1/jobs/:id                  status, progress, charge/refund
 //   DELETE /v1/jobs/:id                  cancel, applying the settlement rules
 //   GET    /download/:jobId              the "upscaled" result
-//   GET    /dev/public-key               the EdDSA public key it signs with
+//   GET    /.well-known/jwks.json        the EdDSA key set it signs tokens with
 //
 // The upscale itself is a stand-in (a short simulated GPU stage); everything
 // around it — reservation, settlement, cancel, exactly-once charging — follows
@@ -130,7 +130,12 @@ export async function createMockApiServer(options = {}) {
   const config = { ...DEFAULTS, ...options }
 
   const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519')
-  const publicPem = publicKey.export({ type: 'spki', format: 'pem' }).toString()
+  // The key set the app fetches over the network. The API publishes its signing
+  // key at `/.well-known/jwks.json`, so the mock does the same — derived from the
+  // very keypair it mints licence tokens with, rather than a hand-copied PEM.
+  const publicJwk = publicKey.export({ format: 'jwk' })
+  const keyId = crypto.createHash('sha256').update(JSON.stringify(publicJwk)).digest('base64url').slice(0, 16)
+  const keySet = { keys: [{ ...publicJwk, alg: 'EdDSA', use: 'sig', kid: keyId }] }
 
   const state = {
     credits: config.credits,
@@ -410,9 +415,8 @@ export async function createMockApiServer(options = {}) {
           },
         })
       }
-      if (req.method === 'GET' && url.pathname === '/dev/public-key') {
-        res.writeHead(200, { 'Content-Type': 'text/plain' })
-        return res.end(publicPem)
+      if (req.method === 'GET' && url.pathname === '/.well-known/jwks.json') {
+        return json(res, 200, keySet)
       }
 
       if (req.method === 'GET' && url.pathname === '/v1/products') {
@@ -907,7 +911,7 @@ export async function createMockApiServer(options = {}) {
     url: baseUrl(),
     state,
     config,
-    publicKeyPem: publicPem,
+    keySet,
     close: () => new Promise((resolve) => server.close(() => resolve())),
   }
 }
@@ -917,5 +921,6 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const server = await createMockApiServer()
   console.log(`mock demothat-api listening on ${server.url}`)
   console.log(`scenario: ${server.config.scenario} · credits: ${server.config.credits} · fail: ${server.config.fail}`)
-  console.log('point the app at it with DEMOTHAT_API_BASE_URL and DEMOTHAT_LICENSE_PUBLIC_KEY')
+  console.log(`signing keys at ${server.url}/.well-known/jwks.json`)
+  console.log('point the app at it with DEMOTHAT_API_BASE_URL')
 }

@@ -96,8 +96,8 @@ export interface CreditPack {
  * purchased can buy; the rest are top-ups, and the dialog keeps them out of sight until
  * the copy holds Pro, because the API refuses a top-up without a licence.
  *
- * These ids are the test-mode ones. Swap them for the live ids when a production build
- * is cut — the same swap the site's `pricing.json` needs.
+ * These are the live-mode Dodo product ids, matching what the production API serves and
+ * what the site's `pricing.json` carries. A test-mode id here would be refused at checkout.
  *
  * Packs only: the owner has dropped the design's custom-amount field and slider,
  * because the contract prices a purchase from the server-side product table and
@@ -105,22 +105,22 @@ export interface CreditPack {
  */
 export const CREDIT_PACKS: CreditPack[] = [
   {
-    productId: 'pdt_0NqZNIRjOylEVB1LvtFwQ',
+    productId: 'pdt_0Nqa8eOAsDed5uTOTi7lE',
     label: 'Pro',
     credits: 1800,
     priceUsd: 3,
     kind: 'first_purchase',
   },
-  { productId: 'pdt_0NqZNITpJgQCu833PuREi', label: 'Top-up', credits: 3000, priceUsd: 5, kind: 'topup' },
+  { productId: 'pdt_0Nqa8eI0bMOpjzqn9klHw', label: 'Top-up', credits: 3000, priceUsd: 5, kind: 'topup' },
   {
-    productId: 'pdt_0NqZNIWCdJaaNRu3L6Osg',
+    productId: 'pdt_0Nqa8eD69YYI2PaW9FWU2',
     label: 'Top-up',
     credits: 30000,
     priceUsd: 50,
     kind: 'topup',
   },
   {
-    productId: 'pdt_0NqZNIYCYXpjXXlK1fDN1',
+    productId: 'pdt_0Nqa8e94rTj5sXLFbNZmo',
     label: 'Top-up',
     credits: 300000,
     priceUsd: 500,

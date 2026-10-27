@@ -11,12 +11,12 @@
 
 import { createHash } from 'node:crypto'
 import os from 'node:os'
-import { compactVerify, importSPKI } from 'jose'
 import { machineIdSync } from 'node-machine-id'
 import log from 'electron-log/main'
 import type { DeviceView, LicenseSummary } from '../../../shared/license'
 import { ApiError, apiRequest } from '../lib/api-client'
-import { DEVICE_ID_SALT, LICENSE_TOKEN_ALGORITHM, getApiBaseUrl, getLicensePublicKeyPem } from '../lib/api-config'
+import { DEVICE_ID_SALT, getApiBaseUrl } from '../lib/api-config'
+import { licenseKeys, LicenseKeyResolver } from '../lib/license-keys'
 import { clearSecrets, readSecret, writeSecret } from '../lib/secure-store'
 
 const SECRETS_NAME = 'license'
@@ -114,23 +114,27 @@ function parseClaims(payload: Uint8Array): LicenseTokenClaims | null {
 }
 
 /**
- * Verifies the signature of a license token with the embedded public key and
+ * Verifies the signature of a license token against the keys the API publishes, and
  * returns its claims, or null when the token is not trustworthy.
  *
  * The signature is checked at the JWS level so expiry is judged by the caller
  * (`isTokenExpired`): an expired-but-authentic token still proves the license
  * existed, it just no longer grants offline Pro.
+ *
+ * The resolver is a parameter so tests can supply their own keys; production uses the
+ * process-wide one, which fetches from the API and caches the result.
  */
-export async function verifyLicenseToken(token: string, publicKeyPem?: string): Promise<LicenseTokenClaims | null> {
+export async function verifyLicenseToken(
+  token: string,
+  resolver: LicenseKeyResolver = licenseKeys,
+): Promise<LicenseTokenClaims | null> {
   if (typeof token !== 'string' || token.trim().length === 0) return null
-  try {
-    const key = await importSPKI(publicKeyPem ?? getLicensePublicKeyPem(), LICENSE_TOKEN_ALGORITHM)
-    const { payload } = await compactVerify(token, key, { algorithms: [LICENSE_TOKEN_ALGORITHM] })
-    return parseClaims(payload)
-  } catch (error) {
-    log.warn(`[LicenseClient] License token rejected: ${(error as Error).message}`)
+  const payload = await resolver.verifySignature(token)
+  if (payload === null) {
+    log.warn('[LicenseClient] License token rejected: no published key verified it')
     return null
   }
+  return parseClaims(payload)
 }
 
 // --- Stored credentials -------------------------------------------------------

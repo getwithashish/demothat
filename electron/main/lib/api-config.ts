@@ -1,10 +1,12 @@
 // Configuration constants for the demothat-api backend.
 //
 // This is the single place the app learns *where* the backend is and *which*
-// hosts it may open. Nothing here is a server secret: the API base URL, the
-// checkout host allowlist and the EdDSA public key are all public values that
-// ship inside the bundle. Server secrets (Dodo API key, worker secret, JWT
-// signing key) live only in the API repo's environment and never reach the app.
+// hosts it may open. Nothing here is a server secret: the API base URL and the
+// checkout host allowlist are public values that ship inside the bundle, and the
+// key tokens are verified against is not here at all — the app fetches it from the
+// API it is pointed at (lib/license-keys.ts). Server secrets (Dodo API key, worker
+// secret, JWT signing key) live only in the API repo's environment and never reach
+// the app.
 
 /** Production API host. Overridable for local development. */
 export const DEFAULT_API_BASE_URL = 'https://api.demothat.yahodu.in'
@@ -47,35 +49,19 @@ export function isAllowedCheckoutUrl(raw: unknown): boolean {
 }
 
 /**
- * EdDSA (Ed25519) public key for the license token issued by
- * `POST /v1/license/activate`. The app verifies tokens locally so Pro keeps
- * working offline until the token expires.
+ * EdDSA (Ed25519) is the algorithm the API signs license tokens with. The key itself
+ * is no longer part of this bundle: the app fetches it from
+ * `GET /.well-known/jwks.json` on the API it is configured with (lib/license-keys.ts),
+ * so a build carries no key for one particular environment and a rotation needs no
+ * release.
  *
- * TODO(owner): replace this development key with the production public key
- * before release. Rotating it only requires re-vendoring this constant; the
- * private key stays in the API deployment.
+ * Pinning the algorithm still matters — it blocks algorithm confusion, where a token
+ * arrives claiming a weaker `alg` than the key actually is.
  */
-export const LICENSE_TOKEN_PUBLIC_KEY_PEM = `-----BEGIN PUBLIC KEY-----
-MCowBQYDK2VwAyEAOqdPcXqffhSb77hFYjZ6qg4iML1uQ/6SyQG/6CH2na0=
------END PUBLIC KEY-----`
-
-/**
- * The key the app verifies tokens with: the embedded one, unless a development
- * override is set. `DEMOTHAT_LICENSE_PUBLIC_KEY` exists so a dev build can point
- * at the mock server's throwaway signing key without editing this file; it is
- * never set in a release build.
- */
-export function getLicensePublicKeyPem(): string {
-  const override = process.env.DEMOTHAT_LICENSE_PUBLIC_KEY
-  if (typeof override === 'string' && override.includes('BEGIN PUBLIC KEY')) return override
-  return LICENSE_TOKEN_PUBLIC_KEY_PEM
-}
+export const LICENSE_TOKEN_ALGORITHM = 'EdDSA'
 
 /**
  * Salt mixed into the machine identifier before hashing. The raw machine id is
  * never sent anywhere; only `sha256(salt + ":" + machineId)` leaves the app.
  */
 export const DEVICE_ID_SALT = 'demothat-device-v1'
-
-/** License tokens are EdDSA; pinning the algorithm blocks algorithm confusion. */
-export const LICENSE_TOKEN_ALGORITHM = 'EdDSA'

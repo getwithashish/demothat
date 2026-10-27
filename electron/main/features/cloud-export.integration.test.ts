@@ -64,7 +64,6 @@ import { runCloudExport } from './cloud-export'
 type MockServer = {
   url: string
   close: () => Promise<void>
-  publicKeyPem: string
   state: { credits: number; jobs: Map<string, { charge?: number; refund?: number; cost: number }> }
 }
 
@@ -82,7 +81,6 @@ let intermediatePath = ''
 async function setupServer(options: Record<string, unknown> = {}): Promise<void> {
   server = await startMock(options)
   process.env.DEMOTHAT_API_BASE_URL = server.url
-  process.env.DEMOTHAT_LICENSE_PUBLIC_KEY = server.publicKeyPem
   secrets.data.set('token', 'mock-token')
 }
 
@@ -103,7 +101,6 @@ beforeEach(() => {
 
 afterEach(async () => {
   delete process.env.DEMOTHAT_API_BASE_URL
-  delete process.env.DEMOTHAT_LICENSE_PUBLIC_KEY
   await server?.close()
   if (workDir) await fsp.rm(workDir, { recursive: true, force: true })
   workDir = ''

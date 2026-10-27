@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { SignJWT, exportSPKI, generateKeyPair } from 'jose'
+import { SignJWT, exportJWK, generateKeyPair, type JWK } from 'jose'
 
 // The license client reaches for Electron-backed modules at import time; stub
 // them so the pure logic can run under plain Node.
@@ -37,11 +37,47 @@ import {
   verifyLicenseToken,
 } from './license-client'
 import { DEVICE_ID_SALT } from '../lib/api-config'
+import { LicenseKeyResolver } from '../lib/license-keys'
 
 /** A throwaway Ed25519 keypair, so no real key material is ever in the repo. */
 async function keypair() {
   const { publicKey, privateKey } = await generateKeyPair('EdDSA', { crv: 'Ed25519' })
-  return { privateKey, publicPem: await exportSPKI(publicKey) }
+  return { privateKey, publicJwk: (await exportJWK(publicKey)) as JWK }
+}
+
+/** A key set response, as the API serves it at `/.well-known/jwks.json`. */
+function keySetResponse(publicJwk: JWK): Response {
+  return new Response(JSON.stringify({ keys: [{ ...publicJwk, alg: 'EdDSA', use: 'sig' }] }), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  })
+}
+
+/** A resolver that serves `publicJwk` as if it had been fetched from the API. */
+function resolverFor(publicJwk: JWK): LicenseKeyResolver {
+  return new LicenseKeyResolver({
+    apiBaseUrl: () => 'https://api.test',
+    fetchImpl: (async () => keySetResponse(publicJwk)) as unknown as typeof fetch,
+    readCache: () => null,
+    writeCache: () => {},
+  })
+}
+
+let apiSeq = 0
+
+/**
+ * Points the app at a fresh (stubbed) API whose published key set is `publicJwk`,
+ * so `getEntitlement` — which uses the process-wide resolver — verifies against it.
+ * A distinct URL per call keeps the resolver's per-API memory cache from leaking
+ * one test's keys into the next.
+ */
+function stubPublishedKeys(publicJwk: JWK): void {
+  process.env.DEMOTHAT_API_BASE_URL = `https://unit.test/${++apiSeq}`
+  vi.stubGlobal('fetch', async (input: unknown) => {
+    const url = String(input)
+    if (url.endsWith('/.well-known/jwks.json')) return keySetResponse(publicJwk)
+    return new Response('{}', { status: 404 })
+  })
 }
 
 async function signToken(privateKey: CryptoKey, claims: Record<string, unknown>): Promise<string> {
@@ -85,37 +121,37 @@ describe('isTokenExpired', () => {
 })
 
 describe('verifyLicenseToken', () => {
-  it('accepts a token signed by the embedded key', async () => {
-    const { privateKey, publicPem } = await keypair()
+  it('accepts a token signed by the published key', async () => {
+    const { privateKey, publicJwk } = await keypair()
     const token = await signToken(privateKey, validClaims)
-    expect(await verifyLicenseToken(token, publicPem)).toMatchObject({ plan: 'pro', balance: 1800 })
+    expect(await verifyLicenseToken(token, resolverFor(publicJwk))).toMatchObject({ plan: 'pro', balance: 1800 })
   })
 
   it('rejects a token signed by another key', async () => {
     const a = await keypair()
     const b = await keypair()
     const token = await signToken(a.privateKey, validClaims)
-    expect(await verifyLicenseToken(token, b.publicPem)).toBeNull()
+    expect(await verifyLicenseToken(token, resolverFor(b.publicJwk))).toBeNull()
   })
 
   it('rejects a tampered payload', async () => {
-    const { privateKey, publicPem } = await keypair()
+    const { privateKey, publicJwk } = await keypair()
     const token = await signToken(privateKey, validClaims)
     const [header, , signature] = token.split('.')
     const forged = Buffer.from(JSON.stringify({ ...validClaims, balance: 999999 })).toString('base64url')
-    expect(await verifyLicenseToken(`${header}.${forged}.${signature}`, publicPem)).toBeNull()
+    expect(await verifyLicenseToken(`${header}.${forged}.${signature}`, resolverFor(publicJwk))).toBeNull()
   })
 
   it('rejects a token that is not a JWS', async () => {
-    const { publicPem } = await keypair()
-    expect(await verifyLicenseToken('not-a-token', publicPem)).toBeNull()
-    expect(await verifyLicenseToken('', publicPem)).toBeNull()
+    const { publicJwk } = await keypair()
+    expect(await verifyLicenseToken('not-a-token', resolverFor(publicJwk))).toBeNull()
+    expect(await verifyLicenseToken('', resolverFor(publicJwk))).toBeNull()
   })
 
   it('returns claims for an authentic but expired token (the caller decides)', async () => {
-    const { privateKey, publicPem } = await keypair()
+    const { privateKey, publicJwk } = await keypair()
     const token = await signToken(privateKey, { ...validClaims, exp: Math.floor(Date.now() / 1000) - 10 })
-    const claims = await verifyLicenseToken(token, publicPem)
+    const claims = await verifyLicenseToken(token, resolverFor(publicJwk))
     expect(claims).not.toBeNull()
     expect(isTokenExpired(claims!)).toBe(true)
   })
@@ -125,14 +161,14 @@ describe('getEntitlement', () => {
   beforeEach(() => {
     secrets.data.clear()
     delete process.env.DEMOTHAT_FORCE_PRO
-    delete process.env.DEMOTHAT_LICENSE_PUBLIC_KEY
     machine.throw = false
     machine.id = 'RAW-MACHINE-ID'
   })
 
   afterEach(() => {
     delete process.env.DEMOTHAT_FORCE_PRO
-    delete process.env.DEMOTHAT_LICENSE_PUBLIC_KEY
+    delete process.env.DEMOTHAT_API_BASE_URL
+    vi.unstubAllGlobals()
   })
 
   it('is not Pro without a stored token', async () => {
@@ -140,23 +176,25 @@ describe('getEntitlement', () => {
   })
 
   it('is Pro with a live token, reporting the token balance', async () => {
-    // Development override stands in for the production public key so the test
-    // can sign with a throwaway keypair (no key material lives in the repo).
-    const { privateKey, publicPem } = await keypair()
-    process.env.DEMOTHAT_LICENSE_PUBLIC_KEY = publicPem
+    // The token is signed with a throwaway keypair and verified against a stubbed
+    // API that publishes its public half — as production fetches the real key set.
+    const { privateKey, publicJwk } = await keypair()
+    stubPublishedKeys(publicJwk)
     secrets.data.set('token', await signToken(privateKey, validClaims))
     expect(await getEntitlement()).toEqual({ pro: true, credits: 1800 })
   })
 
   it('is not Pro when the stored token is signed by an untrusted key', async () => {
-    const { privateKey } = await keypair()
-    secrets.data.set('token', await signToken(privateKey, validClaims))
+    const untrusted = await keypair()
+    const trusted = await keypair()
+    stubPublishedKeys(trusted.publicJwk)
+    secrets.data.set('token', await signToken(untrusted.privateKey, validClaims))
     expect(await getEntitlement()).toEqual({ pro: false, credits: 0 })
   })
 
   it('is not Pro once the stored token has expired', async () => {
-    const { privateKey, publicPem } = await keypair()
-    process.env.DEMOTHAT_LICENSE_PUBLIC_KEY = publicPem
+    const { privateKey, publicJwk } = await keypair()
+    stubPublishedKeys(publicJwk)
     secrets.data.set('token', await signToken(privateKey, { ...validClaims, exp: Math.floor(Date.now() / 1000) - 10 }))
     expect(await getEntitlement()).toEqual({ pro: false, credits: 0 })
   })

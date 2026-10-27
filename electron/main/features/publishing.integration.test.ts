@@ -51,7 +51,6 @@ import { clearCapabilitiesCache } from './cloud-client'
 type MockServer = {
   url: string
   close: () => Promise<void>
-  publicKeyPem: string
   state: { credits: number; publications: Map<string, unknown>; publicationEvents: unknown[] }
 }
 
@@ -84,7 +83,6 @@ beforeEach(async () => {
 
 afterEach(async () => {
   delete process.env.DEMOTHAT_API_BASE_URL
-  delete process.env.DEMOTHAT_LICENSE_PUBLIC_KEY
   await server?.close()
   if (workDir) await fsp.rm(workDir, { recursive: true, force: true })
   workDir = ''
@@ -93,7 +91,6 @@ afterEach(async () => {
 async function setupServer(options: Record<string, unknown> = {}): Promise<void> {
   server = await startMock(options)
   process.env.DEMOTHAT_API_BASE_URL = server.url
-  process.env.DEMOTHAT_LICENSE_PUBLIC_KEY = server.publicKeyPem
   secrets.data.set('token', 'mock-token')
 }
 

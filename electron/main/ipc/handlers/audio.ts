@@ -9,6 +9,7 @@ import { ipcMain, type IpcMainInvokeEvent } from 'electron'
 import log from 'electron-log/main'
 import { extractAudioTracks } from '../../features/audio-track-extract'
 import type { AudioTrack } from '../../../../shared/audio-tracks'
+import { mediaUrl } from '../../../../shared/media-url'
 
 export interface ExtractTracksRequest {
   /** The recording to take the tracks out of. */
@@ -46,7 +47,7 @@ export async function handleExtractAudioTracks(
         index: track.index,
         // Encoded the way the renderer builds its own `media://` URLs — a path with
         // a space or a `#` in it would otherwise not resolve.
-        url: `media://${encodeURI(track.filePath).replace(/#/g, '%23').replace(/\?/g, '%3F')}`,
+        url: mediaUrl(track.filePath),
       })),
     }
   } catch (error) {

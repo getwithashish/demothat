@@ -18,8 +18,7 @@ import { cn } from '../../lib/utils'
 import type { VisualEffectRegion } from '../../types'
 import { usePreviewAudioMixer } from '../../hooks/usePreviewAudioMixer'
 import { mapSourceTimeToExportTime } from '../../lib/utils'
-
-const mediaUrl = (filePath: string) => `media://${encodeURI(filePath).replace(/#/g, '%23').replace(/\?/g, '%3F')}`
+import { mediaUrl } from '../../../shared/media-url'
 
 export const Preview = memo(
   ({
@@ -621,6 +620,13 @@ export const Preview = memo(
           onPlay={() => setPlaying(true)}
           onPause={() => setPlaying(false)}
           onEnded={() => setPlaying(false)}
+          // Belt-and-suspenders: draw once the first frame is actually decodable,
+          // even if a metadata/size change never re-triggered the render effect.
+          onCanPlay={() => renderCanvas()}
+          onError={(event) => {
+            const mediaError = event.currentTarget.error
+            console.error('[Preview] media element failed to load:', mediaError)
+          }}
           style={{ display: 'none' }}
         />
         {webcamVideoUrl && (

@@ -34,6 +34,18 @@ import '../index.css'
 /** Transparent margin kept around the dock inside the recorder window. */
 const DOCK_MARGIN = 24
 
+/**
+ * Extra window height below the dock reserved for dropdown popovers. The device
+ * Selects render in a portal, so their lists open OUTSIDE the dock; without this
+ * reserve the native window clips them to the first item. The window is
+ * transparent and frameless, so the reserve is invisible until a menu opens.
+ *
+ * Sized for Radix's `max-h-96` (384px) list: popover top sits just under the
+ * trigger (~75px into the window), so 420 leaves every possible list fully
+ * visible. The main process still clamps to the work area.
+ */
+const DROPDOWN_RESERVE = 420
+
 const LINUX_SCALES = [
   { value: 2, label: '2x' },
   { value: 1.5, label: '1.5x' },
@@ -317,7 +329,8 @@ export function RecorderPage() {
 
     const applySize = () => {
       const width = Math.ceil(element.offsetWidth) + DOCK_MARGIN * 2
-      const height = Math.ceil(element.offsetHeight) + DOCK_MARGIN * 2
+      // The dropdown popovers need room below the dock (see DROPDOWN_RESERVE).
+      const height = Math.ceil(element.offsetHeight) + DOCK_MARGIN * 2 + DROPDOWN_RESERVE
       if (width === lastSizeRef.current.width && height === lastSizeRef.current.height) return
       lastSizeRef.current = { width, height }
       window.electronAPI?.setRecorderWindowSize?.({ width, height })

@@ -10,6 +10,7 @@ export const initialPurchaseState: PurchaseState = {
   buyCreditsOpen: false,
   buyCreditsShortfall: null,
   waitingForPayment: false,
+  checkoutUserInitiated: false,
   checkoutUrl: null,
   purchaseError: null,
   creditsAddedChip: null,
@@ -51,6 +52,7 @@ export const createPurchaseSlice: Slice<PurchaseState, PurchaseActions> = (set) 
       set((state) => {
         state.buyCreditsOpen = false
         state.waitingForPayment = true
+        state.checkoutUserInitiated = true
         state.checkoutUrl = result.checkoutUrl
         state.purchaseError = null
       })
@@ -67,6 +69,7 @@ export const createPurchaseSlice: Slice<PurchaseState, PurchaseActions> = (set) 
     bridge()?.cancelCheckout?.()
     set((state) => {
       state.waitingForPayment = false
+      state.checkoutUserInitiated = false
       state.purchaseError = null
     })
   },

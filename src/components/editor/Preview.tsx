@@ -93,7 +93,6 @@ export const Preview = memo(
     const webcamVideoRef = useRef<HTMLVideoElement>(null)
     const clipVideoRefs = useRef<Map<string, HTMLVideoElement>>(new Map())
     const animationFrameId = useRef<number>()
-    const [controlBarWidth, setControlBarWidth] = useState(0)
     const [effectOverlayBounds, setEffectOverlayBounds] = useState({ left: 0, top: 0, width: 0, height: 0 })
     const visualEffects = useEditorStore((state) => state.visualEffects)
     // Drives the "Mask" chip: true while an effect covers the playhead.
@@ -158,23 +157,6 @@ export const Preview = memo(
       }
     }, [isPreviewFullScreen])
     // --- End of Changes for Fullscreen Controls ---
-
-    useEffect(() => {
-      const canvas = canvasRef.current
-      if (!canvas) return
-      const resizeObserver = new ResizeObserver((entries) => {
-        if (entries[0]) {
-          const newWidth = entries[0].contentRect.width
-          if (newWidth > 0) {
-            setControlBarWidth(newWidth)
-          }
-        }
-      })
-      resizeObserver.observe(canvas)
-      return () => {
-        resizeObserver.disconnect()
-      }
-    }, [canvasDimensions])
 
     // Keep the interaction overlay aligned to the already-sized canvas. The canvas
     // dimensions and aspect-ratio styling are deliberately left untouched.
@@ -665,12 +647,15 @@ export const Preview = memo(
             )}
             style={{ maxWidth: isPreviewFullScreen ? 'min(90%, 800px)' : '100%' }}
           >
-            {/* Transport (DESIGN_SPEC §5): play circle, time, progress track, duration. */}
+            {/* Transport (DESIGN_SPEC §5): play circle, time, progress track, duration.
+                Spans the full preview area (not just the canvas) so the seek track
+                has generous room on both sides. */}
             <div
               className="mx-auto flex max-w-full items-center gap-3 rounded-pv border border-line bg-panel px-3 py-2"
               style={{
-                width: isPreviewFullScreen ? 'auto' : controlBarWidth,
-                minWidth: isPreviewFullScreen ? 'auto' : 420,
+                width: '100%',
+                minWidth: isPreviewFullScreen ? 'auto' : 560,
+                maxWidth: isPreviewFullScreen ? 'auto' : 1080,
               }}
             >
               <Button

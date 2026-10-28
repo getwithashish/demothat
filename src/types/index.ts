@@ -605,6 +605,12 @@ export interface PurchaseState {
   buyCreditsShortfall: number | null
   /** Waiting-for-payment dialog. */
   waitingForPayment: boolean
+  /**
+   * True only while a checkout the USER just started is being watched. Gates the
+   * pending event so a purchase carried over from a previous session settles
+   * silently instead of popping the waiting dialog on every editor window.
+   */
+  checkoutUserInitiated: boolean
   /** The allow-listed checkout URL, offered as "Copy link". */
   checkoutUrl: string | null
   /** Failure text shown inside the waiting dialog. */

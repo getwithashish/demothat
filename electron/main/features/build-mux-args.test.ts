@@ -131,6 +131,31 @@ describe('buildMuxArgs', () => {
     // No bash-style quoting in args
     args.forEach((a) => expect(a).not.toMatch(/^".*"$/))
   })
+
+  test('apad mux is bounded with an explicit -t when the duration is known', () => {
+    const args = buildMuxArgs({
+      screenInput: SCREEN,
+      systemAudioInput: SYS,
+      output: OUT,
+      hasMicAudio: false,
+      durationSec: 7.42,
+    })
+    const tIndex = args.indexOf('-t')
+    expect(tIndex).toBeGreaterThan(-1)
+    expect(args[tIndex + 1]).toBe('7.42')
+    expect(tIndex).toBeLessThan(args.indexOf(OUT))
+  })
+
+  test('dropped when the duration is not known', () => {
+    const args = buildMuxArgs({
+      screenInput: SCREEN,
+      systemAudioInput: SYS,
+      output: OUT,
+      hasMicAudio: false,
+      durationSec: null,
+    })
+    expect(args).not.toContain('-t')
+  })
 })
 
 describe('buildMacMuxArgs', () => {
@@ -307,5 +332,31 @@ describe('buildMacMuxArgs', () => {
     expect(args).toContain('/tmp/with space/mic.m4a')
     expect(args).toContain('/tmp/with space/out.mp4')
     args.forEach((a) => expect(a).not.toMatch(/^".*"$/))
+  })
+
+  test('apad mux is bounded with an explicit -t when the duration is known', () => {
+    const args = buildMacMuxArgs({
+      screenWebmInput: WEBM,
+      micAudioInput: MIC,
+      output: OUT,
+      webmHasSystemAudio: true,
+      durationSec: 8,
+    })
+    const tIndex = args.indexOf('-t')
+    expect(tIndex).toBeGreaterThan(-1)
+    expect(args[tIndex + 1]).toBe('8')
+    // The bound goes before the output path.
+    expect(args.indexOf('8')).toBeLessThan(args.indexOf(OUT))
+  })
+
+  test('dropped when the webm duration is unknown (banner says N/A)', () => {
+    const args = buildMacMuxArgs({
+      screenWebmInput: WEBM,
+      micAudioInput: MIC,
+      output: OUT,
+      webmHasSystemAudio: true,
+      durationSec: null,
+    })
+    expect(args).not.toContain('-t')
   })
 })

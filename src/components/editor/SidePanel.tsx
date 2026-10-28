@@ -195,44 +195,50 @@ export function SidePanel() {
     <div className="flex h-full flex-col bg-panel">
       {/* Tab strip (replaces the 64px icon rail). It scrolls horizontally
           (trackpad / shift+wheel) when the inspector is narrow — the scrollbar
-          is hidden so the strip stays clean; `min-w-max` keeps every tab whole
-          instead of squeezing them. */}
-      <div
-        role="tablist"
-        aria-label="Inspector sections"
-        className="no-scrollbar flex shrink-0 items-stretch gap-0 overflow-x-auto border-b border-line px-2.5"
-      >
-        {TABS.map((tab, index) => {
-          const disabled = isTabDisabled(tab.id)
-          const active = activeSidePanelTab === tab.id
-          return (
-            <button
-              key={tab.id}
-              ref={(el) => {
-                tabRefs.current[index] = el
-              }}
-              type="button"
-              role="tab"
-              id={`inspector-tab-${tab.id}`}
-              aria-controls={`inspector-panel-${tab.id}`}
-              aria-selected={active}
-              aria-label={tab.label}
-              tabIndex={active ? 0 : -1}
-              disabled={disabled}
-              onClick={() => setActiveSidePanelTab(tab.id)}
-              onKeyDown={(event) => handleTabKeyDown(event, index)}
-              className={cn(
-                'shrink-0 whitespace-nowrap border-b-2 border-transparent px-2 py-3 text-ui transition-colors',
-                '-mb-px',
-                active ? 'border-accent text-fg' : 'text-muted hover:text-fg',
-                disabled && 'cursor-not-allowed opacity-45 hover:text-muted',
-                'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
-              )}
-            >
-              {tab.label}
-            </button>
-          )
-        })}
+          is hidden and the strip has no vertical scroll. The hairline lives on
+          the WRAPPER (not the scroll box), so the scroll box's client height is
+          exactly the tab height and no vertical scrolling exists. */}
+      <div className="shrink-0 border-b border-line">
+        <div
+          role="tablist"
+          aria-label="Inspector sections"
+          className="no-scrollbar flex items-stretch gap-0 overflow-x-auto overflow-y-hidden px-2.5"
+        >
+          {TABS.map((tab, index) => {
+            const disabled = isTabDisabled(tab.id)
+            const active = activeSidePanelTab === tab.id
+            return (
+              <button
+                key={tab.id}
+                ref={(el) => {
+                  tabRefs.current[index] = el
+                }}
+                type="button"
+                role="tab"
+                id={`inspector-tab-${tab.id}`}
+                aria-controls={`inspector-panel-${tab.id}`}
+                aria-selected={active}
+                aria-label={tab.label}
+                tabIndex={active ? 0 : -1}
+                disabled={disabled}
+                onClick={() => setActiveSidePanelTab(tab.id)}
+                onKeyDown={(event) => handleTabKeyDown(event, index)}
+                className={cn(
+                  // py-2 (8px, per the DESIGN_SPEC "12px 8px padding" for text
+                  // tabs). No -mb-px: the hairline is on the wrapper now, so the
+                  // scroll box's client height equals the tab height and the
+                  // strip cannot scroll vertically — only horizontally.
+                  'shrink-0 whitespace-nowrap border-b-2 border-transparent px-2 py-2 text-ui transition-colors',
+                  active ? 'border-accent text-fg' : 'text-muted hover:text-fg',
+                  disabled && 'cursor-not-allowed opacity-45 hover:text-muted',
+                  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
+                )}
+              >
+                {tab.label}
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       {/* Panels are all mounted and toggled with `hidden` so internal state (e.g. an

@@ -38,6 +38,7 @@ import {
   requiresPortalCapture,
 } from '../lib/capture-backend'
 import { probeVideoSize } from '../lib/video-size'
+import { parseDuration } from '../lib/audio-info'
 import { computeCrop } from '../../../shared/wayland-crop'
 import { applyCleanDemoMode, restoreCleanDemoMode } from './clean-demo-mode'
 
@@ -180,6 +181,23 @@ async function screenFileHasAudioStream(screenVideoPath: string): Promise<boolea
 
       reject(new Error(`Failed to inspect screen audio stream: ${stderr.slice(-500)}`))
     })
+  })
+}
+
+/** The screen file's length in seconds, from the FFmpeg banner, or null. */
+function probeVideoDurationSec(videoPath: string): Promise<number | null> {
+  return new Promise<number | null>((resolve) => {
+    let stderr = ''
+    try {
+      const proc = spawn(FFMPEG_PATH, ['-hide_banner', '-i', videoPath])
+      proc.stderr.on('data', (data) => {
+        stderr += data.toString()
+      })
+      proc.on('error', () => resolve(null))
+      proc.on('close', () => resolve(parseDuration(stderr)))
+    } catch {
+      resolve(null)
+    }
   })
 }
 
@@ -1044,6 +1062,8 @@ async function muxSystemAudio(session: RecordingSession): Promise<void> {
     systemAudioInput: session.systemAudioPath,
     output: tempOutput,
     hasMicAudio: screenHasAudio,
+    // Bounds the apad-padded audio mux: without -t the encode never ends.
+    durationSec: await probeVideoDurationSec(session.screenVideoPath),
   })
 
   log.info(`[Mux] Running ffmpeg ${args.join(' ')}`)
@@ -1160,6 +1180,9 @@ async function muxMacScreenWebm(session: RecordingSession): Promise<void> {
     output: session.screenVideoPath,
     webmHasSystemAudio: !!session.webmHasSystemAudio,
     crop,
+    // Bounds the apad-padded audio mux; the webm banner often has no Duration,
+    // in which case -t is dropped and -shortest alone must cut the output.
+    durationSec: await probeVideoDurationSec(session.screenWebmPath),
   })
   log.info(`[MacMux] Running ffmpeg ${args.join(' ')}`)
 

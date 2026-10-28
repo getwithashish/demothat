@@ -23,11 +23,15 @@ export function usePurchaseFlow(options: PurchaseFlowOptions = {}): void {
     const store = useEditorStore.getState()
     switch (event.kind) {
       case 'pending':
-        useEditorStore.setState({ waitingForPayment: true })
+        // Only a checkout the user started right now may open the waiting dialog.
+        // A purchase carried over from a previous session settles silently.
+        if (store.checkoutUserInitiated || store.waitingForPayment) {
+          useEditorStore.setState({ waitingForPayment: true })
+        }
         return
 
       case 'cancelled':
-        useEditorStore.setState({ waitingForPayment: false, checkoutUrl: null })
+        useEditorStore.setState({ waitingForPayment: false, checkoutUserInitiated: false, checkoutUrl: null })
         return
 
       case 'succeeded': {
@@ -36,7 +40,12 @@ export function usePurchaseFlow(options: PurchaseFlowOptions = {}): void {
         await store.refreshBalance()
         await store.refreshDevices()
         const added = Math.max(0, useEditorStore.getState().balance - previous)
-        useEditorStore.setState({ waitingForPayment: false, checkoutUrl: null, purchaseError: null })
+        useEditorStore.setState({
+          waitingForPayment: false,
+          checkoutUserInitiated: false,
+          checkoutUrl: null,
+          purchaseError: null,
+        })
         if (added > 0) {
           store.showCreditsAdded(added)
           store.pushToast({ message: `${formatCredits(added)} credits added` })
@@ -49,17 +58,18 @@ export function usePurchaseFlow(options: PurchaseFlowOptions = {}): void {
 
       case 'failed':
         // Keep the dialog open so the message has somewhere to live.
-        useEditorStore.setState({ purchaseError: event.message })
+        useEditorStore.setState({ purchaseError: event.message, checkoutUserInitiated: false })
         return
 
       case 'timeout':
         useEditorStore.setState({
           purchaseError: 'We have not heard back from the payment provider yet. Any credits are added automatically.',
+          checkoutUserInitiated: false,
         })
         return
 
       case 'device_limit_reached':
-        useEditorStore.setState({ purchaseError: event.message })
+        useEditorStore.setState({ purchaseError: event.message, checkoutUserInitiated: false })
         optionsRef.current.onDeviceLimitReached?.()
         store.pushToast({ message: 'Deactivate a device to activate this computer.' })
         return
@@ -70,11 +80,13 @@ export function usePurchaseFlow(options: PurchaseFlowOptions = {}): void {
     const api = window.electronAPI
     if (!api?.onCheckoutStatus) return
 
-    // A purchase that was still pending when the app last closed carries on.
+    // A purchase that was still pending when the app last closed is resumed
+    // quietly: if it settled meanwhile, the succeeded event lands the credits
+    // with a toast; if it is still open, nothing pops up until the user starts
+    // a checkout themselves (waiting dialog is user-initiated only).
     void (async () => {
       const status = await api.getCheckoutStatus?.()
       if (!status?.pending) return
-      useEditorStore.setState({ waitingForPayment: true })
       await api.resumeCheckout?.()
     })()
 

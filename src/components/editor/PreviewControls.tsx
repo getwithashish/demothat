@@ -11,9 +11,10 @@ import {
   Camera,
   LayoutBoard,
   ChevronDown,
+  Bolt,
 } from 'tabler-icons-react'
 import { useEditorStore } from '../../store/editorStore'
-import type { AspectRatio, CompositionLayout } from '../../types'
+import type { AspectRatio, CompositionLayout, VisualEffectKind } from '../../types'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
 import { Slider } from '../ui/slider'
 import { Button } from '../ui/button'
@@ -25,6 +26,14 @@ import { useZoomControls } from '../../hooks/useZoomControls'
 
 const iconProps = { size: ICON_SIZE, strokeWidth: ICON_STROKE } as const
 
+/** The effect kinds the quick-add offers, mirroring the sidebar's Layout panel. */
+const EFFECT_KINDS: { value: VisualEffectKind; label: string }[] = [
+  { value: 'mask', label: 'Mask area' },
+  { value: 'blur', label: 'Sensitive blur' },
+  { value: 'focus', label: 'Magnify & focus' },
+  { value: 'border', label: 'Border highlight' },
+]
+
 export function PreviewControls() {
   const {
     addZoomRegion,
@@ -33,6 +42,7 @@ export function PreviewControls() {
     tidyUp,
     addCameraMotion,
     addCompositionLayout,
+    addVisualEffect,
     currentTime,
     duration,
     setSelectedRegionId,
@@ -57,11 +67,18 @@ export function PreviewControls() {
   // behaviour); the caret opens the type list, which the Camera panel used to offer.
   const [isLayoutMenuOpen, setLayoutMenuOpen] = useState(false)
   const [layoutMenuPosition, setLayoutMenuPosition] = useState({ x: 0, y: 0 })
+  // Effects menu: same split-button shape as Layout.
+  const [isEffectMenuOpen, setEffectMenuOpen] = useState(false)
+  const [effectMenuPosition, setEffectMenuPosition] = useState({ x: 0, y: 0 })
 
   const addLayout = (layout: CompositionLayout) => {
     addCompositionLayout(layout)
     const added = useEditorStore.getState().compositionLayouts.at(-1)
     if (added) setSelectedRegionId(added.id)
+  }
+
+  const addEffect = (kind: VisualEffectKind) => {
+    addVisualEffect(kind)
   }
 
   const handleDelete = () => {
@@ -121,6 +138,31 @@ export function PreviewControls() {
               const rect = (event.currentTarget as HTMLButtonElement).getBoundingClientRect()
               setLayoutMenuPosition({ x: rect.left, y: rect.bottom + 4 })
               setLayoutMenuOpen(true)
+            }}
+          />
+        </div>
+
+        <div className="flex items-center">
+          <ToolbarButton
+            icon={<Bolt {...iconProps} />}
+            title="Add effect at the playhead"
+            disabled={!!selectedRegionId}
+            className="rounded-r-none"
+            onClick={() => addEffect('mask')}
+          >
+            Effects
+          </ToolbarButton>
+          <ToolbarButton
+            iconOnly
+            icon={<ChevronDown {...iconProps} />}
+            title="Choose an effect type"
+            aria-label="Choose an effect type"
+            disabled={!!selectedRegionId}
+            className="-ml-px rounded-l-none"
+            onClick={(event) => {
+              const rect = (event.currentTarget as HTMLButtonElement).getBoundingClientRect()
+              setEffectMenuPosition({ x: rect.left, y: rect.bottom + 4 })
+              setEffectMenuOpen(true)
             }}
           />
         </div>
@@ -250,6 +292,25 @@ export function PreviewControls() {
             onClick={() => {
               addLayout(option.value)
               setLayoutMenuOpen(false)
+            }}
+          >
+            {option.label}
+          </ContextMenuItem>
+        ))}
+      </ContextMenu>
+      <ContextMenu
+        isOpen={isEffectMenuOpen}
+        onClose={() => setEffectMenuOpen(false)}
+        position={effectMenuPosition}
+        className="min-w-[200px]"
+      >
+        <ContextMenuLabel>Effect type</ContextMenuLabel>
+        {EFFECT_KINDS.map((option) => (
+          <ContextMenuItem
+            key={option.value}
+            onClick={() => {
+              addEffect(option.value)
+              setEffectMenuOpen(false)
             }}
           >
             {option.label}

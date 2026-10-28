@@ -39,15 +39,28 @@ function trackNameArgs(index: number, kind: AudioTrackKind): string[] {
   return ['-metadata:s:a:' + String(index), 'handler_name=' + name, '-metadata:s:a:' + String(index), 'title=' + name]
 }
 
+/**
+ * The `-t` bound for a mux whose regenerated audio is padded with `apad` to the
+ * length of the video. Without an explicit duration, `-shortest` does not stop
+ * an infinitely-padded audio stream in static FFmpeg builds, so the encode never
+ * finishes. Returns [] when the duration is not known.
+ */
+function durationAt(sec?: number | null): string[] {
+  if (typeof sec !== 'number' || !Number.isFinite(sec) || sec <= 0) return []
+  return ['-t', String(Math.round(sec * 100) / 100)]
+}
+
 export interface BuildMuxArgsOptions {
   screenInput: string
   systemAudioInput: string | undefined
   output: string
   hasMicAudio: boolean
+  /** Screen video length in seconds; bounds the apad-padded audio mux. */
+  durationSec?: number | null
 }
 
 export function buildMuxArgs(opts: BuildMuxArgsOptions): string[] {
-  const { screenInput, systemAudioInput, output, hasMicAudio } = opts
+  const { screenInput, systemAudioInput, output, hasMicAudio, durationSec } = opts
 
   // No system audio file: nothing to mux. Stream-copy to a renamed output.
   if (!systemAudioInput) {
@@ -87,6 +100,7 @@ export function buildMuxArgs(opts: BuildMuxArgsOptions): string[] {
     '192k',
     ...titles,
     '-shortest',
+    ...durationAt(durationSec),
     output,
   ]
 }
@@ -110,6 +124,8 @@ export interface BuildMacMuxArgsOptions {
   micAudioInput: string | undefined
   output: string
   webmHasSystemAudio: boolean
+  /** Screen video length in seconds; bounds the apad-padded audio mux. */
+  durationSec?: number | null
   /**
    * Wayland area recording: the WebM holds the whole monitor, so the selection
    * is cropped out here, in the one pass that already re-encodes the video.
@@ -119,7 +135,7 @@ export interface BuildMacMuxArgsOptions {
 }
 
 export function buildMacMuxArgs(opts: BuildMacMuxArgsOptions): string[] {
-  const { screenWebmInput, micAudioInput, output, webmHasSystemAudio, crop } = opts
+  const { screenWebmInput, micAudioInput, output, webmHasSystemAudio, durationSec, crop } = opts
 
   const args: string[] = ['-y', '-i', screenWebmInput]
   if (micAudioInput) {
@@ -158,6 +174,7 @@ export function buildMacMuxArgs(opts: BuildMacMuxArgsOptions): string[] {
       ...trackNameArgs(0, 'mic'),
       ...trackNameArgs(1, 'system'),
       '-shortest',
+      ...durationAt(durationSec),
       output,
     )
     return args
@@ -178,6 +195,7 @@ export function buildMacMuxArgs(opts: BuildMacMuxArgsOptions): string[] {
       '192k',
       ...trackNameArgs(0, 'system'),
       '-shortest',
+      ...durationAt(durationSec),
       output,
     )
     return args

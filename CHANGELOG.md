@@ -1,3 +1,9 @@
+## [1.12.2](https://github.com/getwithashish/DemoThat/compare/v1.12.1...v1.12.2) (2026-10-28)
+
+### Bug Fixes
+
+* **editor:** blank preview, clipped device dropdowns, resizable inspector, Pro checkout ([#9](https://github.com/getwithashish/DemoThat/issues/9)) ([429fa13](https://github.com/getwithashish/DemoThat/commit/429fa134b57769c2d69aa67d1690472e450c166f))
+
 ## [1.12.1](https://github.com/getwithashish/DemoThat/compare/v1.12.0...v1.12.1) (2026-10-27)
 
 ### Bug Fixes

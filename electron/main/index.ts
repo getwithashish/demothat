@@ -1,19 +1,10 @@
 // Entry point of the Electron application.
 
-import {
-  app,
-  BrowserWindow,
-  protocol,
-  ProtocolRequest,
-  ProtocolResponse,
-  Menu,
-  screen,
-  dialog,
-  desktopCapturer,
-} from 'electron'
+import { app, BrowserWindow, net, protocol, Menu, screen, dialog, desktopCapturer } from 'electron'
 import { initMain as initAudioLoopback } from 'electron-audio-loopback'
 import log from 'electron-log/main'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 import fsSync from 'node:fs'
 import { spawn } from 'node:child_process'
 import { VITE_PUBLIC } from './lib/constants'
@@ -27,6 +18,16 @@ import { initializeMouseTrackerDependencies } from './features/mouse-tracker'
 import { confirmReplaceSession, isQuitApproved, markQuitApproved } from './features/session-guard'
 import { appState } from './state'
 import { detectSession, WAYLAND_CHROMIUM_FEATURES } from '../../shared/session'
+
+// The `media://` scheme must be declared privileged BEFORE app ready so
+// Chromium lets our `protocol.handle` server answer with byte ranges — the
+// HTML5 media stack requests ranges to seek and to read the moov box of a
+// non-faststart MP4 (which is exactly what FFmpeg produces without
+// +faststart). Without range support the video element stalls forever at
+// readyState 0 with NO error event: a black preview while ffmpeg-based export
+// still works. (`stream` enables ranged/streaming responses; `secure` keeps
+// media loadable from the renderer's context.)
+protocol.registerSchemesAsPrivileged([{ scheme: 'media', privileges: { stream: true, secure: true } }])
 
 // --- Initialization ---
 setupLogging()
@@ -231,24 +232,29 @@ app.whenReady().then(async () => {
     })
   }
 
-  // Register custom protocol for media files
-  protocol.registerFileProtocol(
-    'media',
-    (request: ProtocolRequest, callback: (response: string | ProtocolResponse) => void) => {
-      const url = request.url.replace('media://', '')
-      const decodedUrl = decodeURIComponent(url)
-      const resourcePath = path.join(VITE_PUBLIC, decodedUrl)
+  // Register custom protocol for media files. `protocol.handle` + `net.fetch`
+  // serves the file with native byte-range support (the legacy
+  // registerFileProtocol ignores Range headers). Chromium's media element
+  // ranges when seeking and when reading the moov box of a non-faststart MP4;
+  // a range-less response can leave the element stalled at readyState 0 with
+  // NO error event — a black preview that still exports fine.
+  protocol.handle('media', (request) => {
+    const url = request.url.replace('media://', '')
+    const decodedUrl = decodeURIComponent(url)
+    const resourcePath = path.join(VITE_PUBLIC, decodedUrl)
 
-      if (path.isAbsolute(decodedUrl) && fsSync.existsSync(decodedUrl)) {
-        return callback(decodedUrl)
-      }
-      if (fsSync.existsSync(resourcePath)) {
-        return callback(resourcePath)
-      }
+    let filePath: string | undefined
+    if (path.isAbsolute(decodedUrl) && fsSync.existsSync(decodedUrl)) {
+      filePath = decodedUrl
+    } else if (fsSync.existsSync(resourcePath)) {
+      filePath = resourcePath
+    }
+    if (!filePath) {
       log.error(`[Protocol] Could not find file: ${decodedUrl}`)
-      return callback({ error: -6 }) // FILE_NOT_FOUND
-    },
-  )
+      return new Response('Not found', { status: 404 })
+    }
+    return net.fetch(pathToFileURL(filePath).toString())
+  })
 
   registerIpcHandlers()
   registerRecordingShortcuts()

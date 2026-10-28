@@ -43,6 +43,8 @@ describe('buildMacMuxArgs — Wayland area crop', () => {
       'ultrafast',
       '-pix_fmt',
       'yuv420p',
+      '-movflags',
+      '+faststart',
       '-an',
       OUT,
     ])
@@ -75,6 +77,8 @@ describe('buildMacMuxArgs — Wayland area crop', () => {
       'ultrafast',
       '-pix_fmt',
       'yuv420p',
+      '-movflags',
+      '+faststart',
       '-c:a',
       'copy',
       '-metadata:s:a:0',

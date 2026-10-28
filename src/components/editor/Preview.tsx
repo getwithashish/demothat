@@ -93,6 +93,112 @@ export const Preview = memo(
     const webcamVideoRef = useRef<HTMLVideoElement>(null)
     const clipVideoRefs = useRef<Map<string, HTMLVideoElement>>(new Map())
     const animationFrameId = useRef<number>()
+    // Preview-health diagnostics (see `reportMediaHealth`): keyed to the current
+    // source URL so a project switch resets the reported state.
+    const mediaHealthReportedFor = useRef<string | null>(null)
+
+    /**
+     * Reports preview load state into the MAIN process log (the packaged app has
+     * no visible devtools console). Keeps a single-line story per source URL:
+     * a stall (readyState 0 forever), a partial load (metadata but no decodable
+     * frames), or success. A stalled element with NO error event — the exact
+     * signature of a media server that cannot answer byte-range requests — is
+     * only diagnosable this way.
+     */
+    const reportMediaHealth = useCallback(
+      (state: 'stalled' | 'partial' | 'decodable' | `error ${string}`, extra?: string) => {
+        const key = videoUrl ?? '(no source)'
+        const video = videoRef.current
+        const detail =
+          state === 'decodable'
+            ? `decodable readyState=${video?.readyState} size=${video?.videoWidth}x${video?.videoHeight}`
+            : `readyState=${video?.readyState} size=${video?.videoWidth}x${video?.videoHeight}${extra ? ` ${extra}` : ''}`
+        window.electronAPI?.logDiagnostic?.(
+          `preview ${state.startsWith('error') ? 'error' : state}`,
+          `${detail} src=${key}`,
+        )
+        if (state === 'decodable' || state.startsWith('error')) mediaHealthReportedFor.current = key
+      },
+      [videoUrl, videoRef],
+    )
+
+    // After a decodable report, read the canvas back and say whether an actual
+    // frame shows or it is blank. This is the probe for "the file loads but the
+    // preview is black" — the exact case that never fires an error event, on a
+    // machine where the element plays (readyState >= 2) yet nothing paints.
+    const reportPainted = useCallback(() => {
+      const canvas = canvasRef.current
+      if (!canvas) {
+        window.electronAPI?.logDiagnostic?.('preview painted', 'no canvas')
+        return
+      }
+      // setTimeout (not rAF): fires even when the window is hidden, where
+      // requestAnimationFrame is throttled to nothing.
+      window.setTimeout(() => {
+        try {
+          const ctx = canvas.getContext('2d')
+          if (!ctx) return
+          const w = Math.min(canvas.width, 320)
+          const h = Math.min(canvas.height, 180)
+          const data = ctx.getImageData(
+            Math.max(0, Math.floor((canvas.width - w) / 2)),
+            Math.max(0, Math.floor((canvas.height - h) / 2)),
+            w,
+            h,
+          ).data
+          let min = Infinity
+          let max = -Infinity
+          for (let i = 0; i < data.length; i += 16) {
+            const luma = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]
+            if (luma < min) min = luma
+            if (luma > max) max = luma
+          }
+          window.electronAPI?.logDiagnostic?.(
+            'preview painted',
+            max - min < 4
+              ? `UNIFORM canvas (blank/black); luma ${min.toFixed(1)}-${max.toFixed(1)}`
+              : `frame visible; luma range ${min.toFixed(1)}-${max.toFixed(1)}`,
+          )
+        } catch (error) {
+          window.electronAPI?.logDiagnostic?.('preview painted', `readback failed: ${String(error)}`)
+        }
+      }, 150)
+    }, [])
+
+    // Stall watcher: if the element never becomes decodable (and never errors),
+    // report it once so the main log can tell a protocol/range problem from a
+    // decoder problem. Also reports success for sources that are already loaded
+    // when the watcher starts (e.g. a hot project swap).
+    useEffect(() => {
+      if (!videoUrl) return
+      let attempts = 0
+      const timer = window.setInterval(() => {
+        const video = videoRef.current
+        if (!video) return
+        if (mediaHealthReportedFor.current === videoUrl) {
+          window.clearInterval(timer)
+          return
+        }
+        if (video.readyState >= 3) {
+          reportMediaHealth('decodable')
+          reportPainted()
+          window.clearInterval(timer)
+          return
+        }
+        attempts += 1
+        if (attempts === 3 && video.readyState < 1) {
+          // 6s at readyState 0: the loader has not even reached the metadata.
+          reportMediaHealth('stalled')
+        } else if (attempts === 7 && video.readyState >= 1 && video.readyState < 3) {
+          // 14s with metadata but no decodable frames: decoder problem.
+          reportMediaHealth('partial')
+          window.clearInterval(timer)
+        } else if (attempts > 10) {
+          window.clearInterval(timer)
+        }
+      }, 2000)
+      return () => window.clearInterval(timer)
+    }, [videoUrl, reportMediaHealth, reportPainted, videoRef])
     const [effectOverlayBounds, setEffectOverlayBounds] = useState({ left: 0, top: 0, width: 0, height: 0 })
     const visualEffects = useEditorStore((state) => state.visualEffects)
     // Drives the "Mask" chip: true while an effect covers the playhead.
@@ -604,10 +710,15 @@ export const Preview = memo(
           onEnded={() => setPlaying(false)}
           // Belt-and-suspenders: draw once the first frame is actually decodable,
           // even if a metadata/size change never re-triggered the render effect.
-          onCanPlay={() => renderCanvas()}
+          onCanPlay={() => {
+            reportMediaHealth('decodable')
+            reportPainted()
+            renderCanvas()
+          }}
           onError={(event) => {
             const mediaError = event.currentTarget.error
             console.error('[Preview] media element failed to load:', mediaError)
+            reportMediaHealth(`error code=${mediaError?.code} message=${mediaError?.message ?? ''}`)
           }}
           style={{ display: 'none' }}
         />

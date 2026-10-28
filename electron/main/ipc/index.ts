@@ -1,4 +1,5 @@
 import { ipcMain } from 'electron'
+import log from 'electron-log/main'
 import * as appHandlers from './handlers/app'
 import * as checkoutHandlers from './handlers/checkout'
 import * as cloudHandlers from './handlers/cloud'
@@ -15,6 +16,12 @@ import * as settingsHandlers from './handlers/settings'
 import * as shellHandlers from './handlers/shell'
 
 export function registerIpcHandlers() {
+  // Renderer diagnostics → main log. The packaged app has no devtools console,
+  // so without this the only place failures could be seen was nowhere.
+  ipcMain.on('diagnostic:log', (_event, scope: string, message: string) => {
+    log.warn(`[Diagnostic:${String(scope)}] ${String(message)}`)
+  })
+
   // App & Window
   ipcMain.handle('app:getPath', appHandlers.handleGetPath)
   ipcMain.handle('app:getVersion', appHandlers.handleGetVersion)

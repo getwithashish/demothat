@@ -253,6 +253,32 @@ export const createTimelineSlice: Slice<TimelineState, TimelineActions> = (set, 
       recalculateZIndices(state)
     })
   },
+  /** Deletes whatever carries the selection: region, effect, layout, camera
+   *  motion, or video/audio clip. Backed by the Delete key and the trash
+   *  button, so every addable item is removable the same way. */
+  deleteSelected: () => {
+    const state = get()
+    const id = state.selectedRegionId
+    if (!id) return
+    if (state.zoomRegions[id] || state.cutRegions[id] || state.speedRegions[id]) {
+      get().deleteRegion(id)
+      return
+    }
+    if (state.visualEffects.some((effect) => effect.id === id)) {
+      get().deleteVisualEffect(id)
+    } else if (state.videoClips.some((clip) => clip.id === id)) {
+      get().deleteVideoClip(id)
+    } else if (state.audioClips.some((clip) => clip.id === id)) {
+      get().deleteAudioClip(id)
+    } else if (state.compositionLayouts.some((layout) => layout.id === id)) {
+      get().deleteCompositionLayout(id)
+    } else if (state.cameraMotions.some((motion) => motion.id === id)) {
+      get().deleteCameraMotion(id)
+    }
+    set((state) => {
+      if (state.selectedRegionId === id) state.selectedRegionId = null
+    })
+  },
   setSelectedRegionId: (id) =>
     set((state) => {
       state.selectedRegionId = id

@@ -449,6 +449,8 @@ export interface TimelineActions {
   setVideoClipOrder: (orderedIds: string[]) => void
   updateRegion: (id: string, updates: Partial<TimelineRegion>) => void
   deleteRegion: (id: string) => void
+  /** Deletes whatever is selected (region / effect / layout / motion / clip). */
+  deleteSelected: () => void
   setSelectedRegionId: (id: string | null) => void
   setPreviewCutRegion: (region: CutRegion | null) => void
   setTimelineZoom: (zoom: number) => void

@@ -651,6 +651,13 @@ export const electronAPI = {
   getVideoFrame: (options: { videoPath: string; time: number }): Promise<string> =>
     ipcRenderer.invoke('video:get-frame', options),
   videoHasAudio: (videoPath: string): Promise<boolean> => ipcRenderer.invoke('video:has-audio', videoPath),
+  /**
+   * Renderer-side diagnostics land in the MAIN process log: the packaged app
+   * has no console to read, so media-load failures and stalls are otherwise
+   * invisible. Reported failures carry the details needed to tell a protocol
+   * problem from a decoder problem at a distance.
+   */
+  logDiagnostic: (scope: string, message: string): void => ipcRenderer.send('diagnostic:log', scope, message),
 }
 
 // Expose API safely

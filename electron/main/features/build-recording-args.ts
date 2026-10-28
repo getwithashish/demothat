@@ -36,6 +36,11 @@ export function buildFfmpegArgs(
     // Output-scoped, so it applies to the screen file and not to the webcam's.
     finalArgs.push('-vf', screenFilter)
   }
+  // +faststart relocates the moov box to the front of the file. The preview's
+  // media element reads metadata from the first bytes; without it, Chromium
+  // must range-request the file tail, which the browser can only do reliably
+  // when the serving protocol supports byte ranges (see index.ts media://).
+  finalArgs.push('-movflags', '+faststart')
   if (hasMic) {
     finalArgs.push('-c:a', 'aac', '-b:a', '192k')
   }

@@ -23,7 +23,7 @@ info:
     name: Proprietary
     identifier: LicenseRef-Proprietary
 servers:
-  - url: https://api.demothat.app
+  - url: https://api.demothat.yahodu.in
     description: Production
   - url: http://localhost:3000
     description: Local development

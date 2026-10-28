@@ -19,6 +19,13 @@
     scrollbar-gutter: stable;
   }
 
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
   .card-clean {
     @apply rounded-pv border border-line bg-panel shadow-[var(--sa-popover-shadow)];
   }

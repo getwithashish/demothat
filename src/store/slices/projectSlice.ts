@@ -15,6 +15,7 @@ import { prepareCursorBitmaps } from '../../lib/utils'
 import { collectSavePayload, whenSaveIdle, withSaveGuard } from '../../lib/project-file'
 import { projectNameFromPath } from '../../lib/recent-projects'
 import { audioTracksFromManifest, legacyTracks } from '../../../shared/audio-tracks'
+import { mediaUrl } from '../../../shared/media-url'
 import type { EditorState } from '../../types'
 
 export const initialProjectState: ProjectState = {
@@ -289,8 +290,11 @@ async function prepareMacOSCursorBitmaps(theme: CursorTheme, scale: number): Pro
 export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get) => ({
   ...initialProjectState,
   loadProject: async ({ videoPath, metadataPath, webcamVideoPath }) => {
-    const videoUrl = `media://${videoPath}`
-    const webcamVideoUrl = webcamVideoPath ? `media://${webcamVideoPath}` : null
+    // The recorded files live under the userData dir ("Application Support" on
+    // macOS, spaces and other URL-hostile characters included), so the path must
+    // be percent-encoded or the <video> never loads and the preview stays blank.
+    const videoUrl = mediaUrl(videoPath)
+    const webcamVideoUrl = webcamVideoPath ? mediaUrl(webcamVideoPath) : null
 
     get().resetProjectState() // Clear previous project data first
 

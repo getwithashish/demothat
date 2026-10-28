@@ -193,11 +193,14 @@ export function SidePanel() {
 
   return (
     <div className="flex h-full flex-col bg-panel">
-      {/* Tab strip (replaces the 64px icon rail) */}
+      {/* Tab strip (replaces the 64px icon rail). It scrolls horizontally
+          (trackpad / shift+wheel) when the inspector is narrow — the scrollbar
+          is hidden so the strip stays clean; `min-w-max` keeps every tab whole
+          instead of squeezing them. */}
       <div
         role="tablist"
         aria-label="Inspector sections"
-        className="flex shrink-0 items-stretch border-b border-line px-2.5"
+        className="no-scrollbar flex shrink-0 items-stretch gap-0 overflow-x-auto border-b border-line px-2.5"
       >
         {TABS.map((tab, index) => {
           const disabled = isTabDisabled(tab.id)
@@ -219,7 +222,7 @@ export function SidePanel() {
               onClick={() => setActiveSidePanelTab(tab.id)}
               onKeyDown={(event) => handleTabKeyDown(event, index)}
               className={cn(
-                'border-b-2 border-transparent px-2 py-3 text-ui transition-colors',
+                'shrink-0 whitespace-nowrap border-b-2 border-transparent px-2 py-3 text-ui transition-colors',
                 '-mb-px',
                 active ? 'border-accent text-fg' : 'text-muted hover:text-fg',
                 disabled && 'cursor-not-allowed opacity-45 hover:text-muted',

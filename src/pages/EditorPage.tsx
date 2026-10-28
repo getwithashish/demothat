@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback, type MouseEvent as ReactMouseEvent } from 'react'
 import { useEditorStore } from '../store/editorStore'
 import { Preview } from '../components/editor/Preview'
 import { SidePanel } from '../components/editor/SidePanel'
@@ -133,6 +133,26 @@ export function EditorPage() {
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const [isExportMinimized, setExportMinimized] = useState(false)
+  // Inspector width, draggable like the timeline's height (local state so the
+  // two panels keep the same behaviour: it starts at the default each session).
+  const [sidebarWidth, setSidebarWidth] = useState(312)
+  const beginSidebarResize = useCallback(
+    (event: ReactMouseEvent) => {
+      event.preventDefault()
+      const startX = event.clientX
+      const initialWidth = sidebarWidth
+      const move = (moveEvent: MouseEvent) => {
+        setSidebarWidth(Math.max(240, Math.min(560, initialWidth + (moveEvent.clientX - startX))))
+      }
+      const up = () => {
+        window.removeEventListener('mousemove', move)
+        window.removeEventListener('mouseup', up)
+      }
+      window.addEventListener('mousemove', move)
+      window.addEventListener('mouseup', up)
+    },
+    [sidebarWidth],
+  )
   const [isPresetModalOpen, setPresetModalOpen] = useState(false)
   const [isSettingsModalOpen, setSettingsModalOpen] = useState(false)
   const [isActivateOpen, setActivateOpen] = useState(false)
@@ -524,13 +544,24 @@ export function EditorPage() {
 
       <div className={cn('flex flex-1 overflow-hidden', isPreviewFullScreen && 'h-full w-full')}>
         <div
-          className={cn(
-            'w-[312px] flex-shrink-0 overflow-hidden border-r border-line bg-panel',
-            isPreviewFullScreen && 'hidden', // Hide SidePanel in fullscreen
-          )}
+          className={cn('flex-shrink-0 overflow-hidden bg-panel', isPreviewFullScreen && 'hidden')}
+          style={isPreviewFullScreen ? undefined : { width: sidebarWidth }}
         >
           <SidePanel />
         </div>
+        {/* Drag handle to resize the inspector, mirroring the timeline's height handle. */}
+        {!isPreviewFullScreen && (
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize inspector panel"
+            title="Drag to resize the inspector"
+            onMouseDown={beginSidebarResize}
+            className="group/inspector-resize relative z-10 w-1.5 shrink-0 cursor-ew-resize border-r border-line bg-panel
+              after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-transparent
+              hover:after:bg-accent active:after:bg-accent"
+          />
+        )}
         <div className="flex flex-1 flex-col overflow-hidden bg-stage">
           <div
             className={cn(

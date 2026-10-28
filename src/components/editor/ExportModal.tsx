@@ -28,7 +28,7 @@ import {
 } from '../../lib/export-estimate'
 import { PanelHeader } from './PanelHeader'
 import { estimateCloudCredits } from '../../../shared/cloud-cost'
-import { formatCredits } from '../../../shared/license'
+import { formatCredits, CREDIT_PACKS } from '../../../shared/license'
 import { CloudConsentDialog } from './cloud/CloudConsentDialog'
 import { CloudExportProgress } from './cloud/CloudExportProgress'
 import { CancelExportDialog } from './cloud/CancelExportDialog'
@@ -321,9 +321,12 @@ const SettingsView = ({
     beginExport()
   }
 
+  // Unlock Pro takes the same road as Get Pro / the activation dialogs: straight
+  // to the Dodo checkout for the Pro pack. Opening the browser is the main
+  // process's job (startPurchase → startCheckout); the WaitingForPaymentDialog
+  // then gives the in-app feedback while the payment settles.
   const handleUnlock = () => {
-    const url = entitlement?.unlockUrl
-    if (url) window.electronAPI.openExternal(url)
+    void useEditorStore.getState().startPurchase(CREDIT_PACKS[0].productId)
   }
 
   const handleValueChange = (key: keyof ExportSettings, value: string) => {

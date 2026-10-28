@@ -1,3 +1,9 @@
+## [1.12.3](https://github.com/getwithashish/DemoThat/compare/v1.12.2...v1.12.3) (2026-10-28)
+
+### Bug Fixes
+
+* **editor:** user-initiated payment dialog, no vertical tab scroll, Effects button, wider transport, mic-mux hang ([#10](https://github.com/getwithashish/DemoThat/issues/10)) ([3d81b3a](https://github.com/getwithashish/DemoThat/commit/3d81b3ad2a48b1c8e65b42acd8c8fe7c8c40fa96))
+
 ## [1.12.2](https://github.com/getwithashish/DemoThat/compare/v1.12.1...v1.12.2) (2026-10-28)
 
 ### Bug Fixes

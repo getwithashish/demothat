@@ -35,7 +35,9 @@ describe('deleteSelected', () => {
   })
 
   it('deletes a visual effect by id', () => {
-    useEditorStore.setState({ visualEffects: [{ id: 'fx-1', kind: 'blur', startTime: 0, duration: 3 }] } as unknown as State)
+    useEditorStore.setState({
+      visualEffects: [{ id: 'fx-1', kind: 'blur', startTime: 0, duration: 3 }],
+    } as unknown as State)
     useEditorStore.getState().setSelectedRegionId('fx-1')
     useEditorStore.getState().deleteSelected()
     expect(useEditorStore.getState().visualEffects.some((e) => e.id === 'fx-1')).toBe(false)
@@ -43,7 +45,9 @@ describe('deleteSelected', () => {
   })
 
   it('deletes a video clip', () => {
-    useEditorStore.setState({ videoClips: [{ id: 'clip-v', filePath: '/x.mp4', startTime: 0, duration: 5 }] } as unknown as State)
+    useEditorStore.setState({
+      videoClips: [{ id: 'clip-v', filePath: '/x.mp4', startTime: 0, duration: 5 }],
+    } as unknown as State)
     useEditorStore.getState().setSelectedRegionId('clip-v')
     useEditorStore.getState().deleteSelected()
     expect(useEditorStore.getState().videoClips.some((c) => c.id === 'clip-v')).toBe(false)
@@ -51,7 +55,9 @@ describe('deleteSelected', () => {
   })
 
   it('deletes an audio clip', () => {
-    useEditorStore.setState({ audioClips: [{ id: 'clip-a', filePath: '/x.mp3', startTime: 0, duration: 4 }] } as unknown as State)
+    useEditorStore.setState({
+      audioClips: [{ id: 'clip-a', filePath: '/x.mp3', startTime: 0, duration: 4 }],
+    } as unknown as State)
     useEditorStore.getState().setSelectedRegionId('clip-a')
     useEditorStore.getState().deleteSelected()
     expect(useEditorStore.getState().audioClips.some((c) => c.id === 'clip-a')).toBe(false)
@@ -69,7 +75,9 @@ describe('deleteSelected', () => {
   })
 
   it('deletes a camera motion', () => {
-    useEditorStore.setState({ cameraMotions: [{ id: 'motion-1', kind: 'pan', startTime: 0, duration: 4 }] } as unknown as State)
+    useEditorStore.setState({
+      cameraMotions: [{ id: 'motion-1', kind: 'pan', startTime: 0, duration: 4 }],
+    } as unknown as State)
     useEditorStore.getState().setSelectedRegionId('motion-1')
     useEditorStore.getState().deleteSelected()
     expect(useEditorStore.getState().cameraMotions.some((m) => m.id === 'motion-1')).toBe(false)

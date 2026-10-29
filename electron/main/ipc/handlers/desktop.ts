@@ -245,7 +245,13 @@ export async function loadCursorTheme(
   const themeToLoad = themeName || 'default'
   log.info(`[IPC] Received request to parse cursor theme: ${themeToLoad}`)
   try {
-    const cursorThemePath = getBinaryPath(path.join('cursor-themes', `${themeToLoad}.theme`))
+    // The default name is 'default' but the file is 'Default.theme'. Windows
+    // and macOS tolerate that (case-insensitive); Linux does not, so resolve the
+    // real filename case-insensitively before parsing.
+    const themesDir = path.dirname(getBinaryPath('cursor-themes/x.theme'))
+    const requested = `${themeToLoad}.theme`
+    const entry = (await fs.readdir(themesDir)).find((f) => f.toLowerCase() === requested.toLowerCase()) ?? requested
+    const cursorThemePath = getBinaryPath(path.join('cursor-themes', entry))
     const cursorTheme = await loadCursorThemeFromFile(cursorThemePath)
     return cursorTheme
   } catch (error) {

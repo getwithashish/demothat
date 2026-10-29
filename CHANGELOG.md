@@ -1,3 +1,9 @@
+## [1.17.1](https://github.com/getwithashish/DemoThat/compare/v1.17.0...v1.17.1) (2026-10-29)
+
+### Bug Fixes
+
+* **purchase:** hide bought pro pack, align export gate, retry auto-activation ([#21](https://github.com/getwithashish/DemoThat/issues/21)) ([b2593b1](https://github.com/getwithashish/DemoThat/commit/b2593b1e425e996a4a586242a392c6f95bbb7a8c))
+
 ## [1.17.0](https://github.com/getwithashish/DemoThat/compare/v1.16.0...v1.17.0) (2026-10-29)
 
 ### Features

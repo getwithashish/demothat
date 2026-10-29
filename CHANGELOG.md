@@ -1,3 +1,9 @@
+## [1.14.4](https://github.com/getwithashish/DemoThat/compare/v1.14.3...v1.14.4) (2026-10-29)
+
+### Bug Fixes
+
+* **editor:** load cursor theme by actual filename on case-sensitive filesystems ([#16](https://github.com/getwithashish/DemoThat/issues/16)) ([6d01b2e](https://github.com/getwithashish/DemoThat/commit/6d01b2e19dd9621ff5a67d52d045893760fa1175))
+
 ## [1.14.3](https://github.com/getwithashish/DemoThat/compare/v1.14.2...v1.14.3) (2026-10-29)
 
 ### Bug Fixes

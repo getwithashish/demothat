@@ -200,7 +200,7 @@ describe('settlement', () => {
     const { jobId, estimatedCost, upload } = await createJobFor(2048, 20)
     expect(estimatedCost).toBeGreaterThan(10)
     const uploaded = await uploadIntermediate(upload, intermediatePath)
-    if (upload.type === 'multipart') await completeUpload(jobId, uploaded.parts)
+    await completeUpload(jobId, uploaded.parts)
 
     // No start: the job is still uploading/uploaded, so no GPU work has begun.
     expect(['canceling', 'canceled']).toContain(await cancelJobRemote(jobId))
@@ -213,7 +213,7 @@ describe('settlement', () => {
   it('charges the work done and returns the rest when cancelled while upscaling', async () => {
     const { jobId, estimatedCost, upload } = await createJobFor(2048, 20)
     const uploaded = await uploadIntermediate(upload, intermediatePath)
-    if (upload.type === 'multipart') await completeUpload(jobId, uploaded.parts)
+    await completeUpload(jobId, uploaded.parts)
     await startJob(jobId)
 
     // Wait until the simulated GPU is actually running and has done some frames.
@@ -245,7 +245,7 @@ describe('settlement', () => {
 
     const { jobId, estimatedCost, upload } = await createJobFor(2048)
     const uploaded = await uploadIntermediate(upload, intermediatePath)
-    if (upload.type === 'multipart') await completeUpload(jobId, uploaded.parts)
+    await completeUpload(jobId, uploaded.parts)
     await startJob(jobId)
 
     const view = await pollJob(jobId)
@@ -299,5 +299,19 @@ describe('the orchestrator', () => {
     expect(stages).toContain('Uploading')
     expect(stages).toContain('Done')
     await expect(fsp.stat(OUTPUT())).resolves.toBeTruthy()
+  })
+
+  it('starts a single-plan job only after the upload is completed', async () => {
+    // Sub-threshold sizes (the real API's default is 100 MiB) get a single PUT
+    // plan; completion of the upload is still required before the job can start.
+    const { jobId, upload } = await createJobFor(2048)
+    expect(upload.type).toBe('single')
+
+    await uploadIntermediate(upload, intermediatePath)
+    await expect(startJob(jobId)).rejects.toMatchObject({ code: 'invalid_state' })
+
+    await completeUpload(jobId, [])
+    await expect(startJob(jobId)).resolves.toBeUndefined()
+    expect((await pollJob(jobId)).status).toBe('succeeded')
   })
 })

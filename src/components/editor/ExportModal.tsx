@@ -29,6 +29,7 @@ import {
 import { PanelHeader } from './PanelHeader'
 import { estimateCloudCredits } from '../../../shared/cloud-cost'
 import { formatCredits, CREDIT_PACKS } from '../../../shared/license'
+import { pickFirstPurchaseProductId } from '../../../shared/pricing'
 import { CloudConsentDialog } from './cloud/CloudConsentDialog'
 import { CloudExportProgress } from './cloud/CloudExportProgress'
 import { CancelExportDialog } from './cloud/CancelExportDialog'
@@ -332,7 +333,12 @@ const SettingsView = ({
   // process's job (startPurchase → startCheckout); the WaitingForPaymentDialog
   // then gives the in-app feedback while the payment settles.
   const handleUnlock = () => {
-    void useEditorStore.getState().startPurchase(CREDIT_PACKS[0].productId)
+    // API data wins; the hardcoded pack id is only the offline fallback.
+    void (async () => {
+      const catalogue = (await window.electronAPI.listProducts?.())?.products ?? null
+      const productId = pickFirstPurchaseProductId(catalogue, CREDIT_PACKS[0].productId)
+      await useEditorStore.getState().startPurchase(productId)
+    })()
   }
 
   const handleValueChange = (key: keyof ExportSettings, value: string) => {

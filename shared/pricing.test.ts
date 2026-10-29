@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { formatPrice, toCreditPackView, toCreditPackViews, type Product, type ProductPrice } from './pricing'
+import {
+  formatPrice,
+  pickFirstPurchaseProductId,
+  toCreditPackView,
+  toCreditPackViews,
+  type Product,
+  type ProductPrice,
+} from './pricing'
 
 const usd = (amountMinor: number, isMinimum = false): ProductPrice => ({
   amountMinor,
@@ -99,5 +106,29 @@ describe('toCreditPackViews', () => {
   it('has nothing to show without a catalogue', () => {
     expect(toCreditPackViews(null)).toEqual([])
     expect(toCreditPackViews(undefined)).toEqual([])
+  })
+})
+
+describe('pickFirstPurchaseProductId', () => {
+  it('prefers the server first_purchase pack over the fallback', () => {
+    expect(
+      pickFirstPurchaseProductId(
+        [product({ productId: 'api_pro', kind: 'first_purchase' }), product({ productId: 'topup', kind: 'topup' })],
+        'hardcoded',
+      ),
+    ).toBe('api_pro')
+  })
+
+  it('falls back to the hardcoded id when the API is unreachable', () => {
+    expect(pickFirstPurchaseProductId(null, 'hardcoded')).toBe('hardcoded')
+    expect(pickFirstPurchaseProductId(undefined, 'hardcoded')).toBe('hardcoded')
+  })
+
+  it('falls back when the catalogue has no entry pack', () => {
+    expect(pickFirstPurchaseProductId([product({ productId: 'topup', kind: 'topup' })], 'hardcoded')).toBe('hardcoded')
+  })
+
+  it('ignores an entry pack with a blank id', () => {
+    expect(pickFirstPurchaseProductId([product({ productId: '   ' })], 'hardcoded')).toBe('hardcoded')
   })
 })

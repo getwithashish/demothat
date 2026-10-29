@@ -22,6 +22,7 @@ import { BuyCreditsDialog } from '../components/editor/cloud/BuyCreditsDialog'
 import { WaitingForPaymentDialog } from '../components/editor/cloud/WaitingForPaymentDialog'
 import { ResumeCloudDialog } from '../components/editor/cloud/ResumeCloudDialog'
 import { CREDIT_PACKS } from '../../shared/license'
+import { pickFirstPurchaseProductId } from '../../shared/pricing'
 import { Stack3, Loader2, Check, Settings, Share } from 'tabler-icons-react'
 import { ICON_SIZE, ICON_STROKE } from '../components/ui/icons'
 import { cn, formatTime } from '../lib/utils'
@@ -418,7 +419,10 @@ export function EditorPage() {
    * this computer automatically when the payment settles (design §4).
    */
   const startFirstPurchase = useCallback(async () => {
-    await useEditorStore.getState().startPurchase(CREDIT_PACKS[0].productId)
+    // API data wins; the hardcoded pack id is only the offline fallback.
+    const catalogue = (await window.electronAPI.listProducts?.())?.products ?? null
+    const productId = pickFirstPurchaseProductId(catalogue, CREDIT_PACKS[0].productId)
+    await useEditorStore.getState().startPurchase(productId)
   }, [])
 
   const renderHeaderActions = () => {

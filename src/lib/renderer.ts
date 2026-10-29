@@ -284,7 +284,14 @@ const drawFrameLayer = (
     const sample = sampleCursorPath(state.metadata, currentTime, pathOptions)
 
     if (sample?.visible) {
-      const cursorData = state.cursorBitmapsToRender.get(sample.cursorImageKey!)
+      // A user-chosen pointer icon overrides the captured cursor bitmap. The
+      // position still comes from the cursor telemetry (sample.x/y); only the
+      // glyph changes. 'recorded' keeps the OS cursor as captured.
+      const chosenIcon = state.cursorStyles.cursorIcon
+      const cursorData =
+        chosenIcon !== 'recorded'
+          ? state.cursorIconsToRender?.get(chosenIcon)
+          : state.cursorBitmapsToRender.get(sample.cursorImageKey!)
 
       if (cursorData && cursorData.imageBitmap && cursorData.width > 0) {
         const cursorX = (sample.x / state.recordingGeometry.width) * frameContentWidth

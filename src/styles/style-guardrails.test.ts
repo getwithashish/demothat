@@ -17,6 +17,7 @@ const TOKENS = join(SRC, 'styles', 'tokens.css')
 const DATA_COLOUR_MODULES = new Set([
   'lib/constants.ts', // default colours for user-editable effects
   'lib/renderer.ts', // canvas fill colours used during export
+  'lib/cursor-icons.ts', // canvas-drawn cursor glyph pixels (image data, not chrome)
   'lib/utils.ts', // hex/rgba parsing helpers
   'store/slices/frameSlice.ts', // user-editable frame/mask/border defaults
   'store/slices/webcamSlice.ts', // user-editable webcam shadow default

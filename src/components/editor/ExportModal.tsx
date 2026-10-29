@@ -270,7 +270,11 @@ const SettingsView = ({
   const proLocked = selectedIsUpscale && !isEntitled
   // Ready means the backend is reachable, enabled and this device is activated.
   const cloudReady = cloud !== null && cloud.cloudEnabled
-  const effectiveMethod = cloudReady ? upscaleMethod : 'standard'
+  // The AI/cloud upscaling path is ONLY for true upscales. Exporting at or below
+  // the recorded resolution is Standard and never touched by the cloud, so it can
+  // never be charged or require Pro — even if the user previously selected the AI
+  // method for a higher resolution (the stored `upscaleMethod` must not leak in).
+  const effectiveMethod = !selectedIsUpscale ? 'standard' : cloudReady ? upscaleMethod : 'standard'
 
   const frames = framesFor(estimatedDuration, settings.fps)
   const exportCodec = selectExportCodec(RESOLUTIONS[settings.resolution].height)
@@ -286,9 +290,11 @@ const SettingsView = ({
   const localRange = localEstimate.rough && localEstimate.seconds > 0 ? roughRange(localEstimate.seconds) : null
 
   // Cost comes from the server's own pricing table. The server recomputes it
-  // from its probe of the upload, and its number is final.
+  // from its probe of the upload, and its number is final. Only shown for a true
+  // upscale: exporting at/below the source resolution is Standard and free, so it
+  // must not read as having a cost.
   const cloudCost =
-    cloud && frames > 0
+    cloud && frames > 0 && selectedIsUpscale
       ? estimateCloudCredits(cloud.creditsPerFrame, targetDimensions.height, estimatedDuration, settings.fps)
       : null
   const cloudCredits = cloudCost?.credits ?? 0
@@ -296,8 +302,9 @@ const SettingsView = ({
   const creditShortfall = Math.max(0, cloudCredits - balance)
   // Only the upload can be estimated locally: the contract publishes no
   // startup/upscale throughput, so the server reports the ETA once running.
+  // Only ever uploaded for a true upscale (the AI path); Standard is local.
   const uploadSeconds =
-    cloud && frames > 0
+    cloud && frames > 0 && selectedIsUpscale
       ? (estimateFileMB(estimatedDuration, ASSUMED_BITRATE_MBPS[settings.quality]) * 8) / Math.max(1, cloud.uplinkMbps)
       : 0
 

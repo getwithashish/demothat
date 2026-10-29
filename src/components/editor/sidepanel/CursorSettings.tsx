@@ -1,7 +1,7 @@
-// Cursor panel: rendered cursor appearance (visibility, theme, size, click
-// effects, shadow). Flat Sections on the shared primitives.
+// Cursor panel: rendered cursor appearance (visibility, theme, size, icon,
+// click effects, shadow). Flat Sections on the shared primitives.
 // Platform-unsupported states (theme + size on Linux) are kept, with their helper text.
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useEditorStore } from '../../../store/editorStore'
 import { useShallow } from 'zustand/react/shallow'
 import { Button } from '../../ui/button'
@@ -15,6 +15,7 @@ import { ToggleRow } from '../../ui/toggle-row'
 import { rgbaToHexAlpha, hexToRgb } from '../../../lib/utils'
 import { DEFAULTS } from '../../../lib/constants'
 import { EASING_MAP } from '../../../lib/easing'
+import { CURSOR_ICON_STYLES, renderCursorIconThumb, type CursorIconStyle } from '../../../lib/cursor-icons'
 import { PanelHeader } from '../PanelHeader'
 
 const POST_PROCESSING_SCALES = [
@@ -147,6 +148,10 @@ export function CursorSettings() {
     handleCursorScaleChange(DEFAULTS.CURSOR.SCALE.defaultValue)
   }
 
+  const handleResetIcon = () => {
+    updateCursorStyle({ cursorIcon: DEFAULTS.CURSOR.ICON.defaultValue as CursorIconStyle })
+  }
+
   const handleResetShadow = () => {
     updateCursorStyle({
       shadowBlur: DEFAULTS.CURSOR.SHADOW.BLUR.defaultValue,
@@ -225,6 +230,31 @@ export function CursorSettings() {
           {platform !== null && platform !== 'win32' && platform !== 'darwin' && (
             <HelperText>Resizes the cursor captured by the recorder on this platform.</HelperText>
           )}
+        </Section>
+
+        <Section label="Icon" labelRight={<ResetButton onClick={handleResetIcon} label="cursor icon" />}>
+          <div className="grid grid-cols-2 gap-2">
+            {CURSOR_ICON_STYLES.map((style) => (
+              <button
+                type="button"
+                key={style.value}
+                aria-pressed={cursorStyles.cursorIcon === style.value}
+                onClick={() => updateCursorStyle({ cursorIcon: style.value })}
+                className={`flex items-center gap-2 rounded-pv border px-2.5 py-1.5 text-left text-sm transition-colors ${
+                  cursorStyles.cursorIcon === style.value
+                    ? 'border-accent bg-ctl text-fg'
+                    : 'border-line text-muted hover:border-line-focus'
+                }`}
+              >
+                <CursorIconGlyph style={style.value} />
+                <span>{style.label}</span>
+              </button>
+            ))}
+          </div>
+          <HelperText>
+            Replaces the recorded pointer with a fixed icon, in the preview and in the export. “Recorded” uses the OS
+            cursor as captured — select it to restore the original.
+          </HelperText>
         </Section>
 
         <Section
@@ -437,4 +467,15 @@ export function CursorSettings() {
       </div>
     </div>
   )
+}
+
+/** A tiny canvas thumbnail of one cursor icon, drawn at 24px for the picker grid. */
+function CursorIconGlyph({ style }: { style: CursorIconStyle }) {
+  const ref = useRef<HTMLCanvasElement | null>(null)
+  useEffect(() => {
+    const canvas = ref.current
+    if (!canvas) return
+    renderCursorIconThumb(canvas, style)
+  }, [style])
+  return <canvas ref={ref} width={24} height={24} className="h-6 w-6 shrink-0" aria-hidden="true" />
 }

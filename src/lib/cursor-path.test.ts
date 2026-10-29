@@ -75,13 +75,16 @@ describe('sampleCursorPath', () => {
     })
   })
 
-  it('hides the cursor once the recording has been idle', () => {
+  it('keeps the cursor visible even when the recording was idle (rests at last point)', () => {
     const metadata = path(1, 60, () => ({ x: 5, y: 5 }))
     expect(sampleCursorPath(metadata, 0.5, OFF)?.visible).toBe(true)
-    // Idle past the threshold: nothing is drawn, on or off.
+    // Far past the old hide threshold: the cursor is NOT dropped, on or off — it
+    // rests at the last recorded position so preview and export show it for the
+    // whole clip.
     const idleAt = metadata[metadata.length - 1].timestamp + CURSOR_IDLE_HIDE_SEC + 0.01
-    expect(sampleCursorPath(metadata, idleAt, OFF)?.visible).toBe(false)
-    expect(sampleCursorPath(metadata, idleAt, ON)?.visible).toBe(false)
+    expect(sampleCursorPath(metadata, idleAt, OFF)?.visible).toBe(true)
+    expect(sampleCursorPath(metadata, idleAt, OFF)?.x).toBe(5)
+    expect(sampleCursorPath(metadata, idleAt, ON)?.visible).toBe(true)
   })
 
   it('follows a straight, steady path without lagging behind it', () => {

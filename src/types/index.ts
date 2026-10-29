@@ -32,6 +32,8 @@ export interface FrameStyles {
 
 export interface CursorStyles {
   showCursor: boolean
+  /** Which pointer glyph to draw. `recorded` uses the OS cursor as captured. */
+  cursorIcon: 'recorded' | 'arrow' | 'text' | 'hand' | 'crosshair' | 'pointer'
   shadowBlur: number
   shadowOffsetX: number
   shadowOffsetY: number
@@ -204,6 +206,8 @@ export interface ProjectState {
   duration: number
   cursorImages: Record<string, CursorImage>
   cursorBitmapsToRender: Map<string, CursorImageBitmap>
+  /** Selectable pointer icons, keyed by style name ('arrow','text',…). */
+  cursorIconsToRender: Map<string, CursorImageBitmap>
   syncOffset: number
   platform: NodeJS.Platform | null
   cursorTheme: CursorTheme | null
@@ -656,6 +660,7 @@ export type RenderableState = Pick<
   | 'recordingGeometry'
   | 'cursorImages'
   | 'cursorBitmapsToRender'
+  | 'cursorIconsToRender'
   | 'syncOffset'
   | 'cursorTheme'
   | 'cursorStyles'

@@ -126,6 +126,7 @@ export const DEFAULTS = {
     THEME: { defaultValue: 'Default' },
     SCALE: { defaultValue: 2 },
     SHOW_CURSOR: { defaultValue: true },
+    ICON: { defaultValue: 'recorded' },
     // Both motion features ship on at a moderate strength, so the improvement is
     // visible without the user hunting for it. Turning either off reproduces the
     // pre-feature render exactly (see lib/cursor-path.ts).

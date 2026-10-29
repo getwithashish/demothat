@@ -15,19 +15,8 @@ import { getEntitlement as getLicenseEntitlement, type Entitlement } from './lic
 export type { Entitlement }
 
 const LICENSE_KEY_SETTING = 'pro.licenseKey'
-const UNLOCK_URL_SETTING = 'pro.unlockUrl'
-const DEFAULT_UNLOCK_URL = 'https://demothat.yahodu.in/pro'
 
 const store = new Store()
-
-/** Where the export modal's "Unlock Pro" action sends the user. */
-export function getUnlockUrl(): string {
-  const configured = store.get(UNLOCK_URL_SETTING)
-  if (typeof configured === 'string' && configured.trim()) return configured.trim()
-  const fromEnv = process.env.DEMOTHAT_UNLOCK_URL
-  if (typeof fromEnv === 'string' && fromEnv.trim()) return fromEnv.trim()
-  return DEFAULT_UNLOCK_URL
-}
 
 /**
  * Whether this device is Pro, and the balance it knows about. Development escape

@@ -25,41 +25,18 @@ vi.mock('./license-client', () => ({
   getEntitlement: vi.fn(async () => ({ pro: true, credits: 4200 })),
 }))
 
-import { getEntitlement, getUnlockUrl } from './entitlement'
+import { getEntitlement } from './entitlement'
 
 describe('entitlement', () => {
   beforeEach(() => {
     storeState.data.clear()
-    delete process.env.DEMOTHAT_UNLOCK_URL
   })
 
   afterEach(() => {
-    delete process.env.DEMOTHAT_UNLOCK_URL
+    storeState.data.clear()
   })
 
   it('reports what the license client says', async () => {
     expect(await getEntitlement()).toEqual({ pro: true, credits: 4200 })
-  })
-
-  describe('unlock url', () => {
-    it('falls back to the built-in default', () => {
-      expect(getUnlockUrl()).toBe('https://demothat.yahodu.in/pro')
-    })
-
-    it('honours the environment variable', () => {
-      process.env.DEMOTHAT_UNLOCK_URL = 'https://example.test/env'
-      expect(getUnlockUrl()).toBe('https://example.test/env')
-    })
-
-    it('prefers a configured setting over the environment', () => {
-      process.env.DEMOTHAT_UNLOCK_URL = 'https://example.test/env'
-      storeState.data.set('pro.unlockUrl', 'https://example.test/setting')
-      expect(getUnlockUrl()).toBe('https://example.test/setting')
-    })
-
-    it('ignores a blank setting', () => {
-      storeState.data.set('pro.unlockUrl', '  ')
-      expect(getUnlockUrl()).toBe('https://demothat.yahodu.in/pro')
-    })
   })
 })

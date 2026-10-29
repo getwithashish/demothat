@@ -3,7 +3,7 @@
 import { IpcMainInvokeEvent } from 'electron'
 import { startExport } from '../../features/export-manager'
 import { getEncoderCapabilities } from '../../features/encoder-capabilities'
-import { getEntitlement, getUnlockUrl } from '../../features/entitlement'
+import { getEntitlement } from '../../features/entitlement'
 import { getExportPerfSamples } from '../../features/export-perf'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -18,8 +18,7 @@ export function handleGetExportCapabilities() {
 
 /** Local Pro state (a soft gate; see features/entitlement.ts). */
 export async function handleGetEntitlement() {
-  const entitlement = await getEntitlement()
-  return { ...entitlement, unlockUrl: getUnlockUrl() }
+  return getEntitlement()
 }
 
 /** Measured export throughput, used for the rough render-time estimates. */

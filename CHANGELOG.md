@@ -1,3 +1,9 @@
+## [1.17.2](https://github.com/getwithashish/DemoThat/compare/v1.17.1...v1.17.2) (2026-10-29)
+
+### Bug Fixes
+
+* **export:** create intermediate dir before cloud-upscale render ([#22](https://github.com/getwithashish/DemoThat/issues/22)) ([19a56b7](https://github.com/getwithashish/DemoThat/commit/19a56b7c79af7ec2b37c10d89699cb675618d929))
+
 ## [1.17.1](https://github.com/getwithashish/DemoThat/compare/v1.17.0...v1.17.1) (2026-10-29)
 
 ### Bug Fixes

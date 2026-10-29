@@ -6,7 +6,7 @@ describe('getApiBaseUrl', () => {
     delete process.env.DEMOTHAT_API_BASE_URL
   })
 
-  it('defaults to the production host', () => {
+  it('defaults to the compile-time value (empty when nothing is baked)', () => {
     expect(getApiBaseUrl()).toBe(DEFAULT_API_BASE_URL)
   })
 

@@ -132,6 +132,9 @@ jobs:
       - name: Build Application
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Required: bakes the production API base URL from a repository secret.
+          # The build refuses to proceed if it is unset (see vite.config.ts).
+          DEMOTHAT_DEFAULT_API_BASE_URL: ${{ secrets.DEMOTHAT_PRODUCTION_API_BASE_URL }}
         run: |
           if [ "${{ runner.os }}" == "Linux" ]; then
             npm run dist:linux

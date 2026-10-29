@@ -1,3 +1,9 @@
+## [1.16.0](https://github.com/getwithashish/DemoThat/compare/v1.15.1...v1.16.0) (2026-10-29)
+
+### Features
+
+* **pricing:** prefer API credit packs, hardcode only as offline fallback ([#19](https://github.com/getwithashish/DemoThat/issues/19)) ([a50e588](https://github.com/getwithashish/DemoThat/commit/a50e588ea7c95f4bddb4589af73afb726ba16e19))
+
 ## [1.15.1](https://github.com/getwithashish/DemoThat/compare/v1.15.0...v1.15.1) (2026-10-29)
 
 ### Bug Fixes

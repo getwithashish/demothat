@@ -59,7 +59,7 @@ export function WaitingForPaymentDialog({ isOpen, onClose, onEnterKey, onTryAgai
 
   return (
     <CloudDialog
-      title="Finish payment in your browser"
+      title={failed ? 'Could not start the purchase' : 'Finish payment in your browser'}
       variant="state"
       icon={
         failed ? (

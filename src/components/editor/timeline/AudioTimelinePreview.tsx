@@ -1,14 +1,13 @@
 import { useEffect } from 'react'
 import { useEditorStore } from '../../../store/editorStore'
-
-const mediaUrl = (filePath: string) => `media://${encodeURI(filePath).replace(/#/g, '%23').replace(/\?/g, '%3F')}`
+import { DEFAULT_CLICK_SOUND } from '../../../../shared/click-sound'
+import { mediaUrl } from '../../../../shared/media-url'
 
 /** Keeps timeline audio synchronized with the editor playhead. Export uses the same clip settings in FFmpeg. */
 export function AudioTimelinePreview() {
   useEffect(() => {
     const audioById = new Map<string, HTMLAudioElement>()
     let previousTime = 0
-    let clickContext: AudioContext | null = null
 
     const tick = () => {
       const state = useEditorStore.getState()
@@ -66,29 +65,19 @@ export function AudioTimelinePreview() {
         const clicks = clickClips.filter((clip) => clip.startTime > previousTime && clip.startTime <= state.currentTime)
         for (const click of clicks) {
           const clickVolume = Math.max(0, Math.min(1, state.mouseClickSoundVolume * click.volume))
-          if (state.mouseClickSoundPath && clickVolume > 0) {
-            const clickAudio = new Audio(mediaUrl(state.mouseClickSoundPath))
-            clickAudio.volume = clickVolume
-            clickAudio.currentTime = 0
-            void clickAudio.play().catch(() => undefined)
-            window.setTimeout(() => {
-              clickAudio.pause()
-              clickAudio.removeAttribute('src')
-            }, 500)
-          } else if (clickVolume > 0) {
-            clickContext ??= new AudioContext()
-            const oscillator = clickContext.createOscillator()
-            const gain = clickContext.createGain()
-            oscillator.type = 'sine'
-            oscillator.frequency.setValueAtTime(1350, clickContext.currentTime)
-            oscillator.frequency.exponentialRampToValueAtTime(720, clickContext.currentTime + 0.025)
-            gain.gain.setValueAtTime(Math.max(0.01, clickVolume * 0.24), clickContext.currentTime)
-            gain.gain.exponentialRampToValueAtTime(0.001, clickContext.currentTime + 0.035)
-            oscillator.connect(gain)
-            gain.connect(clickContext.destination)
-            oscillator.start()
-            oscillator.stop(clickContext.currentTime + 0.04)
-          }
+          if (clickVolume <= 0) continue
+          // A custom sound when one is set; otherwise the bundled default
+          // mouse-click mp3. Export resolves the same default (shared/click-sound),
+          // so preview and export play the same sound.
+          const source = state.mouseClickSoundPath || DEFAULT_CLICK_SOUND
+          const clickAudio = new Audio(mediaUrl(source))
+          clickAudio.volume = clickVolume
+          clickAudio.currentTime = 0
+          void clickAudio.play().catch(() => undefined)
+          window.setTimeout(() => {
+            clickAudio.pause()
+            clickAudio.removeAttribute('src')
+          }, 500)
         }
       }
       previousTime = state.currentTime
@@ -101,7 +90,6 @@ export function AudioTimelinePreview() {
         audio.pause()
         audio.removeAttribute('src')
       }
-      clickContext?.close().catch(() => undefined)
     }
   }, [])
 

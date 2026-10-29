@@ -153,6 +153,8 @@ export interface CursorImage extends CursorImageBase {
 
 export interface CursorImageBitmap extends CursorImageBase {
   imageBitmap: ImageBitmap
+  /** Post-processing scale the bitmap was rasterized at (Linux Size control). */
+  scale?: number
 }
 
 export interface WebcamPosition {

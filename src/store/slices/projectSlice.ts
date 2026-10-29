@@ -395,8 +395,11 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
           })
         }
       } else {
-        // Linux
-        const bitmaps = await prepareCursorBitmaps(parsedData.cursorImages)
+        // Linux: the cursor is captured from the OS, not built from a theme pack.
+        // Apply the same post-processing scale the Size control uses (and that the
+        // export queue reads), so the preview draws the cursor at the export size.
+        const linuxScale = (await window.electronAPI.getSetting<number>('recorder.cursorScale')) || 1
+        const bitmaps = await prepareCursorBitmaps(parsedData.cursorImages, linuxScale)
         set((state) => {
           state.cursorImages = parsedData.cursorImages || {}
           state.cursorBitmapsToRender = bitmaps
@@ -470,8 +473,7 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
     }
   },
   setPostProcessingCursorScale: async (scale) => {
-    const { platform, cursorTheme } = get()
-    if (!cursorTheme || (platform !== 'win32' && platform !== 'darwin')) return
+    const { platform, cursorTheme, cursorImages } = get()
 
     set((state) => {
       state.cursorBitmapsToRender = new Map()
@@ -479,11 +481,18 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
     window.electronAPI.setSetting('recorder.cursorScale', scale)
 
     let bitmaps: Map<string, CursorImageBitmap>
-    if (platform === 'win32') {
-      bitmaps = await prepareWindowsCursorBitmaps(cursorTheme, scale)
+    if (platform === 'win32' || platform === 'darwin') {
+      if (!cursorTheme) return
+      if (platform === 'win32') {
+        bitmaps = await prepareWindowsCursorBitmaps(cursorTheme, scale)
+      } else {
+        // darwin
+        bitmaps = await prepareMacOSCursorBitmaps(cursorTheme, scale)
+      }
     } else {
-      // darwin
-      bitmaps = await prepareMacOSCursorBitmaps(cursorTheme, scale)
+      // Linux: the cursor is captured from the OS, not built from a theme pack,
+      // so the Size control rescales the captured cursor bitmaps directly.
+      bitmaps = await prepareCursorBitmaps(cursorImages, scale)
     }
 
     set((state) => {

@@ -9,7 +9,8 @@ import fs from 'node:fs'
 import fsPromises from 'node:fs/promises'
 import { appState } from '../state'
 import { getFFmpegPath, calculateExportDimensions } from '../lib/utils'
-import { VITE_DEV_SERVER_URL, RENDERER_DIST, PRELOAD_SCRIPT } from '../lib/constants'
+import { VITE_DEV_SERVER_URL, RENDERER_DIST, PRELOAD_SCRIPT, VITE_PUBLIC } from '../lib/constants'
+import { DEFAULT_CLICK_SOUND } from '../../../shared/click-sound'
 import {
   buildExportArgs,
   computeExportDuration,
@@ -206,15 +207,22 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
     log.info(`[ExportManager] Loading render worker file (Prod): ${renderPath}#renderer`)
   }
 
-  // Materialise the built-in click WAV when click sounds are on and no custom
-  // sound is set, so buildExportArgs can stay pure.
+  // Materialise the built-in click sound when click sounds are on and no custom
+  // sound is set, so buildExportArgs can stay pure. The bundled
+  // `default_mouse_click.mp3` is the default; a synthesized soft click is the
+  // fallback only when that asset is missing (it never is in a built app).
   const temporaryFiles: string[] = []
   let clickSoundPath: string | null = projectState.mouseClickSoundPath ?? null
   if (needsBuiltInClickSound(projectState)) {
-    const generatedClickPath = path.join(os.tmpdir(), `demothat-click-${Date.now()}.wav`)
-    await fsPromises.writeFile(generatedClickPath, createBuiltInClickWav())
-    temporaryFiles.push(generatedClickPath)
-    clickSoundPath = generatedClickPath
+    const bundledClick = path.join(VITE_PUBLIC, DEFAULT_CLICK_SOUND)
+    if (fs.existsSync(bundledClick)) {
+      clickSoundPath = bundledClick
+    } else {
+      const generatedClickPath = path.join(os.tmpdir(), `demothat-click-${Date.now()}.wav`)
+      await fsPromises.writeFile(generatedClickPath, createBuiltInClickWav())
+      temporaryFiles.push(generatedClickPath)
+      clickSoundPath = generatedClickPath
+    }
   }
 
   const ffmpegArgs = buildExportArgs({

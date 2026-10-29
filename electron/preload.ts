@@ -658,6 +658,8 @@ export const electronAPI = {
    * problem from a decoder problem at a distance.
    */
   logDiagnostic: (scope: string, message: string): void => ipcRenderer.send('diagnostic:log', scope, message),
+  captureDiagnostic: (): Promise<{ min: number; max: number; width: number; height: number } | null> =>
+    ipcRenderer.invoke('diagnostic:capture'),
 }
 
 // Expose API safely

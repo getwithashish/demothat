@@ -172,7 +172,7 @@ export const Preview = memo(
       }
       // setTimeout (not rAF): fires even when the window is hidden, where
       // requestAnimationFrame is throttled to nothing.
-      const sample = () => {
+      const sample = async () => {
         try {
           let app: ReturnType<typeof sampleLuma> = null
           const ctx = canvas.getContext('2d')
@@ -195,6 +195,9 @@ export const Preview = memo(
             }
             app = { min, max }
           }
+          // Whole-canvas stats (vs the center window above) remove sampling bias
+          // when the interesting content sits away from the middle.
+          const whole = ctx ? sampleLuma(ctx.canvas) : null
           const element = video.readyState >= 2 ? sampleLuma(video) : null
           // Same draw, but into a PLAIN (GPU-accelerated) canvas, the way the
           // app's own preview canvas is configured. If this differs from the
@@ -221,9 +224,19 @@ export const Preview = memo(
           } catch {
             gpuEl = null
           }
+          // The composited window output (what actually reaches the screen).
+          // A canvas full of pixels with a black capture means the GPU window
+          // presentation is broken, not the drawing.
+          let page: { min: number; max: number; width: number; height: number } | null = null
+          try {
+            page = (await window.electronAPI?.captureDiagnostic?.()) ?? null
+          } catch {
+            page = null
+          }
+          const rect = canvas.getBoundingClientRect()
           window.electronAPI?.logDiagnostic?.(
             'preview painted',
-            `${describe(app, 'canvas')} | ${describe(element, 'element-sw')} | ${describe(gpuEl, 'element-gpu')} | t=${video.currentTime.toFixed(2)}s paused=${video.paused} rs=${video.readyState}`,
+            `${describe(app, 'canvas')} | ${describe(whole, 'whole')} | ${describe(element, 'element-sw')} | ${describe(gpuEl, 'element-gpu')} | ${describe(page, 'page')} | rect=${Math.round(rect.width)}x${Math.round(rect.height)} t=${video.currentTime.toFixed(2)}s paused=${video.paused} rs=${video.readyState}`,
           )
         } catch (error) {
           window.electronAPI?.logDiagnostic?.('preview painted', `readback failed: ${String(error)}`)
@@ -657,13 +670,20 @@ export const Preview = memo(
             // The wrapper hugs the canvas so the caption sits over the picture and not
             // over the empty space around it. `container-type` lets the caption's size
             // follow the preview's, which is the only way it stays legible when the
-            // window is resized.
-            <div className="relative flex items-center justify-center" style={{ containerType: 'inline-size' }}>
+            // window is resized. Both get EXPLICIT fill sizes: `width:auto/height:auto`
+            // + `maxWidth/maxHeight:100%` on the canvas depends on the wrapper's size,
+            // which depends on the canvas — a circular constraint that resolves to
+            // 0x0 (invisible preview), which is exactly the "black screen" bug:
+            // the canvas held pixels all along, but was never laid out on screen.
+            <div
+              className="relative flex items-center justify-center"
+              style={{ containerType: 'inline-size', width: '100%', height: '100%', minHeight: 0 }}
+            >
               <canvas
                 ref={canvasRef}
                 width={canvasDimensions.width}
                 height={canvasDimensions.height}
-                style={{ maxWidth: '100%', maxHeight: '100%', width: 'auto', height: 'auto' }}
+                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                 className="rounded-pv ring-1 ring-line shadow-[var(--sa-preview-shadow)]"
               />
               {activeCue && (

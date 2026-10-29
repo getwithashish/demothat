@@ -22,6 +22,32 @@ export function registerIpcHandlers() {
     log.warn(`[Diagnostic:${String(scope)}] ${String(message)}`)
   })
 
+  // What the compositor ACTUALLY presents in this window — the renderer's own
+  // canvas can hold pixels while the on-screen output is black (GPU window
+  // compositing failure). Samples the capture that would reach the screen and
+  // returns its luma range so the painted-probe can compare canvas vs screen.
+  ipcMain.handle('diagnostic:capture', async (event) => {
+    try {
+      const image = await event.sender.capturePage()
+      if (image.isEmpty()) return null
+      const { width, height } = image.getSize()
+      const bitmap = image.toBitmap() // BGRA
+      if (!bitmap || bitmap.length < 4) return null
+      const stride = Math.max(1, Math.floor((width * height) / 2000))
+      let min = Infinity
+      let max = -Infinity
+      for (let i = 0; i < bitmap.length && i + 2 < bitmap.length; i += stride * 4) {
+        // BGRA order
+        const luma = 0.299 * bitmap[i + 2] + 0.587 * bitmap[i + 1] + 0.114 * bitmap[i]
+        if (luma < min) min = luma
+        if (luma > max) max = luma
+      }
+      return { min, max, width, height }
+    } catch {
+      return null
+    }
+  })
+
   // App & Window
   ipcMain.handle('app:getPath', appHandlers.handleGetPath)
   ipcMain.handle('app:getVersion', appHandlers.handleGetVersion)

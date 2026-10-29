@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   formatPrice,
-  pickFirstPurchaseProductId,
+  firstPurchaseProductId,
   toCreditPackView,
   toCreditPackViews,
   type Product,
@@ -109,26 +109,26 @@ describe('toCreditPackViews', () => {
   })
 })
 
-describe('pickFirstPurchaseProductId', () => {
-  it('prefers the server first_purchase pack over the fallback', () => {
+describe('firstPurchaseProductId', () => {
+  it('returns the server first_purchase pack id', () => {
     expect(
-      pickFirstPurchaseProductId(
-        [product({ productId: 'api_pro', kind: 'first_purchase' }), product({ productId: 'topup', kind: 'topup' })],
-        'hardcoded',
-      ),
+      firstPurchaseProductId([
+        product({ productId: 'api_pro', kind: 'first_purchase' }),
+        product({ productId: 'topup', kind: 'topup' }),
+      ]),
     ).toBe('api_pro')
   })
 
-  it('falls back to the hardcoded id when the API is unreachable', () => {
-    expect(pickFirstPurchaseProductId(null, 'hardcoded')).toBe('hardcoded')
-    expect(pickFirstPurchaseProductId(undefined, 'hardcoded')).toBe('hardcoded')
+  it('returns null when the API is unreachable', () => {
+    expect(firstPurchaseProductId(null)).toBeNull()
+    expect(firstPurchaseProductId(undefined)).toBeNull()
   })
 
-  it('falls back when the catalogue has no entry pack', () => {
-    expect(pickFirstPurchaseProductId([product({ productId: 'topup', kind: 'topup' })], 'hardcoded')).toBe('hardcoded')
+  it('returns null when the catalogue has no entry pack', () => {
+    expect(firstPurchaseProductId([product({ productId: 'topup', kind: 'topup' })])).toBeNull()
   })
 
-  it('ignores an entry pack with a blank id', () => {
-    expect(pickFirstPurchaseProductId([product({ productId: '   ' })], 'hardcoded')).toBe('hardcoded')
+  it('excludes an entry pack with a blank id', () => {
+    expect(firstPurchaseProductId([product({ productId: '   ' })])).toBeNull()
   })
 })

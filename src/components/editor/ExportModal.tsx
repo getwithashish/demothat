@@ -28,8 +28,8 @@ import {
 } from '../../lib/export-estimate'
 import { PanelHeader } from './PanelHeader'
 import { estimateCloudCredits } from '../../../shared/cloud-cost'
-import { formatCredits, CREDIT_PACKS } from '../../../shared/license'
-import { pickFirstPurchaseProductId } from '../../../shared/pricing'
+import { formatCredits } from '../../../shared/license'
+import { firstPurchaseProductId } from '../../../shared/pricing'
 import { CloudConsentDialog } from './cloud/CloudConsentDialog'
 import { CloudExportProgress } from './cloud/CloudExportProgress'
 import { CancelExportDialog } from './cloud/CancelExportDialog'
@@ -333,10 +333,20 @@ const SettingsView = ({
   // process's job (startPurchase → startCheckout); the WaitingForPaymentDialog
   // then gives the in-app feedback while the payment settles.
   const handleUnlock = () => {
-    // API data wins; the hardcoded pack id is only the offline fallback.
+    // No hardcoded pack: the API is the only source, so surface a failure rather
+    // than guessing an id.
     void (async () => {
       const catalogue = (await window.electronAPI.listProducts?.())?.products ?? null
-      const productId = pickFirstPurchaseProductId(catalogue, CREDIT_PACKS[0].productId)
+      const productId = firstPurchaseProductId(catalogue)
+      if (!productId) {
+        useEditorStore.setState({
+          purchaseError: 'The credit packs could not be loaded. Check your connection and try again.',
+          buyCreditsOpen: false,
+          waitingForPayment: true,
+          checkoutUserInitiated: false,
+        })
+        return
+      }
       await useEditorStore.getState().startPurchase(productId)
     })()
   }

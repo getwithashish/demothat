@@ -113,16 +113,15 @@ export function toCreditPackViews(products: Product[] | null | undefined): Credi
 
 /**
  * The product id the "Get Pro" path should buy. The API is the source of truth
- * for which pack starts a licence, so prefer its first_purchase pack and fall
- * back to a hardcoded id only when the catalogue is unreachable or carries no
- * entry pack.
+ * for which pack starts a licence; returns null when the catalogue is unreachable
+ * or carries no entry pack, and the caller shows the user an error instead of
+ * guessing an id.
  */
-export function pickFirstPurchaseProductId(
+export function firstPurchaseProductId(
   products: Pick<Product, 'kind' | 'productId'>[] | null | undefined,
-  fallbackProductId: string,
-): string {
+): string | null {
   const entry = (Array.isArray(products) ? products : []).find(
     (p) => p && p.kind === 'first_purchase' && typeof p.productId === 'string' && p.productId.trim() !== '',
   )
-  return entry ? entry.productId : fallbackProductId
+  return entry ? entry.productId : null
 }

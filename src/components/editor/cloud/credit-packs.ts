@@ -1,35 +1,11 @@
 // Credit pack helpers for the Buy credits dialog.
 //
-// The dialog shows the catalogue from `GET /v1/products`; these helpers cover the
-// offline fallback (when the API cannot be reached), the price rendering for that
-// fallback, and the "smallest pack that covers the shortfall" choice.
+// The dialog shows the catalogue from `GET /v1/products` only — there is no
+// hardcoded fallback, and no ids or prices live in this repo. These helpers cover
+// the price rendering of that catalogue, the "smallest pack that covers the
+// shortfall" choice, and the pack notes.
 //
 // Kept out of the component file so React Fast Refresh stays happy.
-
-import { CREDIT_PACKS, type CreditPack } from '../../../../shared/license'
-import type { CreditPackView } from '../../../../shared/pricing'
-
-/** Display price for an offline pack, e.g. "$3" or "$4.50". */
-export function priceLabel(pack: CreditPack): string {
-  return `$${Number.isInteger(pack.priceUsd) ? pack.priceUsd : pack.priceUsd.toFixed(2)}`
-}
-
-/**
- * The offline packs, in the same shape as the server's catalogue.
- *
- * Only used when `GET /v1/products` is unreachable: the product ids here are
- * placeholders and the prices are indicative, so anything drawn from this list is
- * a best effort until the server answers.
- */
-export function fallbackPackViews(packs: CreditPack[] = CREDIT_PACKS): CreditPackView[] {
-  return packs.map((pack) => ({
-    productId: pack.productId,
-    label: pack.label,
-    credits: pack.credits,
-    priceLabel: priceLabel(pack),
-    kind: pack.kind,
-  }))
-}
 
 /**
  * The packs this copy may actually buy, in the order the dialog shows them.
@@ -66,12 +42,9 @@ export function pickNoteTarget(creditsPerFrame: Record<string, number> | undefin
  * first (design §2: "the smallest pack that covers the export is preselected").
  * Falls back to the largest pack when even that does not cover the shortfall —
  * a purchase is still the only way forward. Expects the list cheapest-first,
- * which both the server's order and `fallbackPackViews` guarantee.
+ * which the server's order guarantees.
  */
-export function recommendedPackIndex(
-  shortfall: number | null | undefined,
-  packs: Array<{ credits: number }> = CREDIT_PACKS,
-): number {
+export function recommendedPackIndex(shortfall: number | null | undefined, packs: Array<{ credits: number }>): number {
   if (!shortfall || shortfall <= 0 || packs.length === 0) return 0
   const index = packs.findIndex((pack) => pack.credits >= shortfall)
   return index === -1 ? packs.length - 1 : index

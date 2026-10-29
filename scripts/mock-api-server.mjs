@@ -826,6 +826,11 @@ export async function createMockApiServer(options = {}) {
       if (req.method === 'POST' && parts[0] === 'v1' && parts[1] === 'jobs' && parts[3] === 'start') {
         const job = state.jobs.get(parts[2])
         if (!job) return fail(res, 404, 'not_found', 'No such job')
+        // The same state gate as the real API: only a completed upload may start.
+        // Keeping it here stops the mock from passing a job the real API refuses.
+        if (job.status !== 'uploaded') {
+          return fail(res, 409, 'invalid_state', `Job is ${job.status}, so it cannot start`)
+        }
         job.status = 'validating'
         job.stage = 'validating'
         job.startedAt = Date.now()

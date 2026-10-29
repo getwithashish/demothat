@@ -192,8 +192,11 @@ export async function runTranscription(request: RunTranscriptionRequest): Promis
     })
     if (job.upload.type === 'multipart') {
       saveUploadResume(job.jobId, uploaded)
-      await completeUpload(job.jobId, uploaded.parts)
     }
+    // Completion is required for every plan type (see cloud-export.ts): it is the
+    // server's only transition out of `uploading`, and `start` refuses anything
+    // still uploading. A single plan just sends an empty parts list.
+    await completeUpload(job.jobId, uploaded.parts)
     onProgress({ stage: 'Uploading', stagePercent: 100 })
     clearUploadResume(job.jobId)
 

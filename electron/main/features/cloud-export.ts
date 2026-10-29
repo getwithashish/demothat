@@ -195,8 +195,11 @@ export async function runCloudExport(request: RunCloudExportRequest): Promise<Cl
     })
     if (job.upload.type === 'multipart') {
       saveUploadResume(job.jobId, uploaded)
-      await completeUpload(job.jobId, uploaded.parts)
     }
+    // Completion is required for every plan type: it is the server's only
+    // transition out of `uploading`, and `start` refuses anything still
+    // uploading. A single plan just sends an empty parts list.
+    await completeUpload(job.jobId, uploaded.parts)
     onProgress({ stage: 'Uploading', stagePercent: 100 })
     clearUploadResume(job.jobId)
 

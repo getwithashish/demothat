@@ -146,8 +146,12 @@ export function RendererPage() {
             }
           }
         } else {
-          log.info('[RendererPage] Preparing Linux bitmaps from project state.')
-          finalCursorBitmaps = await prepareCursorBitmaps(projectState.cursorImages)
+          // Linux: the cursor is captured from the OS. Apply the same post-processing
+          // scale the editor uses (recorder.cursorScale), so preview and export draw
+          // the cursor at the same size.
+          const linuxScale = (await window.electronAPI.getSetting<number>('recorder.cursorScale')) || 1
+          log.info(`[RendererPage] Preparing Linux bitmaps from project state at ${linuxScale}x.`)
+          finalCursorBitmaps = await prepareCursorBitmaps(projectState.cursorImages, linuxScale)
         }
         const projectStateWithCursorBitmaps = { ...projectState, cursorBitmapsToRender: finalCursorBitmaps }
         const bgImage = await loadBackgroundImage(projectState.frameStyles.background)

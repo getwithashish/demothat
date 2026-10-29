@@ -102,6 +102,7 @@ export const calculateRulerInterval = (pixelsPerSecond: number): { major: number
 
 export const prepareCursorBitmaps = async (
   cursorImages: Record<string, CursorImage>,
+  scale = 1,
 ): Promise<Map<string, CursorImageBitmap>> => {
   const bitmapMap = new Map<string, CursorImageBitmap>()
   const promises = []
@@ -113,8 +114,23 @@ export const prepareCursorBitmaps = async (
         try {
           const buffer = new Uint8ClampedArray(cursor.image)
           const imageData = new ImageData(buffer, cursor.width, cursor.height)
-          const bitmap = await createImageBitmap(imageData)
-          bitmapMap.set(key, { ...cursor, imageBitmap: bitmap })
+          let bitmap = await createImageBitmap(imageData)
+          // A post-processing scale rescales the captured cursor (the Size control
+          // on Linux, where the cursor is captured from the OS rather than built
+          // from a theme). Windows/macOS rebuild theme bitmaps per scale instead;
+          // scale 1 is a no-op so the existing call sites are unchanged.
+          if (scale !== 1 && scale > 0) {
+            bitmap = await scaleImageBitmap(bitmap, scale)
+          }
+          bitmapMap.set(key, {
+            ...cursor,
+            width: Math.max(1, Math.round(cursor.width * scale)),
+            height: Math.max(1, Math.round(cursor.height * scale)),
+            xhot: cursor.xhot * scale,
+            yhot: cursor.yhot * scale,
+            imageBitmap: bitmap,
+            scale,
+          })
         } catch (e) {
           //
         }
@@ -125,6 +141,21 @@ export const prepareCursorBitmaps = async (
 
   await Promise.all(promises)
   return bitmapMap
+}
+
+/** Scales an ImageBitmap by `factor` via an offscreen 2D canvas. */
+export const scaleImageBitmap = async (bitmap: ImageBitmap, factor: number): Promise<ImageBitmap> => {
+  const width = Math.max(1, Math.round(bitmap.width * factor))
+  const height = Math.max(1, Math.round(bitmap.height * factor))
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return bitmap
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
+  ctx.drawImage(bitmap, 0, 0, width, height)
+  return await createImageBitmap(canvas)
 }
 
 /**

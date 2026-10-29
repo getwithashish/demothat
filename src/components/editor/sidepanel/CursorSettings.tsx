@@ -56,23 +56,25 @@ export function CursorSettings() {
   const [cursorScale, setCursorScale] = useState<number>(DEFAULTS.CURSOR.SCALE.defaultValue)
   const [availableThemes, setAvailableThemes] = useState<string[]>([DEFAULTS.CURSOR.THEME.defaultValue])
 
-  const isCustomizationSupported = useMemo(() => platform === 'win32' || platform === 'darwin', [platform])
+  // Windows/macOS build the cursor from downloadable theme packs; Linux captures
+  // the pointer from the OS, so its "theme" is the system cursor (a fixed Default)
+  // and only the Size control rescales it. Both sets of controls work on Linux.
+  const isThemeSupported = useMemo(() => platform === 'win32' || platform === 'darwin', [platform])
 
   useEffect(() => {
-    if (isCustomizationSupported) {
+    if (isThemeSupported) {
       window.electronAPI.getCursorThemes().then((themes) => {
         if (themes && themes.length > 0) {
           setAvailableThemes(themes)
         }
       })
-
-      window.electronAPI.getSetting<number>('recorder.cursorScale').then((savedScale) => {
-        if (savedScale && POST_PROCESSING_SCALES.some((s) => s.value === savedScale)) {
-          setCursorScale(savedScale)
-        }
-      })
     }
-  }, [isCustomizationSupported])
+    window.electronAPI.getSetting<number>('recorder.cursorScale').then((savedScale) => {
+      if (savedScale && POST_PROCESSING_SCALES.some((s) => s.value === savedScale)) {
+        setCursorScale(savedScale)
+      }
+    })
+  }, [isThemeSupported])
 
   const handleCursorScaleChange = (value: number) => {
     setCursorScale(value)
@@ -137,11 +139,12 @@ export function CursorSettings() {
   }
 
   const handleResetTheme = () => {
-    if (isCustomizationSupported) handleThemeChange(DEFAULTS.CURSOR.THEME.defaultValue)
+    if (isThemeSupported) handleThemeChange(DEFAULTS.CURSOR.THEME.defaultValue)
   }
 
   const handleResetSize = () => {
-    if (isCustomizationSupported) handleCursorScaleChange(DEFAULTS.CURSOR.SCALE.defaultValue)
+    // Works on every platform (Linux rescales the captured cursor).
+    handleCursorScaleChange(DEFAULTS.CURSOR.SCALE.defaultValue)
   }
 
   const handleResetShadow = () => {
@@ -187,14 +190,12 @@ export function CursorSettings() {
 
         <Section
           label="Theme"
-          labelRight={
-            isCustomizationSupported ? <ResetButton onClick={handleResetTheme} label="cursor theme" /> : undefined
-          }
+          labelRight={isThemeSupported ? <ResetButton onClick={handleResetTheme} label="cursor theme" /> : undefined}
         >
           <Select
-            value={isCustomizationSupported ? cursorThemeName : DEFAULTS.CURSOR.THEME.defaultValue}
+            value={isThemeSupported ? cursorThemeName : DEFAULTS.CURSOR.THEME.defaultValue}
             onValueChange={handleThemeChange}
-            disabled={!isCustomizationSupported}
+            disabled={!isThemeSupported}
           >
             <SelectTrigger aria-label="Cursor theme">
               <SelectValue />
@@ -207,27 +208,22 @@ export function CursorSettings() {
               ))}
             </SelectContent>
           </Select>
-          {!isCustomizationSupported && <HelperText>Cursor themes are available on Windows and macOS.</HelperText>}
+          {!isThemeSupported && (
+            <HelperText>
+              Linux uses the system cursor captured by the recorder. Theme packs are Windows-only.
+            </HelperText>
+          )}
         </Section>
 
-        <Section
-          label="Size"
-          labelRight={
-            isCustomizationSupported ? <ResetButton onClick={handleResetSize} label="cursor size" /> : undefined
-          }
-        >
+        <Section label="Size" labelRight={<ResetButton onClick={handleResetSize} label="cursor size" />}>
           <SegmentedControl
             aria-label="Cursor size"
-            options={POST_PROCESSING_SCALES.map((scale) => ({
-              value: String(scale.value),
-              label: scale.label,
-              disabled: !isCustomizationSupported,
-            }))}
+            options={POST_PROCESSING_SCALES.map((scale) => ({ value: String(scale.value), label: scale.label }))}
             value={String(cursorScale)}
             onChange={(value) => handleCursorScaleChange(Number(value))}
           />
-          {!isCustomizationSupported && (
-            <HelperText>Virtual cursor sizing is available on Windows and macOS.</HelperText>
+          {platform !== null && platform !== 'win32' && platform !== 'darwin' && (
+            <HelperText>Resizes the cursor captured by the recorder on this platform.</HelperText>
           )}
         </Section>
 

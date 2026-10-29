@@ -44,8 +44,13 @@ export const createPurchaseSlice: Slice<PurchaseState, PurchaseActions> = (set) 
     try {
       const result = await api.startCheckout(productId)
       if (!result.ok) {
+        // Keep the waiting dialog open so the error has somewhere to live
+        // (same convention as usePurchaseFlow's 'failed' event).
         set((state) => {
           state.purchaseError = result.message
+          state.buyCreditsOpen = false
+          state.waitingForPayment = true
+          state.checkoutUserInitiated = false
         })
         return false
       }
@@ -60,6 +65,9 @@ export const createPurchaseSlice: Slice<PurchaseState, PurchaseActions> = (set) 
     } catch (error) {
       set((state) => {
         state.purchaseError = error instanceof Error ? error.message : 'Could not start the purchase.'
+        state.buyCreditsOpen = false
+        state.waitingForPayment = true
+        state.checkoutUserInitiated = false
       })
       return false
     }

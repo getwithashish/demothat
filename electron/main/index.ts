@@ -1,10 +1,9 @@
 // Entry point of the Electron application.
 
-import { app, BrowserWindow, net, protocol, Menu, screen, dialog, desktopCapturer } from 'electron'
+import { app, BrowserWindow, protocol, Menu, screen, dialog, desktopCapturer } from 'electron'
 import { initMain as initAudioLoopback } from 'electron-audio-loopback'
 import log from 'electron-log/main'
 import path from 'node:path'
-import { pathToFileURL } from 'node:url'
 import fsSync from 'node:fs'
 import { spawn } from 'node:child_process'
 import { VITE_PUBLIC } from './lib/constants'
@@ -232,13 +231,16 @@ app.whenReady().then(async () => {
     })
   }
 
-  // Register custom protocol for media files. `protocol.handle` + `net.fetch`
-  // serves the file with native byte-range support (the legacy
-  // registerFileProtocol ignores Range headers). Chromium's media element
-  // ranges when seeking and when reading the moov box of a non-faststart MP4;
-  // a range-less response can leave the element stalled at readyState 0 with
-  // NO error event — a black preview that still exports fine.
-  protocol.handle('media', (request) => {
+  // Register custom protocol for media files. A REAL HTTP byte-range server:
+  // Chromium's media element issues Range requests when seeking, when reading
+  // the moov box of a non-faststart MP4, and while streaming. A range-less
+  // response makes the element either stall at readyState 0 (black preview that
+  // still exports fine) or — once +faststart puts the moov up front so it
+  // LOADS — clamp every seek back to 0 because the source reports no
+  // seekable range. That is exactly the "snaps back to the start" regression:
+  // the file played but the seek bar could not move. 206/Content-Range answers
+  // make seekable() non-empty and both symptoms disappear.
+  protocol.handle('media', async (request) => {
     const url = request.url.replace('media://', '')
     const decodedUrl = decodeURIComponent(url)
     const resourcePath = path.join(VITE_PUBLIC, decodedUrl)
@@ -253,7 +255,65 @@ app.whenReady().then(async () => {
       log.error(`[Protocol] Could not find file: ${decodedUrl}`)
       return new Response('Not found', { status: 404 })
     }
-    return net.fetch(pathToFileURL(filePath).toString())
+
+    const MIME: Record<string, string> = {
+      '.mp4': 'video/mp4',
+      '.m4a': 'audio/mp4',
+      '.webm': 'video/webm',
+      '.opus': 'audio/ogg',
+      '.mp3': 'audio/mpeg',
+      '.wav': 'audio/wav',
+      '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.gif': 'image/gif',
+      '.webp': 'image/webp',
+    }
+    const contentType = MIME[path.extname(filePath).toLowerCase()] ?? 'application/octet-stream'
+    const baseHeaders: Record<string, string> = { 'Content-Type': contentType, 'Accept-Ranges': 'bytes' }
+
+    try {
+      const size = fsSync.statSync(filePath).size
+      const range = request.headers.get('Range')
+      if (range) {
+        const match = /^bytes=(\d*)-(\d*)$/.exec(range.trim())
+        if (!match) {
+          return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${size}` } })
+        }
+        let start = match[1] === '' ? 0 : Number.parseInt(match[1], 10)
+        let end = match[2] === '' ? size - 1 : Number.parseInt(match[2], 10)
+        if (Number.isNaN(start)) start = 0
+        if (Number.isNaN(end)) end = size - 1
+        if (start > end || start >= size || end >= size) {
+          return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${size}` } })
+        }
+        const length = end - start + 1
+        const fd = fsSync.openSync(filePath, 'r')
+        const buffer = Buffer.alloc(length)
+        try {
+          fsSync.readSync(fd, buffer, 0, length, start)
+        } finally {
+          fsSync.closeSync(fd)
+        }
+        return new Response(buffer, {
+          status: 206,
+          headers: {
+            ...baseHeaders,
+            'Content-Length': String(length),
+            'Content-Range': `bytes ${start}-${end}/${size}`,
+          },
+        })
+      }
+      // No Range header: the whole file in one response (small assets, images).
+      const buffer = fsSync.readFileSync(filePath)
+      return new Response(buffer, {
+        status: 200,
+        headers: { ...baseHeaders, 'Content-Length': String(size) },
+      })
+    } catch (error) {
+      log.error(`[Protocol] Failed to serve ${decodedUrl}: ${String(error)}`)
+      return new Response('Not found', { status: 404 })
+    }
   })
 
   registerIpcHandlers()

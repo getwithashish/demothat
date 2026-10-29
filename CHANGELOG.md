@@ -1,3 +1,9 @@
+## [1.13.0](https://github.com/getwithashish/DemoThat/compare/v1.12.3...v1.13.0) (2026-10-29)
+
+### Features
+
+* **editor:** delete any selected item, remove sidebar effects quick-add, preview diagnostics + faststart + ranged media protocol ([#11](https://github.com/getwithashish/DemoThat/issues/11)) ([2422400](https://github.com/getwithashish/DemoThat/commit/242240029f46ca59674465b8f3fafb418cd59948))
+
 ## [1.12.3](https://github.com/getwithashish/DemoThat/compare/v1.12.2...v1.12.3) (2026-10-28)
 
 ### Bug Fixes

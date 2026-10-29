@@ -196,9 +196,34 @@ export const Preview = memo(
             app = { min, max }
           }
           const element = video.readyState >= 2 ? sampleLuma(video) : null
+          // Same draw, but into a PLAIN (GPU-accelerated) canvas, the way the
+          // app's own preview canvas is configured. If this differs from the
+          // software probe above, the backend itself decides whether a
+          // drawImage of the (hidden) video produces a picture.
+          let gpuEl: ReturnType<typeof sampleLuma> = null
+          try {
+            const g = document.createElement('canvas')
+            g.width = 320
+            g.height = 180
+            const gctx = g.getContext('2d')
+            if (gctx && video.readyState >= 2) {
+              gctx.drawImage(video, 0, 0, 320, 180)
+              const data = gctx.getImageData(0, 0, 320, 180).data
+              let min = Infinity
+              let max = -Infinity
+              for (let i = 0; i < data.length; i += 16) {
+                const luma = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]
+                if (luma < min) min = luma
+                if (luma > max) max = luma
+              }
+              gpuEl = { min, max }
+            }
+          } catch {
+            gpuEl = null
+          }
           window.electronAPI?.logDiagnostic?.(
             'preview painted',
-            `${describe(app, 'canvas')} | ${describe(element, 'element')} | t=${video.currentTime.toFixed(2)}s paused=${video.paused} rs=${video.readyState}`,
+            `${describe(app, 'canvas')} | ${describe(element, 'element-sw')} | ${describe(gpuEl, 'element-gpu')} | t=${video.currentTime.toFixed(2)}s paused=${video.paused} rs=${video.readyState}`,
           )
         } catch (error) {
           window.electronAPI?.logDiagnostic?.('preview painted', `readback failed: ${String(error)}`)
@@ -765,7 +790,20 @@ export const Preview = memo(
             console.error('[Preview] media element failed to load:', mediaError)
             reportMediaHealth(`error code=${mediaError?.code} message=${mediaError?.message ?? ''}`)
           }}
-          style={{ display: 'none' }}
+          // Rendered-but-invisible, NOT `display:none`: the compositor drops
+          // textures for display:none videos, so a GPU-accelerated canvas
+          // drawImage() of them silently draws nothing (black preview while
+          // export works). A 1px off-screen, ~transparent video stays composited
+          // long enough for every backend to keep its frame available.
+          style={{
+            position: 'fixed',
+            top: '-200px',
+            left: '-200px',
+            width: '4px',
+            height: '4px',
+            opacity: 0.01,
+            pointerEvents: 'none',
+          }}
         />
         {webcamVideoUrl && (
           <video
@@ -774,7 +812,15 @@ export const Preview = memo(
             muted
             playsInline
             onLoadedMetadata={handleWebcamLoadedMetadata}
-            style={{ display: 'none' }}
+            style={{
+              position: 'fixed',
+              top: '-200px',
+              left: '-200px',
+              width: '4px',
+              height: '4px',
+              opacity: 0.01,
+              pointerEvents: 'none',
+            }}
           />
         )}
         {/* Hidden decoders for imported video clips — composited onto the canvas by drawScene. */}
@@ -789,7 +835,15 @@ export const Preview = memo(
             muted
             playsInline
             preload="auto"
-            style={{ display: 'none' }}
+            style={{
+              position: 'fixed',
+              top: '-200px',
+              left: '-200px',
+              width: '4px',
+              height: '4px',
+              opacity: 0.01,
+              pointerEvents: 'none',
+            }}
           />
         ))}
 

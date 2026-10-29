@@ -429,8 +429,15 @@ export const Preview = memo(
             h = r.height
             w = h * aspect
           }
-          const nextW = Math.max(1, Math.round(w * dpr))
-          const nextH = Math.max(1, Math.round(h * dpr))
+          const fitW = w * dpr
+          const fitH = h * dpr
+          // Never rasterize more pixels than the source video holds: beyond the
+          // source resolution the extra pixels add no detail, only cost — which
+          // is the stutter when the preview is enlarged (dpr can push a big box
+          // to 3MP+ per frame). Small previews still use their display size.
+          const maxScale = Math.min(1, srcW / fitW, srcH / fitH)
+          const nextW = Math.max(1, Math.round(fitW * maxScale))
+          const nextH = Math.max(1, Math.round(fitH * maxScale))
           setBackingSize((prev) =>
             prev && prev.width === nextW && prev.height === nextH ? prev : { width: nextW, height: nextH },
           )

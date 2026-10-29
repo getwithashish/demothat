@@ -19,7 +19,12 @@
  * sells beats showing an empty dialog.
  */
 export function visiblePacks<T extends { kind: 'first_purchase' | 'topup' }>(packs: T[], licensed: boolean): T[] {
-  if (licensed) return packs
+  // Once the copy holds Pro, the first-purchase pack is done: only top-ups remain.
+  // Fall back to the whole catalogue if the server sells no top-ups (never empty).
+  if (licensed) {
+    const topups = packs.filter((pack) => pack.kind === 'topup')
+    return topups.length > 0 ? topups : packs
+  }
   const entry = packs.filter((pack) => pack.kind === 'first_purchase')
   return entry.length > 0 ? entry : packs
 }

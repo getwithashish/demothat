@@ -93,6 +93,226 @@ export const Preview = memo(
     const webcamVideoRef = useRef<HTMLVideoElement>(null)
     const clipVideoRefs = useRef<Map<string, HTMLVideoElement>>(new Map())
     const animationFrameId = useRef<number>()
+    const drawInFlight = useRef(false)
+    // Preview backing store, sized to the DISPLAYED area (×dpr), NOT the 1080p
+    // source: drawing a 1920×1080 scene to show ~900px burns ~4× the pixels per
+    // frame for no on-screen benefit. drawScene adapts to whatever size the
+    // canvas is. Export renders on its own page/canvas and is unaffected.
+    const [backingSize, setBackingSize] = useState<{ width: number; height: number } | null>(null)
+    // Preview-health diagnostics (see `reportMediaHealth`): keyed to the current
+    // source URL so a project switch resets the reported state.
+    const mediaHealthReportedFor = useRef<string | null>(null)
+
+    /**
+     * Reports preview load state into the MAIN process log (the packaged app has
+     * no visible devtools console). Keeps a single-line story per source URL:
+     * a stall (readyState 0 forever), a partial load (metadata but no decodable
+     * frames), or success. A stalled element with NO error event — the exact
+     * signature of a media server that cannot answer byte-range requests — is
+     * only diagnosable this way.
+     */
+    const reportMediaHealth = useCallback(
+      (state: 'stalled' | 'partial' | 'decodable' | `error ${string}`, extra?: string) => {
+        const key = videoUrl ?? '(no source)'
+        const video = videoRef.current
+        const detail =
+          state === 'decodable'
+            ? `decodable readyState=${video?.readyState} size=${video?.videoWidth}x${video?.videoHeight}`
+            : `readyState=${video?.readyState} size=${video?.videoWidth}x${video?.videoHeight}${extra ? ` ${extra}` : ''}`
+        window.electronAPI?.logDiagnostic?.(
+          `preview ${state.startsWith('error') ? 'error' : state}`,
+          `${detail} src=${key}`,
+        )
+        if (state === 'decodable' || state.startsWith('error')) mediaHealthReportedFor.current = key
+      },
+      [videoUrl, videoRef],
+    )
+
+    // After a decodable report, read the canvas back and say whether an actual
+    // frame shows or it is blank. This is the probe for "the file loads but the
+    // preview is black" — the exact case that never fires an error event, on a
+    // machine where the element plays (readyState >= 2) yet nothing paints.
+    // Sample the greyscale range of a canvas-like source, so the log can say
+    // whether real picture data is present (broad range) or the output is
+    // effectively black (narrow, dark range) without us having to look.
+    const sampleLuma = useCallback((source: CanvasImageSource) => {
+      const probe = document.createElement('canvas')
+      probe.width = 320
+      probe.height = 180
+      const ctx = probe.getContext('2d', { willReadFrequently: true })
+      if (!ctx) return null
+      ctx.drawImage(source, 0, 0, 320, 180)
+      const data = ctx.getImageData(0, 0, 320, 180).data
+      let min = Infinity
+      let max = -Infinity
+      for (let i = 0; i < data.length; i += 16) {
+        const luma = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]
+        if (luma < min) min = luma
+        if (luma > max) max = luma
+      }
+      return { min, max }
+    }, [])
+
+    const describe = useCallback(
+      (range: { min: number; max: number } | null, token: string) =>
+        range === null
+          ? `${token}: unreadable`
+          : `${token}: ${range.max - range.min < 4 ? 'BLACK/blank' : 'content'} luma ${range.min.toFixed(1)}-${range.max.toFixed(1)}`,
+      [],
+    )
+
+    // After a decodable report, read BOTH the app paint surface AND the media
+    // element's own picture and say which one carries real content. The two
+    // numbers split the failure classes that "loads but shows black" can mean:
+    //   canvas BLACK + video element BLACK -> the element's DECODE yields black
+    //     (classic hardware/VA-API h264 decode bug; ffmpeg export still works)
+    //   canvas BLACK + video element CONTENT -> the app's composite/draw is wrong
+    //     (drawScene or a background layer covers the picture)
+    //   both CONTENT -> pipeline healthy; black on screen has another cause
+    const reportPainted = useCallback(() => {
+      const canvas = canvasRef.current
+      const video = videoRef.current
+      if (!canvas || !video) {
+        window.electronAPI?.logDiagnostic?.('preview painted', 'no canvas/video')
+        return
+      }
+      // setTimeout (not rAF): fires even when the window is hidden, where
+      // requestAnimationFrame is throttled to nothing.
+      const sample = async () => {
+        try {
+          let app: ReturnType<typeof sampleLuma> = null
+          const ctx = canvas.getContext('2d')
+          if (ctx) {
+            // Read only the app's real canvas back so we see what the user sees.
+            const w = Math.min(canvas.width, 320)
+            const h = Math.min(canvas.height, 180)
+            const data = ctx.getImageData(
+              Math.max(0, Math.floor((canvas.width - w) / 2)),
+              Math.max(0, Math.floor((canvas.height - h) / 2)),
+              w,
+              h,
+            ).data
+            let min = Infinity
+            let max = -Infinity
+            for (let i = 0; i < data.length; i += 16) {
+              const luma = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]
+              if (luma < min) min = luma
+              if (luma > max) max = luma
+            }
+            app = { min, max }
+          }
+          // Whole-canvas stats (vs the center window above) remove sampling bias
+          // when the interesting content sits away from the middle.
+          const whole = ctx ? sampleLuma(ctx.canvas) : null
+          const element = video.readyState >= 2 ? sampleLuma(video) : null
+          // Same draw, but into a PLAIN (GPU-accelerated) canvas, the way the
+          // app's own preview canvas is configured. If this differs from the
+          // software probe above, the backend itself decides whether a
+          // drawImage of the (hidden) video produces a picture.
+          let gpuEl: ReturnType<typeof sampleLuma> = null
+          try {
+            const g = document.createElement('canvas')
+            g.width = 320
+            g.height = 180
+            const gctx = g.getContext('2d')
+            if (gctx && video.readyState >= 2) {
+              gctx.drawImage(video, 0, 0, 320, 180)
+              const data = gctx.getImageData(0, 0, 320, 180).data
+              let min = Infinity
+              let max = -Infinity
+              for (let i = 0; i < data.length; i += 16) {
+                const luma = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]
+                if (luma < min) min = luma
+                if (luma > max) max = luma
+              }
+              gpuEl = { min, max }
+            }
+          } catch {
+            gpuEl = null
+          }
+          // The composited window output (what actually reaches the screen).
+          // A canvas full of pixels with a black capture means the GPU window
+          // presentation is broken, not the drawing.
+          let page: { min: number; max: number; width: number; height: number } | null = null
+          try {
+            page = (await window.electronAPI?.captureDiagnostic?.()) ?? null
+          } catch {
+            page = null
+          }
+          const rect = canvas.getBoundingClientRect()
+          window.electronAPI?.logDiagnostic?.(
+            'preview painted',
+            `${describe(app, 'canvas')} | ${describe(whole, 'whole')} | ${describe(element, 'element-sw')} | ${describe(gpuEl, 'element-gpu')} | ${describe(page, 'page')} | rect=${Math.round(rect.width)}x${Math.round(rect.height)} t=${video.currentTime.toFixed(2)}s paused=${video.paused} rs=${video.readyState}`,
+          )
+        } catch (error) {
+          window.electronAPI?.logDiagnostic?.('preview painted', `readback failed: ${String(error)}`)
+        }
+      }
+      // Two glances: immediately (frame 0) and ~1.6 s later in case the first
+      // picture (or the HW decoder's first output) is black but later frames are not.
+      sample()
+      window.setTimeout(sample, 1600)
+    }, [sampleLuma, describe, videoRef])
+
+    // Stall watcher: if the element never becomes decodable (and never errors),
+    // report it once so the main log can tell a protocol/range problem from a
+    // decoder problem. Also reports success for sources that are already loaded
+    // when the watcher starts (e.g. a hot project swap).
+    useEffect(() => {
+      if (!videoUrl) return
+      let attempts = 0
+      const timer = window.setInterval(() => {
+        const video = videoRef.current
+        if (!video) return
+        if (mediaHealthReportedFor.current === videoUrl) {
+          window.clearInterval(timer)
+          return
+        }
+        if (video.readyState >= 3) {
+          reportMediaHealth('decodable')
+          reportPainted()
+          window.clearInterval(timer)
+          return
+        }
+        attempts += 1
+        if (attempts === 3 && video.readyState < 1) {
+          // 6s at readyState 0: the loader has not even reached the metadata.
+          reportMediaHealth('stalled')
+        } else if (attempts === 7 && video.readyState >= 1 && video.readyState < 3) {
+          // 14s with metadata but no decodable frames: decoder problem.
+          reportMediaHealth('partial')
+          window.clearInterval(timer)
+        } else if (attempts > 10) {
+          window.clearInterval(timer)
+        }
+      }, 2000)
+      return () => window.clearInterval(timer)
+    }, [videoUrl, reportMediaHealth, reportPainted, videoRef])
+
+    // Once per source: report Chromium's GPU feature status + the actual GL
+    // driver string, so poor-performance reports can be tied to software
+    // rasterization or a fallback driver without a remote debugging session.
+    useEffect(() => {
+      if (!videoUrl) return
+      let cancelled = false
+      void window.electronAPI?.gpuDiagnostic?.().then((status) => {
+        if (cancelled || !status) return
+        let renderer = 'n/a'
+        try {
+          const gl = document.createElement('canvas').getContext('webgl')
+          const info = gl?.getExtension('WEBGL_debug_renderer_info')
+          renderer = info
+            ? String(gl!.getParameter(info.UNMASKED_RENDERER_WEBGL))
+            : String(gl?.getParameter(gl.RENDERER) ?? 'n/a')
+        } catch {
+          /* renderer string unavailable — not fatal */
+        }
+        window.electronAPI?.logDiagnostic?.('gpu', `${JSON.stringify(status)} renderer=${renderer}`)
+      })
+      return () => {
+        cancelled = true
+      }
+    }, [videoUrl])
     const [effectOverlayBounds, setEffectOverlayBounds] = useState({ left: 0, top: 0, width: 0, height: 0 })
     const visualEffects = useEditorStore((state) => state.visualEffects)
     // Drives the "Mask" chip: true while an effect covers the playhead.
@@ -187,6 +407,53 @@ export const Preview = memo(
       }
     }, [canvasDimensions, isPreviewFullScreen, videoUrl])
 
+    // Size the canvas backing store to the DISPLAYED preview box (×dpr, aspect
+    // preserved) instead of the 1920×1080 source. Keeps drawScene's output
+    // pixel count near what the screen actually shows — the single biggest
+    // playback-cost lever — while the drawing code adapts automatically.
+    useEffect(() => {
+      const container = previewContainerRef.current
+      const { width: srcW, height: srcH } = canvasDimensions
+      if (!container || !videoUrl || !srcW || !srcH) return
+      const aspect = srcW / srcH
+      const dpr = Math.min(window.devicePixelRatio || 1, 2)
+      let raf = 0
+      const sync = () => {
+        cancelAnimationFrame(raf)
+        raf = requestAnimationFrame(() => {
+          const r = container.getBoundingClientRect()
+          if (r.width <= 0 || r.height <= 0) return
+          let w = r.width
+          let h = w / aspect
+          if (h > r.height) {
+            h = r.height
+            w = h * aspect
+          }
+          const fitW = w * dpr
+          const fitH = h * dpr
+          // Never rasterize more pixels than the source video holds: beyond the
+          // source resolution the extra pixels add no detail, only cost — which
+          // is the stutter when the preview is enlarged (dpr can push a big box
+          // to 3MP+ per frame). Small previews still use their display size.
+          const maxScale = Math.min(1, srcW / fitW, srcH / fitH)
+          const nextW = Math.max(1, Math.round(fitW * maxScale))
+          const nextH = Math.max(1, Math.round(fitH * maxScale))
+          setBackingSize((prev) =>
+            prev && prev.width === nextW && prev.height === nextH ? prev : { width: nextW, height: nextH },
+          )
+        })
+      }
+      sync()
+      const observer = new ResizeObserver(sync)
+      observer.observe(container)
+      window.addEventListener('resize', sync)
+      return () => {
+        observer.disconnect()
+        window.removeEventListener('resize', sync)
+        cancelAnimationFrame(raf)
+      }
+    }, [videoUrl, canvasDimensions, isPreviewFullScreen])
+
     const beginEffectTransform = (event: React.MouseEvent, effect: VisualEffectRegion, mode: 'move' | 'resize') => {
       event.preventDefault()
       event.stopPropagation()
@@ -267,34 +534,46 @@ export const Preview = memo(
     )
 
     const renderCanvas = useCallback(async () => {
-      const canvas = canvasRef.current
-      const video = videoRef.current
-      const webcamVideo = webcamVideoRef.current
-      const state = useEditorStore.getState()
-      const ctx = canvas?.getContext('2d')
-      if (!canvas || !video || !ctx || !state.videoDimensions.width) {
-        if (state.isPlaying) animationFrameId.current = requestAnimationFrame(renderCanvas)
-        return
-      }
-      syncClipVideos(state.isPlaying, video.currentTime)
-      const clipLayers: VideoClipLayer[] = []
-      for (const clip of state.videoClips) {
-        const element = clipVideoRefs.current.get(clip.id)
-        if (element && element.readyState >= 2) clipLayers.push({ clip, element })
-      }
-      await drawScene(
-        ctx,
-        state,
-        video,
-        webcamVideo,
-        video.currentTime,
-        canvas.width,
-        canvas.height,
-        bgImage,
-        clipLayers,
-      )
-      if (state.isPlaying) {
-        animationFrameId.current = requestAnimationFrame(renderCanvas)
+      // While playing, drop a frame instead of queueing one when the previous
+      // draw is still in flight. While paused (seek/scrub), never drop: a
+      // trailing draw must follow or the frame would stay stale.
+      if (drawInFlight.current && useEditorStore.getState().isPlaying) return
+      drawInFlight.current = true
+      try {
+        const canvas = canvasRef.current
+        const video = videoRef.current
+        const webcamVideo = webcamVideoRef.current
+        const state = useEditorStore.getState()
+        const ctx = canvas?.getContext('2d')
+        if (!canvas || !video || !ctx || !state.videoDimensions.width) {
+          if (state.isPlaying) animationFrameId.current = requestAnimationFrame(renderCanvas)
+          return
+        }
+        syncClipVideos(state.isPlaying, video.currentTime)
+        const clipLayers: VideoClipLayer[] = []
+        for (const clip of state.videoClips) {
+          const element = clipVideoRefs.current.get(clip.id)
+          if (element && element.readyState >= 2) clipLayers.push({ clip, element })
+        }
+        await drawScene(
+          ctx,
+          state,
+          video,
+          webcamVideo,
+          video.currentTime,
+          canvas.width,
+          canvas.height,
+          bgImage,
+          clipLayers,
+          // While playing, skip the per-frame soft shadow (the costliest op in
+          // the scene, and it never changes) — still frames and export draw it.
+          { livePreview: state.isPlaying },
+        )
+        if (state.isPlaying) {
+          animationFrameId.current = requestAnimationFrame(renderCanvas)
+        }
+      } finally {
+        drawInFlight.current = false
       }
     }, [videoRef, bgImage, syncClipVideos])
 
@@ -314,6 +593,7 @@ export const Preview = memo(
       currentTime,
       renderCanvas,
       canvasDimensions,
+      backingSize,
       frameStyles,
       cameraMotions,
       isWebcamVisible,
@@ -481,14 +761,21 @@ export const Preview = memo(
             // The wrapper hugs the canvas so the caption sits over the picture and not
             // over the empty space around it. `container-type` lets the caption's size
             // follow the preview's, which is the only way it stays legible when the
-            // window is resized.
-            <div className="relative flex items-center justify-center" style={{ containerType: 'inline-size' }}>
+            // window is resized. Both get EXPLICIT fill sizes: `width:auto/height:auto`
+            // + `maxWidth/maxHeight:100%` on the canvas depends on the wrapper's size,
+            // which depends on the canvas — a circular constraint that resolves to
+            // 0x0 (invisible preview), which is exactly the "black screen" bug:
+            // the canvas held pixels all along, but was never laid out on screen.
+            <div
+              className="relative flex items-center justify-center"
+              style={{ containerType: 'inline-size', width: '100%', height: '100%', minHeight: 0 }}
+            >
               <canvas
                 ref={canvasRef}
-                width={canvasDimensions.width}
-                height={canvasDimensions.height}
-                style={{ maxWidth: '100%', maxHeight: '100%', width: 'auto', height: 'auto' }}
-                className="rounded-pv ring-1 ring-line shadow-[var(--sa-preview-shadow)]"
+                width={backingSize?.width ?? canvasDimensions.width}
+                height={backingSize?.height ?? canvasDimensions.height}
+                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                className="rounded-pv"
               />
               {activeCue && (
                 <div
@@ -604,12 +891,30 @@ export const Preview = memo(
           onEnded={() => setPlaying(false)}
           // Belt-and-suspenders: draw once the first frame is actually decodable,
           // even if a metadata/size change never re-triggered the render effect.
-          onCanPlay={() => renderCanvas()}
+          onCanPlay={() => {
+            reportMediaHealth('decodable')
+            reportPainted()
+            renderCanvas()
+          }}
           onError={(event) => {
             const mediaError = event.currentTarget.error
             console.error('[Preview] media element failed to load:', mediaError)
+            reportMediaHealth(`error code=${mediaError?.code} message=${mediaError?.message ?? ''}`)
           }}
-          style={{ display: 'none' }}
+          // Rendered-but-invisible, NOT `display:none`: the compositor drops
+          // textures for display:none videos, so a GPU-accelerated canvas
+          // drawImage() of them silently draws nothing (black preview while
+          // export works). A 1px off-screen, ~transparent video stays composited
+          // long enough for every backend to keep its frame available.
+          style={{
+            position: 'fixed',
+            top: '-200px',
+            left: '-200px',
+            width: '4px',
+            height: '4px',
+            opacity: 0.01,
+            pointerEvents: 'none',
+          }}
         />
         {webcamVideoUrl && (
           <video
@@ -618,7 +923,15 @@ export const Preview = memo(
             muted
             playsInline
             onLoadedMetadata={handleWebcamLoadedMetadata}
-            style={{ display: 'none' }}
+            style={{
+              position: 'fixed',
+              top: '-200px',
+              left: '-200px',
+              width: '4px',
+              height: '4px',
+              opacity: 0.01,
+              pointerEvents: 'none',
+            }}
           />
         )}
         {/* Hidden decoders for imported video clips — composited onto the canvas by drawScene. */}
@@ -633,7 +946,15 @@ export const Preview = memo(
             muted
             playsInline
             preload="auto"
-            style={{ display: 'none' }}
+            style={{
+              position: 'fixed',
+              top: '-200px',
+              left: '-200px',
+              width: '4px',
+              height: '4px',
+              opacity: 0.01,
+              pointerEvents: 'none',
+            }}
           />
         ))}
 

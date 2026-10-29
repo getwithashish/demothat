@@ -39,7 +39,6 @@ import { useShallow } from 'zustand/react/shallow'
 export function EditorPage() {
   const {
     loadProject,
-    deleteRegion,
     initializePresets,
     initializeSettings,
     initializeRecentProjects,
@@ -190,11 +189,10 @@ export function EditorPage() {
   }, [publishTargetPath, isPublishOpen])
 
   const handleDeleteSelectedRegion = useCallback(() => {
-    const currentSelectedId = useEditorStore.getState().selectedRegionId
-    if (currentSelectedId) {
-      deleteRegion(currentSelectedId)
+    if (useEditorStore.getState().selectedRegionId) {
+      useEditorStore.getState().deleteSelected()
     }
-  }, [deleteRegion])
+  }, [])
 
   const handleSeekFrame = useCallback(
     (direction: 'next' | 'prev') => {

@@ -1,4 +1,5 @@
-import { ipcMain } from 'electron'
+import { app, ipcMain } from 'electron'
+import log from 'electron-log/main'
 import * as appHandlers from './handlers/app'
 import * as checkoutHandlers from './handlers/checkout'
 import * as cloudHandlers from './handlers/cloud'
@@ -15,6 +16,62 @@ import * as settingsHandlers from './handlers/settings'
 import * as shellHandlers from './handlers/shell'
 
 export function registerIpcHandlers() {
+  // Renderer diagnostics → main log. The packaged app has no devtools console,
+  // so without this the only place failures could be seen was nowhere.
+  ipcMain.on('diagnostic:log', (_event, scope: string, message: string) => {
+    log.warn(`[Diagnostic:${String(scope)}] ${String(message)}`)
+  })
+
+  // What the compositor ACTUALLY presents in this window — the renderer's own
+  // canvas can hold pixels while the on-screen output is black (GPU window
+  // compositing failure). Samples the capture that would reach the screen and
+  // returns its luma range so the painted-probe can compare canvas vs screen.
+  ipcMain.handle('diagnostic:capture', async (event) => {
+    try {
+      const image = await event.sender.capturePage()
+      if (image.isEmpty()) return null
+      const { width, height } = image.getSize()
+      const bitmap = image.toBitmap() // BGRA
+      if (!bitmap || bitmap.length < 4) return null
+      const stride = Math.max(1, Math.floor((width * height) / 2000))
+      let min = Infinity
+      let max = -Infinity
+      for (let i = 0; i < bitmap.length && i + 2 < bitmap.length; i += stride * 4) {
+        // BGRA order
+        const luma = 0.299 * bitmap[i + 2] + 0.587 * bitmap[i + 1] + 0.114 * bitmap[i]
+        if (luma < min) min = luma
+        if (luma > max) max = luma
+      }
+      return { min, max, width, height }
+    } catch {
+      return null
+    }
+  })
+
+  // Chromium's reported GPU feature status, so the app knows whether it is
+  // actually hardware-accelerated (software raster/decode explain both poor
+  // performance and black/odd rendering on some drivers).
+  ipcMain.handle('diagnostic:gpu', () => {
+    try {
+      const status = app.getGPUFeatureStatus() as unknown as Record<string, string>
+      const wanted: Record<string, string> = {}
+      for (const key of [
+        'gpu_compositing',
+        '2d_canvas',
+        'webgl',
+        'video_decode',
+        'rasterization',
+        'multiple_raster_threads',
+      ]) {
+        const value = status[key]
+        if (typeof value === 'string') wanted[key] = value
+      }
+      return wanted
+    } catch {
+      return null
+    }
+  })
+
   // App & Window
   ipcMain.handle('app:getPath', appHandlers.handleGetPath)
   ipcMain.handle('app:getVersion', appHandlers.handleGetVersion)

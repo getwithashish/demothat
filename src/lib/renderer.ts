@@ -176,6 +176,7 @@ const drawFrameLayer = (
   frameY: number,
   frameContentWidth: number,
   frameContentHeight: number,
+  livePreview: boolean = false,
 ): void => {
   const { frameStyles } = state
 
@@ -203,8 +204,11 @@ const drawFrameLayer = (
 
   const { shadowBlur, shadowOffsetX, shadowOffsetY, borderRadius, shadowColor, borderWidth, borderColor } = frameStyles
 
-  // Draw shadow if needed
-  if (shadowBlur > 0) {
+  // Shadow if needed (SKIPPED while live-previewing: blurring a 1080p path
+  // every playback frame is the single most expensive canvas op in the scene,
+  // and the shadow never changes — it only needs to exist on still frames and
+  // on export, where the full path runs).
+  if (shadowBlur > 0 && !livePreview) {
     ctx.save()
     ctx.shadowColor = shadowColor
     ctx.shadowBlur = shadowBlur
@@ -289,17 +293,21 @@ const drawFrameLayer = (
         const baseDrawY = Math.round(cursorY - cursorData.yhot)
 
         // Optics-based motion blur: ghosts smeared back along the path, scaled by
-        // the cursor's own speed and the recording's sampling cadence.
-        const ghosts = motionBlurGhosts(
-          motionBlurVelocityAt(state.metadata, currentTime, pathOptions),
-          estimateEventInterval(state.metadata, currentTime),
-          {
-            enabled: state.cursorStyles.motionBlurEnabled,
-            shutterAngle: state.cursorStyles.motionBlurShutterAngle,
-            samples: state.cursorStyles.motionBlurSamples,
-            strength: state.cursorStyles.motionBlurStrength,
-          },
-        )
+        // the cursor's own speed and the recording's sampling cadence. SKIPPED
+        // while live-previewing: each ghost is a blurred drawImage — the most
+        // expensive per-frame ops left in the scene, invisible at playback speed.
+        const ghosts = livePreview
+          ? []
+          : motionBlurGhosts(
+              motionBlurVelocityAt(state.metadata, currentTime, pathOptions),
+              estimateEventInterval(state.metadata, currentTime),
+              {
+                enabled: state.cursorStyles.motionBlurEnabled,
+                shutterAngle: state.cursorStyles.motionBlurShutterAngle,
+                samples: state.cursorStyles.motionBlurSamples,
+                strength: state.cursorStyles.motionBlurStrength,
+              },
+            )
 
         ctx.save()
 
@@ -463,12 +471,14 @@ export const drawScene = async (
   outputHeight: number,
   preloadedBgImage: HTMLImageElement | null,
   videoClipLayers: VideoClipLayer[] = [],
+  options: { livePreview?: boolean } = {},
 ): Promise<void> => {
   if (!state.videoDimensions.width || !state.videoDimensions.height) return
 
-  // Enable high-quality rendering
+  // Enable high-quality rendering (cheaper smoothing while live-previewing:
+  // the picture is moving; the resample quality is invisible at playback).
   ctx.imageSmoothingEnabled = true
-  ctx.imageSmoothingQuality = 'high'
+  ctx.imageSmoothingQuality = options.livePreview ? 'low' : 'high'
 
   // --- 1. Draw Background ---
   await drawBackground(ctx, outputWidth, outputHeight, state.frameStyles.background, preloadedBgImage)
@@ -517,7 +527,17 @@ export const drawScene = async (
       target.rotate((camera.rotationZ * Math.PI) / 180)
       target.translate(-outputWidth / 2, -outputHeight / 2)
     }
-    drawFrameLayer(target, state, videoElement, currentTime, frameX, frameY, frameContentWidth, frameContentHeight)
+    drawFrameLayer(
+      target,
+      state,
+      videoElement,
+      currentTime,
+      frameX,
+      frameY,
+      frameContentWidth,
+      frameContentHeight,
+      !!options.livePreview,
+    )
     if (Math.abs(camera.rotationZ) > 0.001) target.restore()
   }
 

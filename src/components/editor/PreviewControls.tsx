@@ -46,14 +46,9 @@ export function PreviewControls() {
     currentTime,
     duration,
     setSelectedRegionId,
-    cameraMotions,
-    deleteCameraMotion,
     timelineZoom,
     setTimelineZoom,
     selectedRegionId,
-    deleteRegion,
-    compositionLayouts,
-    deleteCompositionLayout,
     aspectRatio,
     setAspectRatio,
   } = useEditorStore()
@@ -83,10 +78,7 @@ export function PreviewControls() {
 
   const handleDelete = () => {
     if (selectedRegionId) {
-      if (cameraMotions.some((motion) => motion.id === selectedRegionId)) deleteCameraMotion(selectedRegionId)
-      else if (compositionLayouts.some((range) => range.id === selectedRegionId))
-        deleteCompositionLayout(selectedRegionId)
-      else deleteRegion(selectedRegionId)
+      useEditorStore.getState().deleteSelected()
       setSelectedRegionId(null)
     }
   }

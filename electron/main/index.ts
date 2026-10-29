@@ -1,16 +1,6 @@
 // Entry point of the Electron application.
 
-import {
-  app,
-  BrowserWindow,
-  protocol,
-  ProtocolRequest,
-  ProtocolResponse,
-  Menu,
-  screen,
-  dialog,
-  desktopCapturer,
-} from 'electron'
+import { app, BrowserWindow, protocol, Menu, screen, dialog, desktopCapturer } from 'electron'
 import { initMain as initAudioLoopback } from 'electron-audio-loopback'
 import log from 'electron-log/main'
 import path from 'node:path'
@@ -27,6 +17,16 @@ import { initializeMouseTrackerDependencies } from './features/mouse-tracker'
 import { confirmReplaceSession, isQuitApproved, markQuitApproved } from './features/session-guard'
 import { appState } from './state'
 import { detectSession, WAYLAND_CHROMIUM_FEATURES } from '../../shared/session'
+
+// The `media://` scheme must be declared privileged BEFORE app ready so
+// Chromium lets our `protocol.handle` server answer with byte ranges — the
+// HTML5 media stack requests ranges to seek and to read the moov box of a
+// non-faststart MP4 (which is exactly what FFmpeg produces without
+// +faststart). Without range support the video element stalls forever at
+// readyState 0 with NO error event: a black preview while ffmpeg-based export
+// still works. (`stream` enables ranged/streaming responses; `secure` keeps
+// media loadable from the renderer's context.)
+protocol.registerSchemesAsPrivileged([{ scheme: 'media', privileges: { stream: true, secure: true } }])
 
 // --- Initialization ---
 setupLogging()
@@ -231,24 +231,90 @@ app.whenReady().then(async () => {
     })
   }
 
-  // Register custom protocol for media files
-  protocol.registerFileProtocol(
-    'media',
-    (request: ProtocolRequest, callback: (response: string | ProtocolResponse) => void) => {
-      const url = request.url.replace('media://', '')
-      const decodedUrl = decodeURIComponent(url)
-      const resourcePath = path.join(VITE_PUBLIC, decodedUrl)
+  // Register custom protocol for media files. A REAL HTTP byte-range server:
+  // Chromium's media element issues Range requests when seeking, when reading
+  // the moov box of a non-faststart MP4, and while streaming. A range-less
+  // response makes the element either stall at readyState 0 (black preview that
+  // still exports fine) or — once +faststart puts the moov up front so it
+  // LOADS — clamp every seek back to 0 because the source reports no
+  // seekable range. That is exactly the "snaps back to the start" regression:
+  // the file played but the seek bar could not move. 206/Content-Range answers
+  // make seekable() non-empty and both symptoms disappear.
+  protocol.handle('media', async (request) => {
+    const url = request.url.replace('media://', '')
+    const decodedUrl = decodeURIComponent(url)
+    const resourcePath = path.join(VITE_PUBLIC, decodedUrl)
 
-      if (path.isAbsolute(decodedUrl) && fsSync.existsSync(decodedUrl)) {
-        return callback(decodedUrl)
-      }
-      if (fsSync.existsSync(resourcePath)) {
-        return callback(resourcePath)
-      }
+    let filePath: string | undefined
+    if (path.isAbsolute(decodedUrl) && fsSync.existsSync(decodedUrl)) {
+      filePath = decodedUrl
+    } else if (fsSync.existsSync(resourcePath)) {
+      filePath = resourcePath
+    }
+    if (!filePath) {
       log.error(`[Protocol] Could not find file: ${decodedUrl}`)
-      return callback({ error: -6 }) // FILE_NOT_FOUND
-    },
-  )
+      return new Response('Not found', { status: 404 })
+    }
+
+    const MIME: Record<string, string> = {
+      '.mp4': 'video/mp4',
+      '.m4a': 'audio/mp4',
+      '.webm': 'video/webm',
+      '.opus': 'audio/ogg',
+      '.mp3': 'audio/mpeg',
+      '.wav': 'audio/wav',
+      '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.gif': 'image/gif',
+      '.webp': 'image/webp',
+    }
+    const contentType = MIME[path.extname(filePath).toLowerCase()] ?? 'application/octet-stream'
+    const baseHeaders: Record<string, string> = { 'Content-Type': contentType, 'Accept-Ranges': 'bytes' }
+
+    try {
+      const size = fsSync.statSync(filePath).size
+      const range = request.headers.get('Range')
+      if (range) {
+        const match = /^bytes=(\d*)-(\d*)$/.exec(range.trim())
+        if (!match) {
+          return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${size}` } })
+        }
+        let start = match[1] === '' ? 0 : Number.parseInt(match[1], 10)
+        let end = match[2] === '' ? size - 1 : Number.parseInt(match[2], 10)
+        if (Number.isNaN(start)) start = 0
+        if (Number.isNaN(end)) end = size - 1
+        if (start > end || start >= size || end >= size) {
+          return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${size}` } })
+        }
+        const length = end - start + 1
+        const fd = fsSync.openSync(filePath, 'r')
+        const buffer = Buffer.alloc(length)
+        try {
+          fsSync.readSync(fd, buffer, 0, length, start)
+        } finally {
+          fsSync.closeSync(fd)
+        }
+        return new Response(buffer, {
+          status: 206,
+          headers: {
+            ...baseHeaders,
+            'Content-Length': String(length),
+            'Content-Range': `bytes ${start}-${end}/${size}`,
+          },
+        })
+      }
+      // No Range header: the whole file in one response (small assets, images).
+      const buffer = fsSync.readFileSync(filePath)
+      return new Response(buffer, {
+        status: 200,
+        headers: { ...baseHeaders, 'Content-Length': String(size) },
+      })
+    } catch (error) {
+      log.error(`[Protocol] Failed to serve ${decodedUrl}: ${String(error)}`)
+      return new Response('Not found', { status: 404 })
+    }
+  })
 
   registerIpcHandlers()
   registerRecordingShortcuts()

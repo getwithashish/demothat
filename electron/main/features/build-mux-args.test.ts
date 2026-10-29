@@ -15,6 +15,10 @@ const title = (index: number, kind: 'mic' | 'system') => [
   'title=' + AUDIO_TRACK_TITLES[kind],
 ]
 
+// Every produced MP4 carries +faststart so the preview's media element reads the
+// moov box from the front of the file instead of range-requesting the tail.
+const FASTSTART = ['-movflags', '+faststart']
+
 describe('buildMuxArgs', () => {
   test('mic + system: two streams, mic first, each titled', () => {
     const args = buildMuxArgs({
@@ -46,6 +50,7 @@ describe('buildMuxArgs', () => {
       '192k',
       ...title(0, 'mic'),
       ...title(1, 'system'),
+      ...FASTSTART,
       '-shortest',
       OUT,
     ])
@@ -88,6 +93,7 @@ describe('buildMuxArgs', () => {
       '-b:a',
       '192k',
       ...title(0, 'system'),
+      ...FASTSTART,
       '-shortest',
       OUT,
     ])
@@ -187,6 +193,7 @@ describe('buildMacMuxArgs', () => {
       'ultrafast',
       '-pix_fmt',
       'yuv420p',
+      ...FASTSTART,
       '-c:a',
       'aac',
       '-b:a',
@@ -222,6 +229,7 @@ describe('buildMacMuxArgs', () => {
       'ultrafast',
       '-pix_fmt',
       'yuv420p',
+      ...FASTSTART,
       '-c:a',
       'aac',
       '-b:a',
@@ -256,6 +264,7 @@ describe('buildMacMuxArgs', () => {
       'ultrafast',
       '-pix_fmt',
       'yuv420p',
+      ...FASTSTART,
       '-c:a',
       'copy',
       ...title(0, 'mic'),
@@ -315,6 +324,7 @@ describe('buildMacMuxArgs', () => {
       'ultrafast',
       '-pix_fmt',
       'yuv420p',
+      ...FASTSTART,
       '-an',
       OUT,
     ])

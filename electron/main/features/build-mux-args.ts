@@ -99,6 +99,8 @@ export function buildMuxArgs(opts: BuildMuxArgsOptions): string[] {
     '-b:a',
     '192k',
     ...titles,
+    '-movflags',
+    '+faststart',
     '-shortest',
     ...durationAt(durationSec),
     output,
@@ -142,8 +144,12 @@ export function buildMacMuxArgs(opts: BuildMacMuxArgsOptions): string[] {
     args.push('-i', micAudioInput)
   }
 
+  // Match the existing screen-capture profile. +faststart puts the moov box up
+  // front so the preview's media element can read metadata from the first
+  // bytes instead of range-requesting the file tail (see index.ts media://).
+  const faststart = ['-movflags', '+faststart']
   // Common video encode settings — match the existing screen-capture profile.
-  const videoEncode = ['-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p']
+  const videoEncode = ['-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', ...faststart]
 
   const cropFilter = crop ? `crop=${crop.width}:${crop.height}:${crop.x}:${crop.y}` : null
   // FFmpeg refuses `-vf` alongside `-filter_complex` on one output, so when the

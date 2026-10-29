@@ -229,19 +229,14 @@ function EffectEditor({ effect }: { effect: VisualEffectRegion }) {
 export function VisualEffectsSettings() {
   const effects = useEditorStore((s) => s.visualEffects)
   const selectedRegionId = useEditorStore((s) => s.selectedRegionId)
-  const add = useEditorStore((s) => s.addVisualEffect)
   const selectedEffect = effects.find((effect) => effect.id === selectedRegionId)
 
   return (
     <Section label="Effects">
-      <div className="grid grid-cols-2 gap-2">
-        {kinds.map((k) => (
-          <Button key={k.value} variant="secondary" size="sm" onClick={() => add(k.value)}>
-            {k.label}
-          </Button>
-        ))}
-      </div>
-      <HelperText>Select a mask or visual effect clip on the timeline to show its settings here.</HelperText>
+      <HelperText>
+        Effects are added from the toolbar above the preview (the Effects button). Select an effect on the canvas or
+        timeline to show its settings here.
+      </HelperText>
       {selectedEffect && <EffectEditor key={selectedEffect.id} effect={selectedEffect} />}
     </Section>
   )

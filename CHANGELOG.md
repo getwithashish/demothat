@@ -1,3 +1,9 @@
+## [1.17.4](https://github.com/getwithashish/DemoThat/compare/v1.17.3...v1.17.4) (2026-10-29)
+
+### Bug Fixes
+
+* **export:** render cloud intermediates at source size so the AI model runs ([#24](https://github.com/getwithashish/DemoThat/issues/24)) ([9623f69](https://github.com/getwithashish/DemoThat/commit/9623f69a6d96bb6f066c7b4262f5fe526c2d40e4))
+
 ## [1.17.3](https://github.com/getwithashish/DemoThat/compare/v1.17.2...v1.17.3) (2026-10-29)
 
 ### Bug Fixes

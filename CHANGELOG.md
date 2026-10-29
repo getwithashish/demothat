@@ -1,3 +1,9 @@
+## [1.14.3](https://github.com/getwithashish/DemoThat/compare/v1.14.2...v1.14.3) (2026-10-29)
+
+### Bug Fixes
+
+* **editor:** real theme-pack cursor icons on Linux; no false Pro on same-res export ([#15](https://github.com/getwithashish/DemoThat/issues/15)) ([4aaa173](https://github.com/getwithashish/DemoThat/commit/4aaa1739ac369d67e669d8b4facad61ad78c6def))
+
 ## [1.14.2](https://github.com/getwithashish/DemoThat/compare/v1.14.1...v1.14.2) (2026-10-29)
 
 ### Bug Fixes

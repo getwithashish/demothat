@@ -210,8 +210,21 @@ async function settleSuccess(view: PurchaseView): Promise<PurchaseOutcome> {
     return { kind: 'succeeded', balance: view.balance ?? 0, firstPurchase: false }
   }
 
+  let activation: Awaited<ReturnType<typeof activateLicense>>
+  let lastErr: unknown
   try {
-    const activation = await activateLicense(view.licenseKey)
+    // The payment settled, so a brief API blip during activation must not force
+    // the user to find the key in their email: retry transient failures.
+    for (let attempt = 0; ; attempt++) {
+      try {
+        activation = await activateLicense(view.licenseKey)
+        break
+      } catch (error) {
+        if (attempt >= 2 || !isTransient(error)) throw error
+        lastErr = error
+        await new Promise((resolve) => setTimeout(resolve, 600 * (attempt + 1)))
+      }
+    }
     return { kind: 'succeeded', balance: activation.balance ?? view.balance ?? 0, firstPurchase: true }
   } catch (error) {
     const apiError = error as ApiError
@@ -225,6 +238,8 @@ async function settleSuccess(view: PurchaseView): Promise<PurchaseOutcome> {
         licenseKey: view.licenseKey,
       }
     }
+    if (lastErr !== undefined)
+      log.warn(`[Purchase] Automatic activation failed after retries: ${(lastErr as Error).message}`)
     log.warn(`[Purchase] Automatic activation failed: ${apiError.message}`)
     // Not fatal: the key is in the user's email, and the balance still moved.
     return { kind: 'succeeded', balance: view.balance ?? 0, firstPurchase: true }

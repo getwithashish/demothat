@@ -164,19 +164,20 @@ function forcedPro(): boolean {
 }
 
 /**
- * Offline-capable entitlement: Pro while the stored token is authentic and
- * unexpired. Credits are a server number, so they are only reported from the
- * token; `getLicenseSummary` refreshes them from the API when it can.
+ * Whether this device is Pro and its known balance.
+ *
+ * The Pro badge and credit capsule read the server-preferred `getLicenseSummary`;
+ * the export Pro gate must agree with them or a paying user gets locked out of
+ * upscaling because a locally-stored token lapsed while the server still serves
+ * the license. So this derives from the same source, with the same offline
+ * fallback: server determines Pro when reachable; an authentic unexpired token
+ * keeps Pro working offline.
  */
 export async function getEntitlement(): Promise<Entitlement> {
   if (forcedPro()) return { pro: true, credits: 0 }
 
-  const token = getStoredToken()
-  if (!token) return { pro: false, credits: 0 }
-
-  const claims = await verifyLicenseToken(token)
-  if (!claims || isTokenExpired(claims)) return { pro: false, credits: 0 }
-  return { pro: true, credits: claims.balance }
+  const summary = await getLicenseSummary()
+  return { pro: summary.plan != null, credits: summary.balance }
 }
 
 // --- Server calls -------------------------------------------------------------

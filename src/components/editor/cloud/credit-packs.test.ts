@@ -58,8 +58,16 @@ describe('visiblePacks', () => {
     expect(shown[0].productId).toBe('pro')
   })
 
-  it('shows the top-ups once the copy holds Pro', () => {
-    expect(visiblePacks(packs, true)).toHaveLength(packs.length)
+  it('shows the top-ups once the copy holds Pro, hiding the first purchase', () => {
+    const shown = visiblePacks(packs, true)
+    expect(shown).toHaveLength(packs.length - 1)
+    expect(shown.every((pack) => pack.kind === 'topup')).toBe(true)
+    expect(shown.some((pack) => pack.kind === 'first_purchase')).toBe(false)
+  })
+
+  it('falls back to the whole catalogue when a licensed copy has no top-ups', () => {
+    const onlyEntry = packs.filter((pack) => pack.kind === 'first_purchase')
+    expect(visiblePacks(onlyEntry, true)).toEqual(onlyEntry)
   })
 
   it('returns the catalogue whole when it carries no entry pack', () => {

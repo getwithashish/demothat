@@ -1,3 +1,9 @@
+## [1.17.0](https://github.com/getwithashish/DemoThat/compare/v1.16.0...v1.17.0) (2026-10-29)
+
+### Features
+
+* **pricing:** drop hardcoded credit packs; API is the only source ([#20](https://github.com/getwithashish/DemoThat/issues/20)) ([4630154](https://github.com/getwithashish/DemoThat/commit/46301546c5c2da6e34e652e830edbfca8845c78f))
+
 ## [1.16.0](https://github.com/getwithashish/DemoThat/compare/v1.15.1...v1.16.0) (2026-10-29)
 
 ### Features

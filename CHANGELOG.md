@@ -1,3 +1,9 @@
+## [1.14.0](https://github.com/getwithashish/DemoThat/compare/v1.13.0...v1.14.0) (2026-10-29)
+
+### Features
+
+* **editor:** Linux cursor size/theme, bundled default click sound, fix 2K/4K/8K credit quotes ([#12](https://github.com/getwithashish/DemoThat/issues/12)) ([bfdd42a](https://github.com/getwithashish/DemoThat/commit/bfdd42af6b56e6049061a7e8d4a859f91aa101ba))
+
 ## [1.13.0](https://github.com/getwithashish/DemoThat/compare/v1.12.3...v1.13.0) (2026-10-29)
 
 ### Features

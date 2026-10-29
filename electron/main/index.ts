@@ -29,6 +29,16 @@ import { detectSession, WAYLAND_CHROMIUM_FEATURES } from '../../shared/session'
 // media loadable from the renderer's context.)
 protocol.registerSchemesAsPrivileged([{ scheme: 'media', privileges: { stream: true, secure: true } }])
 
+// The Linux hardware h264 decoder (VA-API) can "succeed" while producing black
+// frames in <video> elements on some GPU/driver combos: readyState reaches 4,
+// no error fires, the canvas draws exactly what the element presents — black —
+// while ffmpeg-based export decodes the same file fine. Force the media
+// element path onto software decode; UI rendering and ffmpeg are unaffected.
+// (See the `preview painted` diagnostics: `element: BLACK/blank` confirms the
+// decoder returns black frames.)
+app.commandLine.appendSwitch('disable-accelerated-video-decode')
+app.commandLine.appendSwitch('disable-features', 'VaapiVideoDecoder')
+
 // --- Initialization ---
 setupLogging()
 

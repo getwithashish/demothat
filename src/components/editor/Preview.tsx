@@ -126,44 +126,89 @@ export const Preview = memo(
     // frame shows or it is blank. This is the probe for "the file loads but the
     // preview is black" — the exact case that never fires an error event, on a
     // machine where the element plays (readyState >= 2) yet nothing paints.
+    // Sample the greyscale range of a canvas-like source, so the log can say
+    // whether real picture data is present (broad range) or the output is
+    // effectively black (narrow, dark range) without us having to look.
+    const sampleLuma = useCallback((source: CanvasImageSource) => {
+      const probe = document.createElement('canvas')
+      probe.width = 320
+      probe.height = 180
+      const ctx = probe.getContext('2d', { willReadFrequently: true })
+      if (!ctx) return null
+      ctx.drawImage(source, 0, 0, 320, 180)
+      const data = ctx.getImageData(0, 0, 320, 180).data
+      let min = Infinity
+      let max = -Infinity
+      for (let i = 0; i < data.length; i += 16) {
+        const luma = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]
+        if (luma < min) min = luma
+        if (luma > max) max = luma
+      }
+      return { min, max }
+    }, [])
+
+    const describe = useCallback(
+      (range: { min: number; max: number } | null, token: string) =>
+        range === null
+          ? `${token}: unreadable`
+          : `${token}: ${range.max - range.min < 4 ? 'BLACK/blank' : 'content'} luma ${range.min.toFixed(1)}-${range.max.toFixed(1)}`,
+      [],
+    )
+
+    // After a decodable report, read BOTH the app paint surface AND the media
+    // element's own picture and say which one carries real content. The two
+    // numbers split the failure classes that "loads but shows black" can mean:
+    //   canvas BLACK + video element BLACK -> the element's DECODE yields black
+    //     (classic hardware/VA-API h264 decode bug; ffmpeg export still works)
+    //   canvas BLACK + video element CONTENT -> the app's composite/draw is wrong
+    //     (drawScene or a background layer covers the picture)
+    //   both CONTENT -> pipeline healthy; black on screen has another cause
     const reportPainted = useCallback(() => {
       const canvas = canvasRef.current
-      if (!canvas) {
-        window.electronAPI?.logDiagnostic?.('preview painted', 'no canvas')
+      const video = videoRef.current
+      if (!canvas || !video) {
+        window.electronAPI?.logDiagnostic?.('preview painted', 'no canvas/video')
         return
       }
       // setTimeout (not rAF): fires even when the window is hidden, where
       // requestAnimationFrame is throttled to nothing.
-      window.setTimeout(() => {
+      const sample = () => {
         try {
+          let app: ReturnType<typeof sampleLuma> = null
           const ctx = canvas.getContext('2d')
-          if (!ctx) return
-          const w = Math.min(canvas.width, 320)
-          const h = Math.min(canvas.height, 180)
-          const data = ctx.getImageData(
-            Math.max(0, Math.floor((canvas.width - w) / 2)),
-            Math.max(0, Math.floor((canvas.height - h) / 2)),
-            w,
-            h,
-          ).data
-          let min = Infinity
-          let max = -Infinity
-          for (let i = 0; i < data.length; i += 16) {
-            const luma = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]
-            if (luma < min) min = luma
-            if (luma > max) max = luma
+          if (ctx) {
+            // Read only the app's real canvas back so we see what the user sees.
+            const w = Math.min(canvas.width, 320)
+            const h = Math.min(canvas.height, 180)
+            const data = ctx.getImageData(
+              Math.max(0, Math.floor((canvas.width - w) / 2)),
+              Math.max(0, Math.floor((canvas.height - h) / 2)),
+              w,
+              h,
+            ).data
+            let min = Infinity
+            let max = -Infinity
+            for (let i = 0; i < data.length; i += 16) {
+              const luma = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]
+              if (luma < min) min = luma
+              if (luma > max) max = luma
+            }
+            app = { min, max }
           }
+          const element = video.readyState >= 2 ? sampleLuma(video) : null
           window.electronAPI?.logDiagnostic?.(
             'preview painted',
-            max - min < 4
-              ? `UNIFORM canvas (blank/black); luma ${min.toFixed(1)}-${max.toFixed(1)}`
-              : `frame visible; luma range ${min.toFixed(1)}-${max.toFixed(1)}`,
+            `${describe(app, 'canvas')} | ${describe(element, 'element')} | t=${video.currentTime.toFixed(2)}s paused=${video.paused} rs=${video.readyState}`,
           )
         } catch (error) {
           window.electronAPI?.logDiagnostic?.('preview painted', `readback failed: ${String(error)}`)
         }
-      }, 150)
-    }, [])
+      }
+      // Two glances: immediately (frame 0) and ~1.6 s later in case the first
+      // picture (or the HW decoder's first output) is black but later frames are not.
+      sample()
+      window.setTimeout(sample, 1600)
+    }, [sampleLuma, describe, videoRef])
 
     // Stall watcher: if the element never becomes decodable (and never errors),
     // report it once so the main log can tell a protocol/range problem from a

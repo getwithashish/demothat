@@ -93,6 +93,12 @@ export const Preview = memo(
     const webcamVideoRef = useRef<HTMLVideoElement>(null)
     const clipVideoRefs = useRef<Map<string, HTMLVideoElement>>(new Map())
     const animationFrameId = useRef<number>()
+    const drawInFlight = useRef(false)
+    // Preview backing store, sized to the DISPLAYED area (×dpr), NOT the 1080p
+    // source: drawing a 1920×1080 scene to show ~900px burns ~4× the pixels per
+    // frame for no on-screen benefit. drawScene adapts to whatever size the
+    // canvas is. Export renders on its own page/canvas and is unaffected.
+    const [backingSize, setBackingSize] = useState<{ width: number; height: number } | null>(null)
     // Preview-health diagnostics (see `reportMediaHealth`): keyed to the current
     // source URL so a project switch resets the reported state.
     const mediaHealthReportedFor = useRef<string | null>(null)
@@ -282,6 +288,31 @@ export const Preview = memo(
       }, 2000)
       return () => window.clearInterval(timer)
     }, [videoUrl, reportMediaHealth, reportPainted, videoRef])
+
+    // Once per source: report Chromium's GPU feature status + the actual GL
+    // driver string, so poor-performance reports can be tied to software
+    // rasterization or a fallback driver without a remote debugging session.
+    useEffect(() => {
+      if (!videoUrl) return
+      let cancelled = false
+      void window.electronAPI?.gpuDiagnostic?.().then((status) => {
+        if (cancelled || !status) return
+        let renderer = 'n/a'
+        try {
+          const gl = document.createElement('canvas').getContext('webgl')
+          const info = gl?.getExtension('WEBGL_debug_renderer_info')
+          renderer = info
+            ? String(gl!.getParameter(info.UNMASKED_RENDERER_WEBGL))
+            : String(gl?.getParameter(gl.RENDERER) ?? 'n/a')
+        } catch {
+          /* renderer string unavailable — not fatal */
+        }
+        window.electronAPI?.logDiagnostic?.('gpu', `${JSON.stringify(status)} renderer=${renderer}`)
+      })
+      return () => {
+        cancelled = true
+      }
+    }, [videoUrl])
     const [effectOverlayBounds, setEffectOverlayBounds] = useState({ left: 0, top: 0, width: 0, height: 0 })
     const visualEffects = useEditorStore((state) => state.visualEffects)
     // Drives the "Mask" chip: true while an effect covers the playhead.
@@ -376,6 +407,46 @@ export const Preview = memo(
       }
     }, [canvasDimensions, isPreviewFullScreen, videoUrl])
 
+    // Size the canvas backing store to the DISPLAYED preview box (×dpr, aspect
+    // preserved) instead of the 1920×1080 source. Keeps drawScene's output
+    // pixel count near what the screen actually shows — the single biggest
+    // playback-cost lever — while the drawing code adapts automatically.
+    useEffect(() => {
+      const container = previewContainerRef.current
+      const { width: srcW, height: srcH } = canvasDimensions
+      if (!container || !videoUrl || !srcW || !srcH) return
+      const aspect = srcW / srcH
+      const dpr = Math.min(window.devicePixelRatio || 1, 2)
+      let raf = 0
+      const sync = () => {
+        cancelAnimationFrame(raf)
+        raf = requestAnimationFrame(() => {
+          const r = container.getBoundingClientRect()
+          if (r.width <= 0 || r.height <= 0) return
+          let w = r.width
+          let h = w / aspect
+          if (h > r.height) {
+            h = r.height
+            w = h * aspect
+          }
+          const nextW = Math.max(1, Math.round(w * dpr))
+          const nextH = Math.max(1, Math.round(h * dpr))
+          setBackingSize((prev) =>
+            prev && prev.width === nextW && prev.height === nextH ? prev : { width: nextW, height: nextH },
+          )
+        })
+      }
+      sync()
+      const observer = new ResizeObserver(sync)
+      observer.observe(container)
+      window.addEventListener('resize', sync)
+      return () => {
+        observer.disconnect()
+        window.removeEventListener('resize', sync)
+        cancelAnimationFrame(raf)
+      }
+    }, [videoUrl, canvasDimensions, isPreviewFullScreen])
+
     const beginEffectTransform = (event: React.MouseEvent, effect: VisualEffectRegion, mode: 'move' | 'resize') => {
       event.preventDefault()
       event.stopPropagation()
@@ -456,34 +527,46 @@ export const Preview = memo(
     )
 
     const renderCanvas = useCallback(async () => {
-      const canvas = canvasRef.current
-      const video = videoRef.current
-      const webcamVideo = webcamVideoRef.current
-      const state = useEditorStore.getState()
-      const ctx = canvas?.getContext('2d')
-      if (!canvas || !video || !ctx || !state.videoDimensions.width) {
-        if (state.isPlaying) animationFrameId.current = requestAnimationFrame(renderCanvas)
-        return
-      }
-      syncClipVideos(state.isPlaying, video.currentTime)
-      const clipLayers: VideoClipLayer[] = []
-      for (const clip of state.videoClips) {
-        const element = clipVideoRefs.current.get(clip.id)
-        if (element && element.readyState >= 2) clipLayers.push({ clip, element })
-      }
-      await drawScene(
-        ctx,
-        state,
-        video,
-        webcamVideo,
-        video.currentTime,
-        canvas.width,
-        canvas.height,
-        bgImage,
-        clipLayers,
-      )
-      if (state.isPlaying) {
-        animationFrameId.current = requestAnimationFrame(renderCanvas)
+      // While playing, drop a frame instead of queueing one when the previous
+      // draw is still in flight. While paused (seek/scrub), never drop: a
+      // trailing draw must follow or the frame would stay stale.
+      if (drawInFlight.current && useEditorStore.getState().isPlaying) return
+      drawInFlight.current = true
+      try {
+        const canvas = canvasRef.current
+        const video = videoRef.current
+        const webcamVideo = webcamVideoRef.current
+        const state = useEditorStore.getState()
+        const ctx = canvas?.getContext('2d')
+        if (!canvas || !video || !ctx || !state.videoDimensions.width) {
+          if (state.isPlaying) animationFrameId.current = requestAnimationFrame(renderCanvas)
+          return
+        }
+        syncClipVideos(state.isPlaying, video.currentTime)
+        const clipLayers: VideoClipLayer[] = []
+        for (const clip of state.videoClips) {
+          const element = clipVideoRefs.current.get(clip.id)
+          if (element && element.readyState >= 2) clipLayers.push({ clip, element })
+        }
+        await drawScene(
+          ctx,
+          state,
+          video,
+          webcamVideo,
+          video.currentTime,
+          canvas.width,
+          canvas.height,
+          bgImage,
+          clipLayers,
+          // While playing, skip the per-frame soft shadow (the costliest op in
+          // the scene, and it never changes) — still frames and export draw it.
+          { livePreview: state.isPlaying },
+        )
+        if (state.isPlaying) {
+          animationFrameId.current = requestAnimationFrame(renderCanvas)
+        }
+      } finally {
+        drawInFlight.current = false
       }
     }, [videoRef, bgImage, syncClipVideos])
 
@@ -503,6 +586,7 @@ export const Preview = memo(
       currentTime,
       renderCanvas,
       canvasDimensions,
+      backingSize,
       frameStyles,
       cameraMotions,
       isWebcamVisible,
@@ -681,10 +765,10 @@ export const Preview = memo(
             >
               <canvas
                 ref={canvasRef}
-                width={canvasDimensions.width}
-                height={canvasDimensions.height}
+                width={backingSize?.width ?? canvasDimensions.width}
+                height={backingSize?.height ?? canvasDimensions.height}
                 style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                className="rounded-pv ring-1 ring-line shadow-[var(--sa-preview-shadow)]"
+                className="rounded-pv"
               />
               {activeCue && (
                 <div

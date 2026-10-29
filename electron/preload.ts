@@ -660,6 +660,7 @@ export const electronAPI = {
   logDiagnostic: (scope: string, message: string): void => ipcRenderer.send('diagnostic:log', scope, message),
   captureDiagnostic: (): Promise<{ min: number; max: number; width: number; height: number } | null> =>
     ipcRenderer.invoke('diagnostic:capture'),
+  gpuDiagnostic: (): Promise<Record<string, string> | null> => ipcRenderer.invoke('diagnostic:gpu'),
 }
 
 // Expose API safely

@@ -176,6 +176,7 @@ const drawFrameLayer = (
   frameY: number,
   frameContentWidth: number,
   frameContentHeight: number,
+  livePreview: boolean = false,
 ): void => {
   const { frameStyles } = state
 
@@ -203,8 +204,11 @@ const drawFrameLayer = (
 
   const { shadowBlur, shadowOffsetX, shadowOffsetY, borderRadius, shadowColor, borderWidth, borderColor } = frameStyles
 
-  // Draw shadow if needed
-  if (shadowBlur > 0) {
+  // Shadow if needed (SKIPPED while live-previewing: blurring a 1080p path
+  // every playback frame is the single most expensive canvas op in the scene,
+  // and the shadow never changes — it only needs to exist on still frames and
+  // on export, where the full path runs).
+  if (shadowBlur > 0 && !livePreview) {
     ctx.save()
     ctx.shadowColor = shadowColor
     ctx.shadowBlur = shadowBlur
@@ -463,6 +467,7 @@ export const drawScene = async (
   outputHeight: number,
   preloadedBgImage: HTMLImageElement | null,
   videoClipLayers: VideoClipLayer[] = [],
+  options: { livePreview?: boolean } = {},
 ): Promise<void> => {
   if (!state.videoDimensions.width || !state.videoDimensions.height) return
 
@@ -517,7 +522,17 @@ export const drawScene = async (
       target.rotate((camera.rotationZ * Math.PI) / 180)
       target.translate(-outputWidth / 2, -outputHeight / 2)
     }
-    drawFrameLayer(target, state, videoElement, currentTime, frameX, frameY, frameContentWidth, frameContentHeight)
+    drawFrameLayer(
+      target,
+      state,
+      videoElement,
+      currentTime,
+      frameX,
+      frameY,
+      frameContentWidth,
+      frameContentHeight,
+      !!options.livePreview,
+    )
     if (Math.abs(camera.rotationZ) > 0.001) target.restore()
   }
 

@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { app, ipcMain } from 'electron'
 import log from 'electron-log/main'
 import * as appHandlers from './handlers/app'
 import * as checkoutHandlers from './handlers/checkout'
@@ -43,6 +43,30 @@ export function registerIpcHandlers() {
         if (luma > max) max = luma
       }
       return { min, max, width, height }
+    } catch {
+      return null
+    }
+  })
+
+  // Chromium's reported GPU feature status, so the app knows whether it is
+  // actually hardware-accelerated (software raster/decode explain both poor
+  // performance and black/odd rendering on some drivers).
+  ipcMain.handle('diagnostic:gpu', () => {
+    try {
+      const status = app.getGPUFeatureStatus() as unknown as Record<string, string>
+      const wanted: Record<string, string> = {}
+      for (const key of [
+        'gpu_compositing',
+        '2d_canvas',
+        'webgl',
+        'video_decode',
+        'rasterization',
+        'multiple_raster_threads',
+      ]) {
+        const value = status[key]
+        if (typeof value === 'string') wanted[key] = value
+      }
+      return wanted
     } catch {
       return null
     }

@@ -300,11 +300,13 @@ const drawFrameLayer = (
         const baseDrawY = Math.round(cursorY - cursorData.yhot)
 
         // Optics-based motion blur: ghosts smeared back along the path, scaled by
-        // the cursor's own speed and the recording's sampling cadence. SKIPPED
-        // while live-previewing: each ghost is a blurred drawImage — the most
-        // expensive per-frame ops left in the scene, invisible at playback speed.
+        // the cursor's own speed and the recording's sampling cadence. The base
+        // cursor (dx=0,dy=0,alpha=1) is always drawn; while live-previewing the
+        // extra blurred ghosts are skipped (each is a blurred drawImage — the
+        // most expensive per-frame ops left in the scene, invisible at playback
+        // speed) but the base cursor itself must stay or it vanishes on play.
         const ghosts = livePreview
-          ? []
+          ? [{ dx: 0, dy: 0, alpha: 1, blurPx: 0 }]
           : motionBlurGhosts(
               motionBlurVelocityAt(state.metadata, currentTime, pathOptions),
               estimateEventInterval(state.metadata, currentTime),

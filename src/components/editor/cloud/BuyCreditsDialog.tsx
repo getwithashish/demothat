@@ -1,7 +1,7 @@
 // Buy credits (design reference §2).
 //
-// Packs only: the contract prices a purchase from a server-side product table,
-// so there is no free-form amount here (see CREDIT_PACKS in shared/license.ts).
+// Packs only: the contract prices a purchase from the server-side product table,
+// so there is no free-form amount here (the catalogue comes from the API).
 // Continue opens the allow-listed Dodo checkout in the system browser.
 
 import { useEffect, useState } from 'react'
@@ -14,7 +14,7 @@ import { cn } from '../../../lib/utils'
 import { Button } from '../../ui/button'
 import { ICON_SIZE, ICON_STROKE } from '../../ui/icons'
 import { CloudDialog, CloudDialogSection } from './CloudDialog'
-import { fallbackPackViews, pickNoteTarget, recommendedPackIndex, visiblePacks } from './credit-packs'
+import { pickNoteTarget, recommendedPackIndex, visiblePacks } from './credit-packs'
 
 export interface BuyCreditsDialogProps {
   isOpen: boolean
@@ -37,9 +37,7 @@ export function BuyCreditsDialog({ isOpen, onClose, shortfall }: BuyCreditsDialo
   )
   // A licence is what makes the top-ups purchasable: the API refuses one without it.
   const licensed = plan != null
-  const [selected, setSelected] = useState(() =>
-    recommendedPackIndex(shortfall, visiblePacks(fallbackPackViews(), licensed)),
-  )
+  const [selected, setSelected] = useState(0)
   const [busy, setBusy] = useState(false)
   // Pack notes come from the server's own pricing table, never from guesses.
   const [creditsPerFrame, setCreditsPerFrame] = useState<Record<string, number> | undefined>(undefined)
@@ -50,7 +48,7 @@ export function BuyCreditsDialog({ isOpen, onClose, shortfall }: BuyCreditsDialo
   // Re-pick the pack each time the dialog opens for a new shortfall.
   useEffect(() => {
     if (!isOpen) return
-    setSelected(recommendedPackIndex(shortfall, visiblePacks(fallbackPackViews(), licensed)))
+    setSelected(recommendedPackIndex(shortfall, visiblePacks(packs ?? [], licensed)))
     setBusy(false)
     window.electronAPI
       .getCloudCapabilities?.()
@@ -58,24 +56,20 @@ export function BuyCreditsDialog({ isOpen, onClose, shortfall }: BuyCreditsDialo
       .catch(() => setCreditsPerFrame(undefined))
     window.electronAPI
       .listProducts?.()
-      .then((result) => {
-        const views = toCreditPackViews(result?.products)
-        setPacks(views.length > 0 ? views : fallbackPackViews())
-      })
-      .catch(() => setPacks(fallbackPackViews()))
-  }, [isOpen, shortfall, licensed])
+      .then((result) => setPacks(toCreditPackViews(result?.products)))
+      .catch(() => setPacks([]))
+  }, [isOpen, shortfall, licensed, packs])
 
   if (!isOpen) return null
 
   // The server's catalogue while it is loading too: it is the real answer.
-  const catalogue = packs ?? toCreditPackViews(null)
-  const options: CreditPackView[] = visiblePacks(catalogue.length > 0 ? catalogue : fallbackPackViews(), licensed)
-  const safeIndex = Math.min(selected, Math.max(0, options.length - 1))
-  const pack = options[safeIndex]
-  const covers = shortfall != null && shortfall > 0 && pack.credits >= shortfall
+  const options: CreditPackView[] = visiblePacks(packs ?? [], licensed)
+  const pack = options.length > 0 ? options[Math.min(selected, options.length - 1)] : undefined
+  const covers = shortfall != null && shortfall > 0 && pack != null && pack.credits >= shortfall
   const noteTarget = pickNoteTarget(creditsPerFrame)
 
   const continueToCheckout = async () => {
+    if (!pack) return
     setBusy(true)
     const ok = await startPurchase(pack.productId)
     setBusy(false)
@@ -96,7 +90,7 @@ export function BuyCreditsDialog({ isOpen, onClose, shortfall }: BuyCreditsDialo
           <Button variant="secondary" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button onClick={() => void continueToCheckout()} disabled={busy}>
+          <Button onClick={() => void continueToCheckout()} disabled={busy || !pack}>
             Continue in browser
             <ExternalLink size={ICON_SIZE} strokeWidth={ICON_STROKE} className="ml-2" />
           </Button>
@@ -105,55 +99,61 @@ export function BuyCreditsDialog({ isOpen, onClose, shortfall }: BuyCreditsDialo
     >
       <CloudDialogSection>
         <span className="mb-1.5 block text-sm text-muted">Recommended packs</span>
-        <div className="grid grid-cols-3 gap-2">
-          {options.map((option, index) => {
-            const active = index === selected
-            const badge = covers && option.productId === pack.productId ? 'Covers this export' : null
-            return (
-              <button
-                key={option.productId}
-                type="button"
-                aria-pressed={active}
-                onClick={() => setSelected(index)}
-                className={cn(
-                  'relative flex flex-col gap-0.5 rounded-ctl border border-line bg-ctl p-3 text-left transition-colors',
-                  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
-                  active && 'border-accent bg-panel shadow-[0_0_0_1px_var(--sa-accent)]',
-                  !active && 'hover:bg-ctl-hover',
-                )}
-              >
-                {badge && (
-                  <span className="absolute -top-[9px] left-2.5 whitespace-nowrap rounded-pv border border-line bg-panel px-1.5 py-px text-[11px] font-semibold text-accent">
-                    {badge}
-                  </span>
-                )}
-                <b className="whitespace-nowrap font-mono text-title font-semibold tabular-nums text-fg">
-                  {formatCredits(option.credits)}
-                </b>
-                {option.priceLabel && (
-                  <span className="whitespace-nowrap font-mono text-sm text-muted">{option.priceLabel}</span>
-                )}
-                <small className="text-sm text-muted">{option.label}</small>
-                {noteTarget && (
-                  <small className="text-sm text-muted">
-                    {packNote(option.credits, creditsPerFrame, noteTarget, NOTE_FPS)}
-                  </small>
-                )}
-              </button>
-            )
-          })}
-        </div>
+        {options.length === 0 ? (
+          <p className="text-sm text-danger">
+            The store catalogue could not be loaded. Check your connection and try again.
+          </p>
+        ) : (
+          <div className="grid grid-cols-3 gap-2">
+            {options.map((option, index) => {
+              const active = index === selected
+              const badge = covers && pack != null && option.productId === pack.productId ? 'Covers this export' : null
+              return (
+                <button
+                  key={option.productId}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => setSelected(index)}
+                  className={cn(
+                    'relative flex flex-col gap-0.5 rounded-ctl border border-line bg-ctl p-3 text-left transition-colors',
+                    'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
+                    active && 'border-accent bg-panel shadow-[0_0_0_1px_var(--sa-accent)]',
+                    !active && 'hover:bg-ctl-hover',
+                  )}
+                >
+                  {badge && (
+                    <span className="absolute -top-[9px] left-2.5 whitespace-nowrap rounded-pv border border-line bg-panel px-1.5 py-px text-[11px] font-semibold text-accent">
+                      {badge}
+                    </span>
+                  )}
+                  <b className="whitespace-nowrap font-mono text-title font-semibold tabular-nums text-fg">
+                    {formatCredits(option.credits)}
+                  </b>
+                  {option.priceLabel && (
+                    <span className="whitespace-nowrap font-mono text-sm text-muted">{option.priceLabel}</span>
+                  )}
+                  <small className="text-sm text-muted">{option.label}</small>
+                  {noteTarget && (
+                    <small className="text-sm text-muted">
+                      {packNote(option.credits, creditsPerFrame, noteTarget, NOTE_FPS)}
+                    </small>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        )}
       </CloudDialogSection>
 
       <CloudDialogSection className="space-y-3">
         <div className="flex items-start justify-between gap-3">
           <span className="text-ui text-fg">Price</span>
-          <span className="whitespace-nowrap font-mono text-sm tabular-nums text-muted">{pack.priceLabel ?? '—'}</span>
+          <span className="whitespace-nowrap font-mono text-sm tabular-nums text-muted">{pack?.priceLabel ?? '—'}</span>
         </div>
         <div className="flex items-start justify-between gap-3">
           <span className="text-ui text-fg">Balance after</span>
           <span className="whitespace-nowrap font-mono text-sm tabular-nums text-muted">
-            {formatCredits(balance + pack.credits)}
+            {pack ? formatCredits(balance + pack.credits) : '—'}
           </span>
         </div>
         {purchaseError && <p className="text-sm text-danger">{purchaseError}</p>}

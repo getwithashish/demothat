@@ -21,8 +21,7 @@ import { DevicesDialog } from '../components/editor/cloud/DevicesDialog'
 import { BuyCreditsDialog } from '../components/editor/cloud/BuyCreditsDialog'
 import { WaitingForPaymentDialog } from '../components/editor/cloud/WaitingForPaymentDialog'
 import { ResumeCloudDialog } from '../components/editor/cloud/ResumeCloudDialog'
-import { CREDIT_PACKS } from '../../shared/license'
-import { pickFirstPurchaseProductId } from '../../shared/pricing'
+import { firstPurchaseProductId } from '../../shared/pricing'
 import { Stack3, Loader2, Check, Settings, Share } from 'tabler-icons-react'
 import { ICON_SIZE, ICON_STROKE } from '../components/ui/icons'
 import { cn, formatTime } from '../lib/utils'
@@ -419,9 +418,19 @@ export function EditorPage() {
    * this computer automatically when the payment settles (design §4).
    */
   const startFirstPurchase = useCallback(async () => {
-    // API data wins; the hardcoded pack id is only the offline fallback.
+    // No hardcoded pack: the API is the only source. If it is down there is
+    // nothing to buy, so surface that instead of guessing an id.
     const catalogue = (await window.electronAPI.listProducts?.())?.products ?? null
-    const productId = pickFirstPurchaseProductId(catalogue, CREDIT_PACKS[0].productId)
+    const productId = firstPurchaseProductId(catalogue)
+    if (!productId) {
+      useEditorStore.setState({
+        purchaseError: 'The credit packs could not be loaded. Check your connection and try again.',
+        buyCreditsOpen: false,
+        waitingForPayment: true,
+        checkoutUserInitiated: false,
+      })
+      return
+    }
     await useEditorStore.getState().startPurchase(productId)
   }, [])
 

@@ -187,6 +187,7 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
     cloudJob = preflight.job
     cloudMinChargeCredits = preflight.capabilities.minChargeCredits ?? 0
     intermediatePath = intermediatePathFor(os.tmpdir(), Date.now())
+    await fsPromises.mkdir(path.dirname(intermediatePath), { recursive: true })
     // Recorded now, so a job still running when the app closes can be picked up.
     rememberActiveJob(cloudJob.jobId, outputPath, intermediatePath, targetWidth, targetHeight)
     log.info(

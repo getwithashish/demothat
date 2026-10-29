@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { EXPORT_RENDER_CAP, applyRenderCap, needsUpscale } from './export-render-cap'
+import { EXPORT_RENDER_CAP, applyRenderCap, cloudIntermediateSize, needsUpscale } from './export-render-cap'
 import { exportDimensions } from './export-resolutions'
 
 describe('applyRenderCap', () => {
@@ -45,5 +45,32 @@ describe('needsUpscale', () => {
   it('is true only when the render size differs from the target', () => {
     expect(needsUpscale(3840, 2160, 7680, 4320)).toBe(true)
     expect(needsUpscale(3840, 2160, 3840, 2160)).toBe(false)
+  })
+})
+
+describe('cloudIntermediateSize', () => {
+  it('renders a 1080p source for a 1440p target, so the model has work', () => {
+    expect(cloudIntermediateSize(2560, 1440, 1920, 1080)).toEqual({ width: 1920, height: 1080 })
+  })
+
+  it('renders a 720p source for a 4K target at the source size', () => {
+    expect(cloudIntermediateSize(3840, 2160, 1280, 720)).toEqual({ width: 1280, height: 720 })
+  })
+
+  it('never exceeds the target', () => {
+    // A 4K source exporting to 1440p (zoom upscale) stays at the target.
+    expect(cloudIntermediateSize(2560, 1440, 3840, 2160)).toEqual({ width: 2560, height: 1440 })
+  })
+
+  it('keeps the target aspect on non-16:9 crops', () => {
+    const target = exportDimensions('8k', '9:16')
+    // 2430x4320 scaled by 0.25 (1080/4320) => 608x1080, even and inside the cap.
+    expect(cloudIntermediateSize(target.width, target.height, 1920, 1080)).toEqual({ width: 608, height: 1080 })
+  })
+
+  it('returns even dimensions', () => {
+    const size = cloudIntermediateSize(3840, 2160, 1919, 1079)
+    expect(size.width % 2).toBe(0)
+    expect(size.height % 2).toBe(0)
   })
 })

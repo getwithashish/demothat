@@ -35,7 +35,7 @@ import { clearCloudCancellation, registerCloudCancellation } from './cloud-cance
 import type { CloudCancellation, CloudJobCreated } from './cloud-client'
 import { isFormatAllowed, selectExportCodec } from '../../../shared/export-codec'
 import { maxCameraScale, maxZoomLevel, detectUpscale } from '../../../shared/export-upscale'
-import { applyRenderCap } from '../../../shared/export-render-cap'
+import { applyRenderCap, cloudIntermediateSize } from '../../../shared/export-render-cap'
 
 const FFMPEG_PATH = getFFmpegPath()
 
@@ -149,10 +149,22 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
   // A non-upscale export never goes through the cloud, whatever the client
   // requested. Only an actual upscale can reserve credits, so a same-resolution
   // export can never be charged even by a misbehaving or rebuilt client.
-  const useCloud = Boolean(request.cloud) && upscale.isUpscale
+  const wantsCloud = Boolean(request.cloud) && upscale.isUpscale
+
+  // A cloud job renders its intermediate at the source video's own resolution
+  // (never above the target), so the AI model has real enlargement to do: an
+  // intermediate that already matches the target is a passthrough plan the
+  // worker runs without loading the model, charged at AI prices for a re-encode.
+  const cloudRender =
+    videoDimensions && videoDimensions.width > 0 && videoDimensions.height > 0
+      ? cloudIntermediateSize(targetWidth, targetHeight, videoDimensions.width, videoDimensions.height)
+      : null
+  const useCloud =
+    wantsCloud && cloudRender !== null && (cloudRender.width < targetWidth || cloudRender.height < targetHeight)
 
   // The renderer draws at the capped size; FFmpeg scales to the exact target.
-  const { width: renderWidth, height: renderHeight } = applyRenderCap(targetWidth, targetHeight)
+  const { width: renderWidth, height: renderHeight } =
+    useCloud && cloudRender ? cloudRender : applyRenderCap(targetWidth, targetHeight)
   log.info(`[ExportManager] Target ${targetWidth}x${targetHeight}, rendering at ${renderWidth}x${renderHeight}.`)
 
   // --- Cloud (AI) upscaling: reserve the credits BEFORE rendering anything ----

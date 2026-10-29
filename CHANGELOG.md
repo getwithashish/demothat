@@ -1,3 +1,9 @@
+## [1.14.1](https://github.com/getwithashish/DemoThat/compare/v1.14.0...v1.14.1) (2026-10-29)
+
+### Bug Fixes
+
+* **editor:** cursor visible through playback, selectable pointer icons, no charge for same-res export ([#13](https://github.com/getwithashish/DemoThat/issues/13)) ([6c5b784](https://github.com/getwithashish/DemoThat/commit/6c5b784081c736ee4e6c69c3adb3ec40eaee9cf8))
+
 ## [1.14.0](https://github.com/getwithashish/DemoThat/compare/v1.13.0...v1.14.0) (2026-10-29)
 
 ### Features

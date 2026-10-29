@@ -77,7 +77,7 @@ const capabilities: PublishingCapabilities = {
   durationsDays: [7, 30, 90, 365],
   defaultDurationDays: 365,
   maxSizeBytes: 2_147_483_648,
-  baseUrl: 'https://share.demothat.yahodu.in',
+  baseUrl: 'https://share.example.test',
   kinds: ['page', 'links', 'embed'],
 }
 
@@ -105,11 +105,11 @@ function livePublication(overrides: Partial<PublicationView> = {}): PublicationV
     expiresAt: new Date('2027-10-01T10:00:05Z').toISOString(),
     served: { page: true, embed: true, links: true },
     links: {
-      pageUrl: 'https://share.demothat.yahodu.in/p/abcdefghijklmnopqrstuv',
-      embedUrl: 'https://share.demothat.yahodu.in/e/abcdefghijklmnopqrstuv',
-      embedCode: '<iframe src="https://share.demothat.yahodu.in/e/abcdefghijklmnopqrstuv"></iframe>',
-      videoDownloadUrl: 'https://share.demothat.yahodu.in/d/abcdefghijklmnopqrstuv/video.mp4',
-      captionsDownloadUrl: 'https://share.demothat.yahodu.in/d/abcdefghijklmnopqrstuv/captions.vtt',
+      pageUrl: 'https://share.example.test/p/abcdefghijklmnopqrstuv',
+      embedUrl: 'https://share.example.test/e/abcdefghijklmnopqrstuv',
+      embedCode: '<iframe src="https://share.example.test/e/abcdefghijklmnopqrstuv"></iframe>',
+      videoDownloadUrl: 'https://share.example.test/d/abcdefghijklmnopqrstuv/video.mp4',
+      captionsDownloadUrl: 'https://share.example.test/d/abcdefghijklmnopqrstuv/captions.vtt',
     },
     ...overrides,
   }
@@ -238,8 +238,8 @@ describe('PublishDialog', () => {
 
     const text = host.textContent ?? ''
     expect(text).toContain('Published · 908 credits charged')
-    expect(text).toContain('https://share.demothat.yahodu.in/p/abcdefghijklmnopqrstuv')
-    expect(text).toContain('https://share.demothat.yahodu.in/d/abcdefghijklmnopqrstuv/video.mp4')
+    expect(text).toContain('https://share.example.test/p/abcdefghijklmnopqrstuv')
+    expect(text).toContain('https://share.example.test/d/abcdefghijklmnopqrstuv/video.mp4')
     expect(text).toContain('captions')
     // The policy, stated where the link is handed over.
     expect(text).toContain('the credits are not returned')

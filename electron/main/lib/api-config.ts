@@ -8,8 +8,15 @@
 // secret, JWT signing key) live only in the API repo's environment and never reach
 // the app.
 
-/** Production API host. Overridable for local development. */
-export const DEFAULT_API_BASE_URL = 'https://api.demothat.yahodu.in'
+/**
+ * Compile-time API base URL default. vite injects `DEMOTHAT_DEFAULT_API_BASE_URL`
+ * (from a gitignored `.env` file for development, or a GitHub Actions secret for
+ * the production build), so the URL is never committed. With none baked in, the
+ * default is empty: the app must then be pointed at an API via
+ * `DEMOTHAT_API_BASE_URL`, or the build refuses (see vite.config.ts).
+ */
+const injectedApiBaseDefault = process.env.DEMOTHAT_DEFAULT_API_BASE_URL
+export const DEFAULT_API_BASE_URL = (injectedApiBaseDefault && injectedApiBaseDefault.trim().replace(/\/+$/, '')) || ''
 
 /**
  * The API base URL, honouring `DEMOTHAT_API_BASE_URL` so the app can be pointed

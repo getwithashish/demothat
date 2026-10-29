@@ -354,9 +354,8 @@ export const electronAPI = {
   /** Encoders the bundled FFmpeg has (a missing libx265 disables the 8K option). */
   getExportCapabilities: (): Promise<{ libx265: boolean; hevcEncoders: string[] }> =>
     ipcRenderer.invoke('export:capabilities'),
-  /** Local Pro state plus the URL the Unlock action should open. */
-  getEntitlement: (): Promise<{ pro: boolean; credits: number; unlockUrl: string }> =>
-    ipcRenderer.invoke('entitlement:get'),
+  /** Local Pro state and credit balance. */
+  getEntitlement: (): Promise<{ pro: boolean; credits: number }> => ipcRenderer.invoke('entitlement:get'),
 
   // --- License, credits and devices ---
   /** Plan, balance and devices for the header capsule and the Devices dialog. */

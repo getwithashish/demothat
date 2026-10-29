@@ -84,7 +84,6 @@ interface CloudConfig {
 interface EntitlementInfo {
   pro: boolean
   credits: number
-  unlockUrl: string
 }
 
 /** Marks a resolution whose export would upscale the source. */
@@ -169,7 +168,7 @@ const SettingsView = ({
     window.electronAPI
       .getEntitlement()
       .then(setEntitlement)
-      .catch(() => setEntitlement({ pro: false, credits: 0, unlockUrl: '' }))
+      .catch(() => setEntitlement({ pro: false, credits: 0 }))
     window.electronAPI
       .getExportPerfSamples()
       .then((samples) => setPerfSamples(samples as ExportPerfSample[]))

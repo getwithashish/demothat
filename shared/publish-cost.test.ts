@@ -21,7 +21,7 @@ const capabilities: PublishingCapabilities = {
   durationsDays: [7, 30, 90, 365],
   defaultDurationDays: 365,
   maxSizeBytes: 2_147_483_648,
-  baseUrl: 'https://share.demothat.yahodu.in',
+  baseUrl: 'https://share.example.test',
   kinds: ['page', 'links', 'embed'],
 }
 

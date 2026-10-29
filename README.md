@@ -132,11 +132,11 @@ The Vitest suite (`vitest.config.ts`) covers `electron/**`, `src/**`, and `share
 
 ## 🔌 Working against a local API
 
-The app reads its API base URL from `DEMOTHAT_API_BASE_URL` and otherwise uses the production host. For local development, a mock server implements the endpoints the app calls (checkout, license activation, cloud jobs, publishing, JWKS) with the same shapes and error codes as the pinned contract:
+The API base URL is baked at build time and never committed. To point a development build at a backend, copy `.env.example` to `.env.development.local` (gitignored) and set `DEMOTHAT_DEFAULT_API_BASE_URL` in it; `npm run dev` then bakes that URL in. Without the file, development falls back to the local mock server. Production builds (`npm run dist:*`, the CI release workflow) get their URL from the `DEMOTHAT_PRODUCTION_API_BASE_URL` GitHub repository secret, which is then baked into the binary; the build refuses to proceed if that secret is unset (see vite.config.ts). A runtime `DEMOTHAT_API_BASE_URL` always wins over the baked value. For the local mock:
 
 ```bash
 node scripts/mock-api-server.mjs          # listens on :8788 by default
-DEMOTHAT_API_BASE_URL=http://localhost:8788 npm run dev
+npm run dev                               # no .env.development.local → local mock
 ```
 
 `DEMOTHAT_FORCE_PRO=1` unlocks Pro features without a key for development. Server-side behaviour is out of scope for this repo; `scripts/mock-api-server.mjs` is the reference for what the app expects.

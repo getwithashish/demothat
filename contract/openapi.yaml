@@ -22,11 +22,8 @@ info:
   license:
     name: Proprietary
     identifier: LicenseRef-Proprietary
-servers:
-  - url: https://api.demothat.yahodu.in
-    description: Production
-  - url: http://localhost:3000
-    description: Local development
+# No `servers` block: the app is pointed at an API via environment configuration,
+# so a URL committed here would only invite hardcoding it downstream.
 
 tags:
   - name: meta

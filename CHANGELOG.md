@@ -1,3 +1,9 @@
+## [1.15.1](https://github.com/getwithashish/DemoThat/compare/v1.15.0...v1.15.1) (2026-10-29)
+
+### Bug Fixes
+
+* **purchase:** surface the error when Get Pro / checkout start fails ([#18](https://github.com/getwithashish/DemoThat/issues/18)) ([b167490](https://github.com/getwithashish/DemoThat/commit/b167490f200f9021ce69da1db7bfee3a04bbe1b6))
+
 ## [1.15.0](https://github.com/getwithashish/DemoThat/compare/v1.14.4...v1.15.0) (2026-10-29)
 
 ### Features

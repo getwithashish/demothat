@@ -1,3 +1,9 @@
+## [1.14.2](https://github.com/getwithashish/DemoThat/compare/v1.14.1...v1.14.2) (2026-10-29)
+
+### Bug Fixes
+
+* **editor:** draw the cursor while the preview is playing ([#14](https://github.com/getwithashish/DemoThat/issues/14)) ([0ec7dca](https://github.com/getwithashish/DemoThat/commit/0ec7dca9ed32d76bc1f22b38dbe8a6896a18b1f5))
+
 ## [1.14.1](https://github.com/getwithashish/DemoThat/compare/v1.14.0...v1.14.1) (2026-10-29)
 
 ### Bug Fixes

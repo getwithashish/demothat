@@ -127,14 +127,16 @@ describe('detectUpscale', () => {
     expect(result.isUpscale).toBe(true)
   })
 
-  it('counts a zoom region towards the upscale', () => {
-    // 4K at 4K is fine, but zooming 1.5x into it is not.
+  it('does not count a zoom region as an upscale (resolution is the rule)', () => {
+    // 4K at 4K stays free even with a 1.5x zoom region: zoom enlarges what is
+    // visible, not the export resolution. This also keeps the auto-zoom regions
+    // generated from ordinary clicks from Pro-gating same-resolution exports.
     const result = detect({ targetWidth: 3840, targetHeight: 2160, source: SOURCE_4K, maxZoom: 1.5 })
-    expect(result.requiredScale).toBeCloseTo(1.35, 6)
-    expect(result.isUpscale).toBe(true)
+    expect(result.requiredScale).toBeCloseTo(0.9, 6)
+    expect(result.isUpscale).toBe(false)
   })
 
-  it('counts camera-motion scale towards the upscale', () => {
+  it('treats camera-motion scale as part of the drawn content', () => {
     const result = detect({ targetWidth: 3840, targetHeight: 2160, source: SOURCE_4K, cameraScale: 1.2 })
     expect(result.requiredScale).toBeCloseTo(1.08, 6)
     expect(result.isUpscale).toBe(true)

@@ -381,7 +381,7 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
         if (cursorTheme) {
           const scale = (await window.electronAPI.getSetting<number>('recorder.cursorScale')) || 2
           const bitmaps = await prepareWindowsCursorBitmaps(cursorTheme, scale)
-          const icons = await prepareCursorIcons(scale)
+          const icons = await prepareCursorIcons(cursorTheme, scale)
           set((state) => {
             state.cursorTheme = cursorTheme
             state.cursorBitmapsToRender = bitmaps
@@ -393,7 +393,7 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
         if (cursorTheme) {
           const scale = (await window.electronAPI.getSetting<number>('recorder.cursorScale')) || 2
           const bitmaps = await prepareMacOSCursorBitmaps(cursorTheme, scale)
-          const icons = await prepareCursorIcons(scale)
+          const icons = await prepareCursorIcons(cursorTheme, scale)
           set((state) => {
             state.cursorTheme = cursorTheme
             state.cursorBitmapsToRender = bitmaps
@@ -401,14 +401,17 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
           })
         }
       } else {
-        // Linux: the cursor is captured from the OS, not built from a theme pack.
-        // Apply the same post-processing scale the Size control uses (and that the
-        // export queue reads), so the preview draws the cursor at the export size.
+        // Linux: the recorded cursor is captured from the OS, not built from a
+        // theme pack, so the Size control rescales the captured bitmaps. The icon
+        // picker still uses the bundled theme pack (binaries/linux ships the same
+        // packs as Win/macOS), so the selectable icons match on every platform.
         const linuxScale = (await window.electronAPI.getSetting<number>('recorder.cursorScale')) || 1
         const bitmaps = await prepareCursorBitmaps(parsedData.cursorImages, linuxScale)
-        const icons = await prepareCursorIcons(linuxScale)
+        const cursorTheme = await window.electronAPI.loadCursorTheme(themeNameToLoad)
+        const icons = await prepareCursorIcons(cursorTheme, linuxScale)
         set((state) => {
           state.cursorImages = parsedData.cursorImages || {}
+          state.cursorTheme = cursorTheme
           state.cursorBitmapsToRender = bitmaps
           state.cursorIconsToRender = icons
         })
@@ -474,7 +477,7 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
       } else {
         bitmaps = await prepareMacOSCursorBitmaps(cursorTheme, scale)
       }
-      const icons = await prepareCursorIcons(scale)
+      const icons = await prepareCursorIcons(cursorTheme, scale)
       set((state) => {
         state.cursorTheme = cursorTheme
         state.cursorBitmapsToRender = bitmaps
@@ -504,7 +507,7 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
       // so the Size control rescales the captured cursor bitmaps directly.
       bitmaps = await prepareCursorBitmaps(cursorImages, scale)
     }
-    const icons = await prepareCursorIcons(scale)
+    const icons = await prepareCursorIcons(cursorTheme, scale)
 
     set((state) => {
       state.cursorBitmapsToRender = bitmaps

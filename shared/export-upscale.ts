@@ -80,12 +80,15 @@ export interface UpscaleResult {
  * downscale, never an upscale.
  */
 export function detectUpscale(input: UpscaleInput): UpscaleResult {
-  const maxZoom = input.maxZoom && input.maxZoom > 0 ? input.maxZoom : 1
   const content = computeFrameContentSize(input)
   if (content.width <= 0) {
     return { contentWidth: 0, contentHeight: 0, requiredScale: 0, isUpscale: false }
   }
-  const requiredScale = (content.width * maxZoom) / input.videoWidth
+  // Compare the drawn content to the source resolution. Deliberately NOT scaled
+  // by maxZoom: a zoom region enlarges what is visible, not what the export
+  // resolution demands, and auto-zoom regions are generated from ordinary clicks,
+  // so counting them would Pro-gate same-resolution exports of any clicky clip.
+  const requiredScale = content.width / input.videoWidth
   return {
     contentWidth: content.width,
     contentHeight: content.height,

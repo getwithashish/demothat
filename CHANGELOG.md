@@ -1,3 +1,9 @@
+## [1.15.0](https://github.com/getwithashish/DemoThat/compare/v1.14.4...v1.15.0) (2026-10-29)
+
+### Features
+
+* **config:** bake API base URL from env (dev .env + CI secret) ([#17](https://github.com/getwithashish/DemoThat/issues/17)) ([4c16633](https://github.com/getwithashish/DemoThat/commit/4c16633f7c1f1c7dfafb931b211e4c78d1119dba))
+
 ## [1.14.4](https://github.com/getwithashish/DemoThat/compare/v1.14.3...v1.14.4) (2026-10-29)
 
 ### Bug Fixes

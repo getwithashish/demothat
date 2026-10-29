@@ -19,7 +19,12 @@
 
 import type { MetaDataItem } from '../types'
 
-/** The cursor is hidden once the recording has been idle this long (unchanged). */
+/**
+ * The cursor is no longer hidden for idling: a recording mouse at rest is still
+ * shown on screen, resting at its last recorded position. This constant is kept
+ * (and exported) only for historical reference / tests; the current behaviour
+ * keeps the cursor visible once any sample at or before the playhead exists.
+ */
 export const CURSOR_IDLE_HIDE_SEC = 0.1
 
 /** Longest averaging window, at smoothing = 1. */
@@ -44,7 +49,12 @@ export interface CursorPathOptions {
 export interface CursorSample {
   x: number
   y: number
-  /** False when the recording has been idle past `CURSOR_IDLE_HIDE_SEC`. */
+  /**
+   * True whenever the recording has a cursor sample at or before `time`. The
+   * cursor is never dropped mid-recording: it rests at the last recorded point
+   * while the pointer is idle, which is what a screen-recording viewer expects
+   * (a mouse at rest is still drawn on screen, in the preview and in the export).
+   */
   visible: boolean
   /** The bitmap to draw (the most recent event's cursor shape). */
   cursorImageKey?: string
@@ -94,7 +104,9 @@ export function interpolateCursorPosition(metadata: MetaDataItem[], time: number
  * The cursor at `time`.
  *
  * With smoothing off this is exactly the historical result: the last recorded
- * event, hidden once the recording has been idle for `CURSOR_IDLE_HIDE_SEC`.
+ * event. The cursor rests at that point while the recording is idle — it is not
+ * dropped once `CURSOR_IDLE_HIDE_SEC` has passed, so it stays visible for the
+ * whole clip in both the preview and the export.
  */
 export function sampleCursorPath(
   metadata: MetaDataItem[],
@@ -104,7 +116,10 @@ export function sampleCursorPath(
   const index = findEventIndex(metadata, time)
   if (index < 0) return null
   const last = metadata[index]
-  const visible = time - last.timestamp < CURSOR_IDLE_HIDE_SEC
+  // Visible whenever a sample exists at or before `time`. We rest at the last
+  // recorded point while idle rather than dropping the cursor entirely, so it
+  // reads correctly in the preview and the export for the whole clip.
+  const visible = true
 
   if (!options.enabled) {
     return { x: last.x, y: last.y, visible, cursorImageKey: last.cursorImageKey }

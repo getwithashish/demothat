@@ -115,31 +115,41 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
     }
   }
 
+  // Whether this export actually upscales the source. The single source of truth
+  // for BOTH the Pro gate and the cloud path: exporting at or below the recorded
+  // resolution is Standard and free, so it is neither Pro-gated nor billable.
+  const videoDimensions = projectState.videoDimensions
+  const upscale =
+    videoDimensions && videoDimensions.width > 0 && videoDimensions.height > 0
+      ? detectUpscale({
+          targetWidth,
+          targetHeight,
+          paddingPercent: Number(projectState.frameStyles?.padding) || 0,
+          videoWidth: videoDimensions.width,
+          videoHeight: videoDimensions.height,
+          maxZoom: maxZoomLevel(projectState.zoomRegions),
+          cameraScale: maxCameraScale(projectState.cameraMotions),
+        })
+      : { isUpscale: false, requiredScale: 1 }
+
   // Upscaling is a Pro feature. This is a SOFT gate (see features/entitlement.ts):
   // a rebuilt client can remove it, so it is defence in depth, not enforcement.
-  const videoDimensions = projectState.videoDimensions
-  if (videoDimensions && videoDimensions.width > 0 && videoDimensions.height > 0) {
-    const upscale = detectUpscale({
-      targetWidth,
-      targetHeight,
-      paddingPercent: Number(projectState.frameStyles?.padding) || 0,
-      videoWidth: videoDimensions.width,
-      videoHeight: videoDimensions.height,
-      maxZoom: maxZoomLevel(projectState.zoomRegions),
-      cameraScale: maxCameraScale(projectState.cameraMotions),
-    })
-    if (upscale.isUpscale) {
-      const entitlement = await getEntitlement()
-      if (!entitlement.pro) {
-        log.info('[ExportManager] Refusing an upscaling export without Pro entitlement.')
-        editorWindow.webContents.send('export:complete', {
-          success: false,
-          error: `This export would upscale the source by ${upscale.requiredScale.toFixed(1)}x, which is a Pro feature.`,
-        })
-        return
-      }
+  if (upscale.isUpscale) {
+    const entitlement = await getEntitlement()
+    if (!entitlement.pro) {
+      log.info('[ExportManager] Refusing an upscaling export without Pro entitlement.')
+      editorWindow.webContents.send('export:complete', {
+        success: false,
+        error: `This export would upscale the source by ${upscale.requiredScale.toFixed(1)}x, which is a Pro feature.`,
+      })
+      return
     }
   }
+
+  // A non-upscale export never goes through the cloud, whatever the client
+  // requested. Only an actual upscale can reserve credits, so a same-resolution
+  // export can never be charged even by a misbehaving or rebuilt client.
+  const useCloud = Boolean(request.cloud) && upscale.isUpscale
 
   // The renderer draws at the capped size; FFmpeg scales to the exact target.
   const { width: renderWidth, height: renderHeight } = applyRenderCap(targetWidth, targetHeight)
@@ -154,7 +164,7 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
   let cloudMinChargeCredits = 0
   let intermediatePath: string | null = null
 
-  if (request.cloud) {
+  if (useCloud) {
     const preflight = await preflightCloudExport({
       targetWidth,
       targetHeight,
@@ -234,7 +244,7 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
     targetWidth,
     targetHeight,
     clickSoundPath,
-    intermediate: !!request.cloud,
+    intermediate: useCloud,
   })
 
   log.info('[ExportManager] Spawning FFmpeg with args:', ffmpegArgs.join(' '))
@@ -284,7 +294,7 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
   const emitProgress = () => {
     if (!editorWindow || editorWindow.isDestroyed()) return
     const percent = Math.min(100, Math.max(frameProgress, encodeProgress))
-    if (request.cloud) {
+    if (useCloud) {
       // The same render, reported against the cloud flow's own bar and label.
       emitCloudProgress({ stage: 'Rendering locally', stagePercent: percent })
       return

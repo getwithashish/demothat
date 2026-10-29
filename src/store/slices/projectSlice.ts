@@ -12,6 +12,7 @@ import type { MetaDataItem, ZoomRegion, CursorFrame } from '../../types'
 import { ZOOM } from '../../lib/constants'
 import { initialFrameState, recalculateCanvasDimensions } from './frameSlice'
 import { prepareCursorBitmaps } from '../../lib/utils'
+import { prepareCursorIcons } from '../../lib/cursor-icons'
 import { collectSavePayload, whenSaveIdle, withSaveGuard } from '../../lib/project-file'
 import { projectNameFromPath } from '../../lib/recent-projects'
 import { audioTracksFromManifest, legacyTracks } from '../../../shared/audio-tracks'
@@ -30,6 +31,7 @@ export const initialProjectState: ProjectState = {
   duration: 0,
   cursorImages: {},
   cursorBitmapsToRender: new Map<string, CursorImageBitmap>(),
+  cursorIconsToRender: new Map<string, CursorImageBitmap>(),
   syncOffset: 0,
   platform: null,
   cursorTheme: null,
@@ -379,9 +381,11 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
         if (cursorTheme) {
           const scale = (await window.electronAPI.getSetting<number>('recorder.cursorScale')) || 2
           const bitmaps = await prepareWindowsCursorBitmaps(cursorTheme, scale)
+          const icons = await prepareCursorIcons(scale)
           set((state) => {
             state.cursorTheme = cursorTheme
             state.cursorBitmapsToRender = bitmaps
+            state.cursorIconsToRender = icons
           })
         }
       } else if (platform === 'darwin') {
@@ -389,9 +393,11 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
         if (cursorTheme) {
           const scale = (await window.electronAPI.getSetting<number>('recorder.cursorScale')) || 2
           const bitmaps = await prepareMacOSCursorBitmaps(cursorTheme, scale)
+          const icons = await prepareCursorIcons(scale)
           set((state) => {
             state.cursorTheme = cursorTheme
             state.cursorBitmapsToRender = bitmaps
+            state.cursorIconsToRender = icons
           })
         }
       } else {
@@ -400,9 +406,11 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
         // export queue reads), so the preview draws the cursor at the export size.
         const linuxScale = (await window.electronAPI.getSetting<number>('recorder.cursorScale')) || 1
         const bitmaps = await prepareCursorBitmaps(parsedData.cursorImages, linuxScale)
+        const icons = await prepareCursorIcons(linuxScale)
         set((state) => {
           state.cursorImages = parsedData.cursorImages || {}
           state.cursorBitmapsToRender = bitmaps
+          state.cursorIconsToRender = icons
         })
       }
     } catch (error) {
@@ -466,9 +474,11 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
       } else {
         bitmaps = await prepareMacOSCursorBitmaps(cursorTheme, scale)
       }
+      const icons = await prepareCursorIcons(scale)
       set((state) => {
         state.cursorTheme = cursorTheme
         state.cursorBitmapsToRender = bitmaps
+        state.cursorIconsToRender = icons
       })
     }
   },
@@ -494,9 +504,11 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
       // so the Size control rescales the captured cursor bitmaps directly.
       bitmaps = await prepareCursorBitmaps(cursorImages, scale)
     }
+    const icons = await prepareCursorIcons(scale)
 
     set((state) => {
       state.cursorBitmapsToRender = bitmaps
+      state.cursorIconsToRender = icons
     })
   },
   setHasAudioTrack: (hasAudio) => {

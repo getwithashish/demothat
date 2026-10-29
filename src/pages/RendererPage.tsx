@@ -7,6 +7,7 @@ import { exportDimensions } from '../../shared/export-resolutions'
 import { applyRenderCap } from '../../shared/export-render-cap'
 import { drawScene, getClipSourceTime, type VideoClipLayer } from '../lib/renderer'
 import { prepareCursorBitmaps, mapExportTimeToSourceTime } from '../lib/utils'
+import { prepareCursorIcons } from '../lib/cursor-icons'
 import type { VideoClip } from '../types'
 
 type RenderStartPayload = {
@@ -153,7 +154,14 @@ export function RendererPage() {
           log.info(`[RendererPage] Preparing Linux bitmaps from project state at ${linuxScale}x.`)
           finalCursorBitmaps = await prepareCursorBitmaps(projectState.cursorImages, linuxScale)
         }
-        const projectStateWithCursorBitmaps = { ...projectState, cursorBitmapsToRender: finalCursorBitmaps }
+        const finalCursorIcons = await prepareCursorIcons(
+          (await window.electronAPI.getSetting<number>('recorder.cursorScale')) || 1,
+        )
+        const projectStateWithCursorBitmaps = {
+          ...projectState,
+          cursorBitmapsToRender: finalCursorBitmaps,
+          cursorIconsToRender: finalCursorIcons,
+        }
         const bgImage = await loadBackgroundImage(projectState.frameStyles.background)
 
         // --- 3. LOAD VIDEO SOURCES ---

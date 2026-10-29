@@ -1,4 +1,5 @@
 import type { UIState, UIActions, Slice, CursorStyles, SidePanelTab } from '../../types'
+import type { CursorIconStyle } from '../../lib/cursor-icons'
 import { DEFAULTS } from '../../lib/constants'
 import {
   addRecentProject,
@@ -21,6 +22,7 @@ let toastCounter = 0
 
 const initialCursorStyles: CursorStyles = {
   showCursor: DEFAULTS.CURSOR.SHOW_CURSOR.defaultValue,
+  cursorIcon: DEFAULTS.CURSOR.ICON.defaultValue as CursorIconStyle,
   shadowBlur: DEFAULTS.CURSOR.SHADOW.BLUR.defaultValue,
   shadowOffsetX: DEFAULTS.CURSOR.SHADOW.OFFSET_X.defaultValue,
   shadowOffsetY: DEFAULTS.CURSOR.SHADOW.OFFSET_Y.defaultValue,

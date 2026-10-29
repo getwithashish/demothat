@@ -15,7 +15,8 @@ import { ToggleRow } from '../../ui/toggle-row'
 import { rgbaToHexAlpha, hexToRgb } from '../../../lib/utils'
 import { DEFAULTS } from '../../../lib/constants'
 import { EASING_MAP } from '../../../lib/easing'
-import { CURSOR_ICON_STYLES, renderCursorIconThumb, type CursorIconStyle } from '../../../lib/cursor-icons'
+import { CURSOR_ICON_STYLES, type CursorIconStyle } from '../../../lib/cursor-icons'
+import type { CursorImageBitmap } from '../../../types'
 import { PanelHeader } from '../PanelHeader'
 
 const POST_PROCESSING_SCALES = [
@@ -56,6 +57,8 @@ export function CursorSettings() {
   const { reloadCursorTheme } = useEditorStore.getState()
   const [cursorScale, setCursorScale] = useState<number>(DEFAULTS.CURSOR.SCALE.defaultValue)
   const [availableThemes, setAvailableThemes] = useState<string[]>([DEFAULTS.CURSOR.THEME.defaultValue])
+  // Re-render the thumbnails when the theme/scale rebuilds the icon bitmaps.
+  const cursorIconsToRender = useEditorStore((state) => state.cursorIconsToRender)
 
   // Windows/macOS build the cursor from downloadable theme packs; Linux captures
   // the pointer from the OS, so its "theme" is the system cursor (a fixed Default)
@@ -246,7 +249,7 @@ export function CursorSettings() {
                     : 'border-line text-muted hover:border-line-focus'
                 }`}
               >
-                <CursorIconGlyph style={style.value} />
+                <CursorIconGlyph style={style.value} bitmap={cursorIconsToRender.get(style.value)} />
                 <span>{style.label}</span>
               </button>
             ))}
@@ -469,13 +472,24 @@ export function CursorSettings() {
   )
 }
 
-/** A tiny canvas thumbnail of one cursor icon, drawn at 24px for the picker grid. */
-function CursorIconGlyph({ style }: { style: CursorIconStyle }) {
+/** A tiny thumbnail of one cursor icon (the real themed bitmap from the store). */
+function CursorIconGlyph({ style, bitmap }: { style: CursorIconStyle; bitmap?: CursorImageBitmap }) {
   const ref = useRef<HTMLCanvasElement | null>(null)
   useEffect(() => {
     const canvas = ref.current
     if (!canvas) return
-    renderCursorIconThumb(canvas, style)
-  }, [style])
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    ctx.clearRect(0, 0, 24, 24)
+    if (bitmap?.imageBitmap) {
+      ctx.drawImage(bitmap.imageBitmap, 0, 0, 24, 24)
+    } else if (style !== 'recorded') {
+      // No themed frame yet — a labelled placeholder so the row is not empty.
+      ctx.font = '10px sans-serif'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText(style[0].toUpperCase(), 12, 13)
+    }
+  }, [style, bitmap])
   return <canvas ref={ref} width={24} height={24} className="h-6 w-6 shrink-0" aria-hidden="true" />
 }

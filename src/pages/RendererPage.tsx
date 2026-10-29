@@ -154,9 +154,12 @@ export function RendererPage() {
           log.info(`[RendererPage] Preparing Linux bitmaps from project state at ${linuxScale}x.`)
           finalCursorBitmaps = await prepareCursorBitmaps(projectState.cursorImages, linuxScale)
         }
-        const finalCursorIcons = await prepareCursorIcons(
-          (await window.electronAPI.getSetting<number>('recorder.cursorScale')) || 1,
-        )
+        // Icon picker glyphs come from the bundled theme pack (shipped on every
+        // platform including Linux), so the export shows the same cursor icons
+        // the preview does. Load the theme in this (renderer-worker) window too.
+        const iconScale = (await window.electronAPI.getSetting<number>('recorder.cursorScale')) || 1
+        const iconTheme = await window.electronAPI.loadCursorTheme('default')
+        const finalCursorIcons = await prepareCursorIcons(iconTheme, iconScale)
         const projectStateWithCursorBitmaps = {
           ...projectState,
           cursorBitmapsToRender: finalCursorBitmaps,

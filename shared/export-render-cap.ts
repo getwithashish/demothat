@@ -45,3 +45,23 @@ export function needsUpscale(
 ): boolean {
   return renderWidth !== targetWidth || renderHeight !== targetHeight
 }
+
+/**
+ * The size a cloud AI job renders its intermediate at: the source video's own
+ * resolution, never above the target.
+ *
+ * The AI model performs the enlargement, so an intermediate that already
+ * matches the target would only re-encode it — the worker treats it as a
+ * passthrough plan and loads no model, while the export still charged AI
+ * prices. Rendering at the source's native size keeps every pixel the source
+ * has (none is thrown away, none is invented) and gives the model real work up
+ * to the exact target.
+ */
+export function cloudIntermediateSize(
+  targetWidth: number,
+  targetHeight: number,
+  videoWidth: number,
+  videoHeight: number,
+): { width: number; height: number } {
+  return applyRenderCap(targetWidth, targetHeight, { longestSide: videoWidth, maxHeight: videoHeight })
+}

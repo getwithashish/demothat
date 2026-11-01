@@ -56,7 +56,13 @@ describe('buildFfmpegArgs', () => {
   })
 
   test('encodes screen and webcam with the clean-source quality settings', () => {
-    const args = buildFfmpegArgs(['-f', 'v4l2', '-i', '/dev/video0', '-f', 'x11grab', '-i', ':0.0'], true, false, 'screen.mp4', 'webcam.mp4')
+    const args = buildFfmpegArgs(
+      ['-f', 'v4l2', '-i', '/dev/video0', '-f', 'x11grab', '-i', ':0.0'],
+      true,
+      false,
+      'screen.mp4',
+      'webcam.mp4',
+    )
 
     // CRF 18 with deblocking + adaptive quantization; the default ultrafast
     // profile (CRF 23, aq=0, deblock off) leaves noise the 4x upscale amplifies.

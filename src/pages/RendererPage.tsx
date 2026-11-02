@@ -114,8 +114,8 @@ export function RendererPage() {
   useEffect(() => {
     log.info('[RendererPage] Component mounted. Setting up listeners.')
 
-    const cleanup = window.electronAPI.onRenderStart(
-      async ({ projectState, exportSettings, renderWidth, renderHeight }: RenderStartPayload) => {
+    const cleanup = window.electronAPI.onRenderStart(async (payload: RenderStartPayload) => {
+      const { projectState, exportSettings, renderWidth, renderHeight } = payload
       const canvas = canvasRef.current
       const video = videoRef.current
       const webcamVideo = webcamVideoRef.current

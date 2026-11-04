@@ -1,7 +1,7 @@
 <h1 align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/brand/logo-horizontal-on-dark.svg" />
-    <img src="docs/assets/brand/logo-horizontal-on-light.svg" alt="DemoThat" width="360" />
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/brand/DemoThat-icon-hop-256.webp" />
+    <img src="docs/assets/brand/DemoThat-icon-hop-256.webp" alt="DemoThat" width="360" />
   </picture>
 </h1>
 

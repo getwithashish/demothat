@@ -16,9 +16,9 @@ Unsure where to begin? You can start by looking through `good first issue` and `
 
 This project uses two permanent branches:
 
-| Branch    | Purpose                                        |
-|-----------|------------------------------------------------|
-| `main`    | Stable releases — always production-ready      |
+| Branch    | Purpose                                             |
+| --------- | --------------------------------------------------- |
+| `main`    | Stable releases — always production-ready           |
 | `staging` | Beta pre-releases — integration branch for new work |
 
 **All new work targets `staging`.** The `main` branch only receives merges from `staging` when a beta is ready to be promoted to a stable release.

@@ -14,9 +14,9 @@ Always use the **codegraph MCP** to find files and understand context before mak
 
 This repository has two permanent protected branches:
 
-| Branch    | Purpose                        | Releases           |
-|-----------|--------------------------------|--------------------|
-| `main`    | Stable, production-ready code  | Stable (e.g. `v1.2.0`) |
+| Branch    | Purpose                        | Releases                                |
+| --------- | ------------------------------ | --------------------------------------- |
+| `main`    | Stable, production-ready code  | Stable (e.g. `v1.2.0`)                  |
 | `staging` | Beta / pre-release integration | Beta pre-release (e.g. `v1.2.0-beta.1`) |
 
 ### Rules — do NOT violate these:
@@ -71,13 +71,13 @@ When `staging` has been validated:
 All commits MUST follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/).
 Semantic-release reads these to determine the version bump automatically.
 
-| Commit prefix | Version bump | Example |
-|---|---|---|
-| `feat:` | minor (`1.1.0 → 1.2.0`) | `feat: add export to MP4` |
-| `fix:` | patch (`1.1.0 → 1.1.1`) | `fix: resolve blank frame on Wayland` |
-| `perf:` | patch | `perf: reduce FFmpeg startup time` |
-| `BREAKING CHANGE:` in footer | major (`1.1.0 → 2.0.0`) | footer line: `BREAKING CHANGE: removed legacy API` |
-| `chore:`, `docs:`, `test:`, `refactor:` | no release | `chore: update dependencies` |
+| Commit prefix                           | Version bump            | Example                                            |
+| --------------------------------------- | ----------------------- | -------------------------------------------------- |
+| `feat:`                                 | minor (`1.1.0 → 1.2.0`) | `feat: add export to MP4`                          |
+| `fix:`                                  | patch (`1.1.0 → 1.1.1`) | `fix: resolve blank frame on Wayland`              |
+| `perf:`                                 | patch                   | `perf: reduce FFmpeg startup time`                 |
+| `BREAKING CHANGE:` in footer            | major (`1.1.0 → 2.0.0`) | footer line: `BREAKING CHANGE: removed legacy API` |
+| `chore:`, `docs:`, `test:`, `refactor:` | no release              | `chore: update dependencies`                       |
 
 Do NOT use free-form commit messages. They will not trigger a release and will pollute the changelog.
 
@@ -102,11 +102,11 @@ Do NOT use free-form commit messages. They will not trigger a release and will p
 
 ### Key config files
 
-| File | Purpose |
-|---|---|
-| `.releaserc.json` | Semantic-release config: branches, plugins, rules |
-| `.github/workflows/release.yml` | Triggers on `main` and `staging`; runs semantic-release then builds |
-| `.github/workflows/checks.yml` | Lint, typecheck, tests — runs on all PRs and pushes to `main`/`staging` |
+| File                            | Purpose                                                                 |
+| ------------------------------- | ----------------------------------------------------------------------- |
+| `.releaserc.json`               | Semantic-release config: branches, plugins, rules                       |
+| `.github/workflows/release.yml` | Triggers on `main` and `staging`; runs semantic-release then builds     |
+| `.github/workflows/checks.yml`  | Lint, typecheck, tests — runs on all PRs and pushes to `main`/`staging` |
 
 ---
 
@@ -117,3 +117,16 @@ Do NOT use free-form commit messages. They will not trigger a release and will p
 - Do not create release tags manually — semantic-release owns all tags.
 - Do not modify `CHANGELOG.md` or bump `version` in `package.json` manually — semantic-release owns these.
 - Do not bypass CI checks.
+- Do not push commits or merge into `staging` or `main` without running and passing all checks locally.
+
+---
+
+## 7. Mandatory Verification Before Pushing / Merging — STRICT
+
+Every agent MUST run the full test and verification suite locally before committing or pushing changes:
+
+```bash
+npm run contract:check && npm run lint && npm run format:check && npx tsc --noEmit && npm test
+```
+
+If formatting issues exist, run `npm run format` (or `npx prettier --write .`) to fix them before committing. All tests and checks must pass with zero errors.

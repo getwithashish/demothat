@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - staging
   workflow_dispatch:
 
 # Least privilege for the whole workflow. The `release` job runs semantic-release,

@@ -11,6 +11,7 @@ import type {
 import type { Product } from '../shared/pricing'
 import type { SessionSummary } from '../shared/session'
 import type { components } from '../shared/api-types'
+import type { AIChatRequest, ChatChunk, AIApprovalDecision } from '../shared/ai-types'
 
 /**
  * Publishing shapes come straight from the vendored contract, so the renderer cannot
@@ -686,6 +687,30 @@ export const electronAPI = {
   captureDiagnostic: (): Promise<{ min: number; max: number; width: number; height: number } | null> =>
     ipcRenderer.invoke('diagnostic:capture'),
   gpuDiagnostic: (): Promise<Record<string, string> | null> => ipcRenderer.invoke('diagnostic:gpu'),
+
+  // --- AI Assistant (Ed) ---
+  aiChat: (request: AIChatRequest): Promise<{ ok: boolean }> => ipcRenderer.invoke('ai:chat', request),
+  aiCancel: (): void => ipcRenderer.send('ai:cancel'),
+  aiApproveTool: (decision: AIApprovalDecision): void => ipcRenderer.send('ai:approve-tool', decision),
+  aiGetProviders: (): Promise<Array<{ id: string; name: string; displayName: string }>> =>
+    ipcRenderer.invoke('ai:providers'),
+  onAIChunk: (callback: (chunk: ChatChunk) => void) => {
+    const listener = (_event: IpcRendererEvent, chunk: ChatChunk) => callback(chunk)
+    ipcRenderer.on('ai:chunk', listener)
+    return () => ipcRenderer.removeListener('ai:chunk', listener)
+  },
+  onAIExecuteTool: (
+    callback: (payload: { id: string; name: string; args: Record<string, unknown>; destructive: boolean }) => void,
+  ) => {
+    const listener = (
+      _event: IpcRendererEvent,
+      payload: { id: string; name: string; args: Record<string, unknown>; destructive: boolean },
+    ) => callback(payload)
+    ipcRenderer.on('ai:execute-tool', listener)
+    return () => ipcRenderer.removeListener('ai:execute-tool', listener)
+  },
+  aiToolExecutionResult: (payload: { id: string; ok: boolean; result?: unknown; error?: string }): void =>
+    ipcRenderer.send('ai:tool-execution-result', payload),
 }
 
 // Expose API safely

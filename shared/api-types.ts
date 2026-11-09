@@ -55,6 +55,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/.well-known/jwks.json": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The public key a client verifies license tokens with
+         * @description The public half of the license-token signing key, as a JWK set. Public and unauthenticated: it carries no secret, and publishing it is what lets a client fetch the key from the API it is configured with instead of embedding one at build time. The `kid` is the RFC 7638 thumbprint of the key, so a client can cache the set and still notice a rotation. An empty `keys` array means no signing key is configured — a client cannot verify a licence in that state, which is deliberately distinct from the licence being invalid.
+         */
+        get: operations["getJwks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/webhooks/dodo": {
         parameters: {
             query?: never;
@@ -639,6 +659,15 @@ export interface components {
             multipartThresholdBytes?: number;
             transcription?: components["schemas"]["TranscriptionCapabilities"];
             publishing?: components["schemas"]["PublishingCapabilities"];
+            ai?: components["schemas"]["AICapabilities"];
+        };
+        /** @description AI chat assistant (Ed) configuration and token rates. */
+        AICapabilities: {
+            enabled: boolean;
+            creditsPerMillionInputTokens: number;
+            creditsPerMillionOutputTokens: number;
+            models: string[];
+            maxContextTokens?: number;
         };
         /** @description What the transcription service publishes so the app can quote a price before it uploads anything. `creditsPerMinute` is the same number the server charges from; the app mirrors it for the estimate and never sends a price of its own. */
         TranscriptionCapabilities: {
@@ -1072,6 +1101,41 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    getJwks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The key set, possibly empty. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        keys: {
+                            /** @example OKP */
+                            kty: string;
+                            /** @example Ed25519 */
+                            crv: string;
+                            /** @description The public key, base64url. */
+                            x: string;
+                            /** @description RFC 7638 thumbprint of the key. */
+                            kid: string;
+                            /** @example EdDSA */
+                            alg: string;
+                            /** @example sig */
+                            use: string;
+                        }[];
+                    };
+                };
+            };
         };
     };
     dodoWebhook: {

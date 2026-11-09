@@ -16,6 +16,10 @@ import { ICON_SIZE, ICON_STROKE } from '../ui/icons'
 import { Slider } from '../ui/slider'
 import { buildTrackRows, SUBTITLE_ROW_KEY } from './timeline/track-rows'
 import { COMPOSITION_LAYOUTS } from '../../lib/constants'
+import { AIContextStrip } from '../ai/AIContextStrip'
+import { ContextMenu, ContextMenuItem, ContextMenuDivider, ContextMenuLabel } from '../ui/context-menu'
+import { Wand, Bolt, ZoomIn } from 'tabler-icons-react'
+import { useAIChat } from '../ai/useAIChat'
 
 // Timeline geometry (DESIGN_SPEC §8): 34px rows, 26px clips, 22px ruler, 108px track header.
 const ROW_HEIGHT = 34
@@ -105,6 +109,8 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
   const animationFrameRef = useRef<number>()
 
   const [containerWidth, setContainerWidth] = useState(0)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; time: number } | null>(null)
+  const { sendPrompt } = useAIChat()
   const [timelineHeight, setTimelineHeight] = useState(464)
 
   useEffect(() => {
@@ -347,6 +353,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
   return (
     <>
       <AudioTimelinePreview />
+      <AIContextStrip />
       <div className="flex flex-col border-t border-line bg-panel" style={{ height: `${timelineHeight}px` }}>
         {/* Drag to resize the timeline height */}
         <div
@@ -391,6 +398,15 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
           <div
             ref={containerRef}
             className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden"
+            onContextMenu={(e) => {
+              e.preventDefault()
+              if (duration === 0) return
+              const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect()
+              const clickX = e.clientX - rect.left + (e.currentTarget as HTMLDivElement).scrollLeft
+              const targetTime = pxToTime(clickX)
+              updateVideoTime(targetTime)
+              setContextMenu({ x: e.clientX, y: e.clientY, time: targetTime })
+            }}
             onMouseDown={(e) => {
               if (duration === 0 || (e.target as HTMLElement).closest('[data-region-id]')) return
               const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect()
@@ -1091,6 +1107,57 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
           </div>
         </div>
       </div>
+
+      {contextMenu && (
+        <ContextMenu
+          isOpen={true}
+          position={{ x: contextMenu.x, y: contextMenu.y }}
+          onClose={() => setContextMenu(null)}
+        >
+          <ContextMenuLabel>Ed AI — {contextMenu.time.toFixed(1)}s</ContextMenuLabel>
+          <ContextMenuItem
+            onClick={() => {
+              const t = contextMenu.time
+              setContextMenu(null)
+              sendPrompt(`Add a zoom at ${t.toFixed(1)}s`)
+            }}
+          >
+            <ZoomIn size={14} className="text-indigo-400" />
+            <span>Add Zoom here</span>
+          </ContextMenuItem>
+          <ContextMenuItem
+            onClick={() => {
+              const t = contextMenu.time
+              setContextMenu(null)
+              sendPrompt(`Cut 2 seconds starting at ${t.toFixed(1)}s`)
+            }}
+          >
+            <Scissors size={14} className="text-rose-400" />
+            <span>Cut from here (2s)</span>
+          </ContextMenuItem>
+          <ContextMenuItem
+            onClick={() => {
+              const t = contextMenu.time
+              setContextMenu(null)
+              sendPrompt(`Speed up 3 seconds at ${t.toFixed(1)}s`)
+            }}
+          >
+            <Bolt size={14} className="text-amber-400" />
+            <span>Speed up here</span>
+          </ContextMenuItem>
+          <ContextMenuDivider />
+          <ContextMenuItem
+            onClick={() => {
+              const t = contextMenu.time
+              setContextMenu(null)
+              sendPrompt(`What improvements do you suggest around ${t.toFixed(1)}s?`)
+            }}
+          >
+            <Wand size={14} className="text-accent" />
+            <span>Ask Ed about this moment</span>
+          </ContextMenuItem>
+        </ContextMenu>
+      )}
     </>
   )
 }

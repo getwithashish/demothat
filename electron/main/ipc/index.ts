@@ -14,6 +14,7 @@ import * as recordingHandlers from './handlers/recording'
 import * as projectHandlers from './handlers/project'
 import * as settingsHandlers from './handlers/settings'
 import * as shellHandlers from './handlers/shell'
+import * as aiHandlers from './handlers/ai'
 
 export function registerIpcHandlers() {
   // Renderer diagnostics → main log. The packaged app has no devtools console,
@@ -169,4 +170,7 @@ export function registerIpcHandlers() {
   // Shell
   ipcMain.on('shell:showItemInFolder', shellHandlers.showItemInFolder)
   ipcMain.on('shell:openExternal', shellHandlers.openExternal)
+
+  // AI Assistant (Ed)
+  aiHandlers.registerAiHandlers()
 }

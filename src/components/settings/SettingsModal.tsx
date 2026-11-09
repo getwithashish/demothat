@@ -1,20 +1,22 @@
 import { useState } from 'react'
 import { cn } from '../../lib/utils'
-import { Settings, InfoCircle, Keyboard } from 'tabler-icons-react'
+import { Settings, InfoCircle, Keyboard, Wand } from 'tabler-icons-react'
 import { ICON_SIZE, ICON_STROKE } from '../ui/icons'
 import { GeneralTab } from './GeneralTab'
 import { AboutTab } from './AboutTab'
 import { ShortcutsTab } from './ShortcutsTab'
+import { AITab } from './AITab'
 
 interface SettingsModalProps {
   isOpen: boolean
   onClose: () => void
 }
 
-type SettingsTab = 'general' | 'shortcuts' | 'about'
+type SettingsTab = 'general' | 'ai' | 'shortcuts' | 'about'
 
 const TABS: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
   { id: 'general', label: 'General', icon: <Settings size={ICON_SIZE} strokeWidth={ICON_STROKE} /> },
+  { id: 'ai', label: 'AI (Ed)', icon: <Wand size={ICON_SIZE} strokeWidth={ICON_STROKE} /> },
   { id: 'shortcuts', label: 'Shortcuts', icon: <Keyboard size={ICON_SIZE} strokeWidth={ICON_STROKE} /> },
   { id: 'about', label: 'About', icon: <InfoCircle size={ICON_SIZE} strokeWidth={ICON_STROKE} /> },
 ]
@@ -28,6 +30,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     switch (activeTab) {
       case 'general':
         return <GeneralTab />
+      case 'ai':
+        return <AITab />
       case 'shortcuts':
         return <ShortcutsTab />
       case 'about':

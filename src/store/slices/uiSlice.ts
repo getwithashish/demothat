@@ -49,6 +49,8 @@ export const initialUIState: UIState = {
   cursorThemeName: 'default',
   cursorStyles: initialCursorStyles,
   activeSidePanelTab: 'general',
+  autoApproveAI: false,
+  aiPinned: false,
   autoSaveEnabled: true,
   autoSaveIntervalSec: DEFAULT_AUTO_SAVE_INTERVAL_SEC,
   recentProjects: [],
@@ -102,9 +104,10 @@ export const createUISlice: Slice<UIState, UIActions> = (set, get) => ({
           state.cursorStyles = { ...initialCursorStyles, ...appearance.cursorStyles }
         })
       }
-      const [autoSaveEnabled, autoSaveIntervalSec] = await Promise.all([
+      const [autoSaveEnabled, autoSaveIntervalSec, autoApproveAI] = await Promise.all([
         window.electronAPI.getSetting<boolean>(AUTO_SAVE_ENABLED_KEY),
         window.electronAPI.getSetting<number>(AUTO_SAVE_INTERVAL_KEY),
+        window.electronAPI.getSetting<boolean>('ai.autoApprove'),
       ])
       set((state) => {
         state.autoSaveEnabled = autoSaveEnabled ?? initialUIState.autoSaveEnabled
@@ -112,6 +115,9 @@ export const createUISlice: Slice<UIState, UIActions> = (set, get) => ({
           typeof autoSaveIntervalSec === 'number' && autoSaveIntervalSec > 0
             ? autoSaveIntervalSec
             : initialUIState.autoSaveIntervalSec
+        if (typeof autoApproveAI === 'boolean') {
+          state.autoApproveAI = autoApproveAI
+        }
       })
       updateWindowsTitleBar(finalMode, get().platform)
     } catch (error) {
@@ -137,6 +143,17 @@ export const createUISlice: Slice<UIState, UIActions> = (set, get) => ({
   setActiveSidePanelTab: (tab: SidePanelTab) => {
     set((state) => {
       state.activeSidePanelTab = tab
+    })
+  },
+  setAutoApproveAI: (val: boolean) => {
+    set((state) => {
+      state.autoApproveAI = val
+    })
+    window.electronAPI.setSetting('ai.autoApprove', val)
+  },
+  setAiPinned: (val: boolean) => {
+    set((state) => {
+      state.aiPinned = val
     })
   },
   setAutoSaveEnabled: (enabled: boolean) => {

@@ -22,8 +22,11 @@ info:
   license:
     name: Proprietary
     identifier: LicenseRef-Proprietary
-# No `servers` block: the app is pointed at an API via environment configuration,
-# so a URL committed here would only invite hardcoding it downstream.
+servers:
+  - url: https://api.demothat.yahodu.in
+    description: Production
+  - url: http://localhost:3000
+    description: Local development
 
 tags:
   - name: meta
@@ -115,6 +118,51 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /.well-known/jwks.json:
+    get:
+      operationId: getJwks
+      summary: The public key a client verifies license tokens with
+      description: >
+        The public half of the license-token signing key, as a JWK set. Public and
+        unauthenticated: it carries no secret, and publishing it is what lets a client
+        fetch the key from the API it is configured with instead of embedding one at
+        build time. The `kid` is the RFC 7638 thumbprint of the key, so a client can
+        cache the set and still notice a rotation. An empty `keys` array means no
+        signing key is configured — a client cannot verify a licence in that state,
+        which is deliberately distinct from the licence being invalid.
+      responses:
+        '200':
+          description: The key set, possibly empty.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [keys]
+                properties:
+                  keys:
+                    type: array
+                    items:
+                      type: object
+                      required: [kty, crv, x, kid, alg, use]
+                      properties:
+                        kty:
+                          type: string
+                          example: OKP
+                        crv:
+                          type: string
+                          example: Ed25519
+                        x:
+                          type: string
+                          description: The public key, base64url.
+                        kid:
+                          type: string
+                          description: RFC 7638 thumbprint of the key.
+                        alg:
+                          type: string
+                          example: EdDSA
+                        use:
+                          type: string
+                          example: sig
   /webhooks/dodo:
     post:
       operationId: dodoWebhook
@@ -1238,6 +1286,26 @@ components:
           $ref: '#/components/schemas/TranscriptionCapabilities'
         publishing:
           $ref: '#/components/schemas/PublishingCapabilities'
+        ai:
+          $ref: '#/components/schemas/AICapabilities'
+    AICapabilities:
+      type: object
+      description: >-
+        AI chat assistant (Ed) configuration and token rates.
+      required: [enabled, creditsPerMillionInputTokens, creditsPerMillionOutputTokens, models]
+      properties:
+        enabled:
+          type: boolean
+        creditsPerMillionInputTokens:
+          type: integer
+        creditsPerMillionOutputTokens:
+          type: integer
+        models:
+          type: array
+          items:
+            type: string
+        maxContextTokens:
+          type: integer
     TranscriptionCapabilities:
       type: object
       description: >-
@@ -1276,7 +1344,17 @@ components:
         The published units are decimal — 1 GB is 1,000,000,000 bytes — which is
         the unit the rate is quoted in, and using GiB here would overcharge by 7.4%.
       required:
-        [enabled, creditsPerGbYear, landingPageCredits, minCredits, durationsDays, defaultDurationDays, maxSizeBytes, baseUrl, kinds]
+        [
+          enabled,
+          creditsPerGbYear,
+          landingPageCredits,
+          minCredits,
+          durationsDays,
+          defaultDurationDays,
+          maxSizeBytes,
+          baseUrl,
+          kinds,
+        ]
       properties:
         enabled:
           type: boolean
@@ -1431,7 +1509,20 @@ components:
     PublicationView:
       type: object
       required:
-        [publicationId, kind, slug, title, status, storageDays, estimatedCost, hasCaptions, createdAt, expiresAt, served, links]
+        [
+          publicationId,
+          kind,
+          slug,
+          title,
+          status,
+          storageDays,
+          estimatedCost,
+          hasCaptions,
+          createdAt,
+          expiresAt,
+          served,
+          links,
+        ]
       properties:
         publicationId:
           type: string
@@ -1530,7 +1621,22 @@ components:
     PublicationAnalytics:
       type: object
       required:
-        [publicationId, slug, title, status, range, since, until, totals, timeseries, countries, referrers, devices, browsers, recent]
+        [
+          publicationId,
+          slug,
+          title,
+          status,
+          range,
+          since,
+          until,
+          totals,
+          timeseries,
+          countries,
+          referrers,
+          devices,
+          browsers,
+          recent,
+        ]
       properties:
         publicationId:
           type: string
@@ -1629,7 +1735,17 @@ components:
         player's heartbeats — a viewer whose player sent thirty beacons watched one
         video, not thirty.
       required:
-        [views, uniqueViewers, plays, completions, downloads, watchedSeconds, avgWatchSeconds, avgWatchRatio, completionRate]
+        [
+          views,
+          uniqueViewers,
+          plays,
+          completions,
+          downloads,
+          watchedSeconds,
+          avgWatchSeconds,
+          avgWatchRatio,
+          completionRate,
+        ]
       properties:
         views:
           type: integer

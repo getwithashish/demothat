@@ -6,7 +6,7 @@ import type { AudioTrack } from '../../shared/audio-tracks'
 
 export type BackgroundType = 'color' | 'gradient' | 'image' | 'wallpaper'
 export type AspectRatio = '16:9' | '9:16' | '4:3' | '3:4' | '1:1'
-export type SidePanelTab = 'general' | 'camera' | 'cursor' | 'audio' | 'animation' | 'subtitles' | 'settings'
+export type SidePanelTab = 'general' | 'camera' | 'cursor' | 'audio' | 'animation' | 'subtitles' | 'settings' | 'ai'
 
 export interface Background {
   type: BackgroundType
@@ -510,6 +510,8 @@ export interface UIState {
   cursorThemeName: string
   cursorStyles: CursorStyles
   activeSidePanelTab: SidePanelTab
+  autoApproveAI: boolean
+  aiPinned: boolean
   autoSaveEnabled: boolean
   autoSaveIntervalSec: number
   /** Recently opened/saved projects, most recent first. */
@@ -524,6 +526,8 @@ export interface UIActions {
   setCursorThemeName: (themeName: string) => void
   updateCursorStyle: (style: Partial<CursorStyles>) => void
   setActiveSidePanelTab: (tab: SidePanelTab) => void
+  setAutoApproveAI: (val: boolean) => void
+  setAiPinned: (val: boolean) => void
   setAutoSaveEnabled: (enabled: boolean) => void
   setAutoSaveIntervalSec: (seconds: number) => void
   /** Loads the remembered project list from the settings store. */

@@ -22,7 +22,7 @@ import { BuyCreditsDialog } from '../components/editor/cloud/BuyCreditsDialog'
 import { WaitingForPaymentDialog } from '../components/editor/cloud/WaitingForPaymentDialog'
 import { ResumeCloudDialog } from '../components/editor/cloud/ResumeCloudDialog'
 import { firstPurchaseProductId } from '../../shared/pricing'
-import { Stack3, Loader2, Check, Settings, Share } from 'tabler-icons-react'
+import { Stack3, Loader2, Check, Settings, Share, Wand } from 'tabler-icons-react'
 import { ICON_SIZE, ICON_STROKE } from '../components/ui/icons'
 import { cn, formatTime } from '../lib/utils'
 import { projectNameFromPath } from '../lib/recent-projects'
@@ -35,6 +35,9 @@ import { useLicenseSync } from '../hooks/useLicenseSync'
 import { usePurchaseFlow } from '../hooks/usePurchaseFlow'
 import { Button } from '../components/ui/button'
 import { useShallow } from 'zustand/react/shallow'
+import { useAIToolDispatcher } from '../components/ai/useAIToolDispatcher'
+import { AICommandBar } from '../components/ai/AICommandBar'
+import { AIPanel } from '../components/ai/AIPanel'
 
 export function EditorPage() {
   const {
@@ -69,6 +72,7 @@ export function EditorPage() {
     subtitleCues,
     balance,
     videoPath,
+    aiPinned,
   } = useEditorStore(
     useShallow((state) => ({
       presetSaveStatus: state.presetSaveStatus,
@@ -82,6 +86,7 @@ export function EditorPage() {
       subtitleCues: state.subtitleCues,
       balance: state.balance,
       videoPath: state.videoPath,
+      aiPinned: state.aiPinned,
     })),
   )
   // Top-bar meta (DESIGN_SPEC §5 shows "project | timecode · resolution"). Display only.
@@ -158,9 +163,13 @@ export function EditorPage() {
   const [isDevicesOpen, setDevicesOpen] = useState(false)
   const [isPublishOpen, setPublishOpen] = useState(false)
   const [isSharedLinksOpen, setSharedLinksOpen] = useState(false)
+  const [isCommandBarOpen, setIsCommandBarOpen] = useState(false)
   const [publishTarget, setPublishTarget] = useState<{ path: string; sizeBytes: number } | null>(null)
   const [updateInfo, setUpdateInfo] = useState<{ version: string; url: string } | null>(null)
   const [platform, setPlatform] = useState<NodeJS.Platform | null>(null)
+
+  // Listen to AI tool executions from the main process
+  useAIToolDispatcher()
   const openExportModal = () => {
     setExportMinimized(false)
     openExportModalBase()
@@ -324,6 +333,7 @@ export function EditorPage() {
       arrowleft: () => handleSeekByTime(-1),
       arrowright: () => handleSeekByTime(1),
       f: () => togglePreviewFullScreen(),
+      'ctrl+k': () => setIsCommandBarOpen((open) => !open),
       'ctrl+s': (e) => {
         e.preventDefault()
         void handleMenuCommand('save')
@@ -437,6 +447,18 @@ export function EditorPage() {
   const renderHeaderActions = () => {
     const isWindows = platform === 'win32'
     const actions = [
+      <Button
+        key="ask-ed"
+        variant="secondary"
+        size="sm"
+        onClick={() => setIsCommandBarOpen(true)}
+        className="h-8 gap-1.5 border-indigo-500/30 bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 shadow-sm"
+        title="Command Ed (Cmd+K)"
+      >
+        <Wand size={14} className="text-indigo-400" />
+        <span>Ask Ed</span>
+        <kbd className="hidden sm:inline-block rounded bg-bg/50 px-1 py-0.5 font-mono text-[11px] text-muted">⌘K</kbd>
+      </Button>,
       <ExportButton key="export" isExporting={isExporting} onClick={openExportModal} disabled={duration <= 0} />,
       <Button
         key="publish"
@@ -595,6 +617,13 @@ export function EditorPage() {
             <Timeline videoRef={videoRef} />
           </div>
         </div>
+
+        {/* Pinned Ed AI Sidebar on the right */}
+        {aiPinned && !isPreviewFullScreen && (
+          <div className="w-80 shrink-0 border-l border-line bg-panel overflow-hidden">
+            <AIPanel />
+          </div>
+        )}
       </div>
 
       {isExporting && isExportMinimized && (
@@ -709,6 +738,9 @@ export function EditorPage() {
       />
       {/* Kept clear of the minimised-export bubble in the same corner. */}
       <ToastViewport className={isExporting && isExportMinimized ? 'bottom-20' : 'bottom-5'} />
+
+      {/* Floating AI Command Bar (Cmd+K / Ctrl+K) */}
+      <AICommandBar isOpen={isCommandBarOpen} onClose={() => setIsCommandBarOpen(false)} />
     </main>
   )
 }

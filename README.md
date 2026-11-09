@@ -30,10 +30,24 @@
 - **Visual editor** — trim on a timeline, then style with backgrounds, frames, shadows, and reusable presets.
 - **Instant aspect ratios** — switch between 16:9, 9:16 (Shorts/TikTok), and 1:1 (Instagram) in one click.
 - **Caption cleanup** — transcribes the audio and removes filler words (um, uh, ...) from the captions.
+- **AI Editor (Ed)** — an interactive assistant with 20+ editing tools. Cut silences, apply zooms, tidy gaps, and style your video via natural language, the Ed sidebar tab, or `Cmd+K`.
 - **High-quality export** — export to MP4 or GIF at up to 2K.
 - **Publishing** — publish a finished clip as a landing page or embed through the DemoThat cloud service.
 
-Some features (credits, cloud upscaling, publishing, Pro licensing) talk to a DemoThat API. The app ships pointing at the production API; see [Working against a local API](#working-against-a-local-api) to run it against a mock instead.
+Some features (credits, cloud upscaling, publishing, AI editing assistant, Pro licensing) talk to a DemoThat API. The app ships pointing at the production API; see [Working against a local API](#working-against-a-local-api) to run it against a mock instead.
+
+## 🤖 AI Video Assistant (Ed)
+
+DemoThat features an integrated AI editing partner named **Ed**. Rather than being a simple text wrapper, Ed has direct, real-time control over the timeline, visual styles, and editing tools:
+
+- **Eager Streaming Execution:** Ed triggers editing tools as soon as their parameters stream in for minimal latency.
+- **Timeline-Aware:** Select any clip or region to view context-sensitive actions ("Cut here", "Tidy up", "Zoom in 1.5x"), or right-click anywhere on the timeline ruler to target specific timestamps with Ed.
+- **Command Palette:** Press `Cmd + K` (or `Ctrl + K`) anywhere in the editor for instant quick edits.
+- **Provider-Agnostic:**
+  - **DemoThat Cloud (Default):** Managed cloud service powered by DemoThat Cloud credits ($30 / million tokens).
+  - **Custom OpenAI / OpenRouter:** Connect your own API key in **Settings ⚙️ -> AI (Ed)** to use any upstream model (e.g. `anthropic/claude-3.5-sonnet`, `openai/gpt-4o`, `google/gemini-2.0-flash`).
+  - **Local Ollama:** Connect to a local Ollama instance (`http://127.0.0.1:11434`) for 100% private, offline editing.
+- **Safety & Undo:** Destructive operations (cuts, deletions) require confirmation unless auto-approval is toggled on, and every action supports instant `Cmd + Z` undo.
 
 ## ✅ Prerequisites
 

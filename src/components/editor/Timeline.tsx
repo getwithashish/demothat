@@ -16,7 +16,6 @@ import { ICON_SIZE, ICON_STROKE } from '../ui/icons'
 import { Slider } from '../ui/slider'
 import { buildTrackRows, SUBTITLE_ROW_KEY } from './timeline/track-rows'
 import { COMPOSITION_LAYOUTS } from '../../lib/constants'
-import { AIContextStrip } from '../ai/AIContextStrip'
 import { ContextMenu, ContextMenuItem, ContextMenuDivider, ContextMenuLabel } from '../ui/context-menu'
 import { Wand, Bolt, ZoomIn } from 'tabler-icons-react'
 import { useAIChat } from '../ai/useAIChat'
@@ -353,7 +352,6 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
   return (
     <>
       <AudioTimelinePreview />
-      <AIContextStrip />
       <div className="flex flex-col border-t border-line bg-panel" style={{ height: `${timelineHeight}px` }}>
         {/* Drag to resize the timeline height */}
         <div

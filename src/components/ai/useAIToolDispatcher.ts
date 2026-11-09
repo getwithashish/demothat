@@ -1,15 +1,9 @@
 import { useEffect } from 'react'
 import { useEditorStore } from '../../store/editorStore'
 import { ZOOM, TIMELINE } from '../../lib/constants'
-import type {
-  ZoomRegion,
-  SpeedRegion,
-  AspectRatio,
-  Background,
-  CameraMoveKind,
-  TranscriptDocument,
-  SubtitleFormat,
-} from '../../types'
+import type { ZoomRegion, SpeedRegion, AspectRatio, Background, CameraMoveKind } from '../../types'
+import type { TranscriptDocument } from '../../../shared/transcript'
+import type { SubtitleFormat } from '../../../shared/subtitles'
 
 export function useAIToolDispatcher(): void {
   useEffect(() => {

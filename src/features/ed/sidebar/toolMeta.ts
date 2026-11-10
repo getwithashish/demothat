@@ -1,7 +1,23 @@
-import { Loader2, Check, AlertCircle, Clock } from 'tabler-icons-react'
-import type { ToolCallState } from './useAIChat'
+/**
+ * Tool meta helpers — icon and friendly label for each known tool call.
+ */
+import {
+  Scissors,
+  ZoomIn,
+  Clock,
+  Palette,
+  FileText,
+  Volume,
+  Camera,
+  Wand,
+  Bolt,
+  Trash,
+  MapPin,
+  Star,
+  type Icon,
+} from 'tabler-icons-react'
 
-function friendlyToolLabel(name: string, args: Record<string, unknown>): string {
+export function friendlyToolLabel(name: string, args: Record<string, unknown>): string {
   switch (name) {
     case 'add_zoom_region':
       return `Add Zoom (${args.zoomLevel ?? 2}× at ${typeof args.startTime === 'number' ? args.startTime.toFixed(1) + 's' : 'cursor'})`
@@ -16,7 +32,7 @@ function friendlyToolLabel(name: string, args: Record<string, unknown>): string 
     case 'delete_selected':
       return 'Delete selected item'
     case 'set_playhead':
-      return `Seek playhead to ${typeof args.time === 'number' ? args.time.toFixed(1) + 's' : 'time'}`
+      return `Seek to ${typeof args.time === 'number' ? args.time.toFixed(1) + 's' : 'position'}`
     case 'run_tidy_up':
       return 'Tidy up silences & inactive stretches'
     case 'set_aspect_ratio':
@@ -31,10 +47,14 @@ function friendlyToolLabel(name: string, args: Record<string, unknown>): string 
       return 'Remove visual effect'
     case 'add_camera_motion':
       return `Add 3D camera move (${args.kind ?? 'pan'})`
+    case 'delete_camera_motion':
+      return 'Remove camera motion'
     case 'set_cursor_style':
       return 'Update cursor style & effects'
     case 'set_audio_volume':
       return `Set master volume to ${Math.round(Number(args.volume ?? 1) * 100)}%`
+    case 'set_audio_muted':
+      return args.muted ? 'Mute audio' : 'Unmute audio'
     case 'toggle_mouse_click_sounds':
       return `${args.enabled ? 'Enable' : 'Disable'} click sounds`
     case 'run_transcription':
@@ -49,38 +69,41 @@ function friendlyToolLabel(name: string, args: Record<string, unknown>): string 
       return 'Save project file'
     case 'export_video':
       return 'Prepare video export'
+    case 'get_video_frame_at':
+      return 'Capture frame'
     default:
       return name.replace(/_/g, ' ')
   }
 }
 
-export function AIToolCallBadge({ tool }: { tool: ToolCallState }) {
-  const label = friendlyToolLabel(tool.name, tool.args)
-
-  return (
-    <div className="my-1.5 flex items-center justify-between gap-2 rounded-md border border-border/60 bg-ctl/40 px-2.5 py-1.5 text-xs">
-      <div className="flex items-center gap-2 overflow-hidden">
-        {tool.status === 'running' && <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-accent" />}
-        {tool.status === 'success' && <Check className="h-3.5 w-3.5 shrink-0 text-emerald-500" />}
-        {tool.status === 'error' && <AlertCircle className="h-3.5 w-3.5 shrink-0 text-danger" />}
-        {tool.status === 'pending_approval' && <Clock className="h-3.5 w-3.5 shrink-0 text-amber-500" />}
-
-        <span className="truncate font-mono font-medium text-fg">{label}</span>
-      </div>
-
-      <span
-        className={`shrink-0 rounded px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider ${
-          tool.status === 'running'
-            ? 'bg-accent/15 text-accent'
-            : tool.status === 'success'
-              ? 'bg-emerald-500/15 text-emerald-500'
-              : tool.status === 'error'
-                ? 'bg-danger/15 text-danger'
-                : 'bg-amber-500/15 text-amber-500'
-        }`}
-      >
-        {tool.status === 'pending_approval' ? 'Waiting' : tool.status}
-      </span>
-    </div>
-  )
+export function getToolIcon(name: string): Icon {
+  const map: Record<string, Icon> = {
+    add_zoom_region: ZoomIn,
+    add_cut_region: Scissors,
+    add_speed_region: Clock,
+    update_region: Wand,
+    delete_region: Trash,
+    delete_selected: Trash,
+    set_playhead: MapPin,
+    run_tidy_up: Bolt,
+    set_aspect_ratio: Star,
+    set_frame_style: Star,
+    set_background: Palette,
+    add_visual_effect: Star,
+    delete_visual_effect: Trash,
+    add_camera_motion: Camera,
+    delete_camera_motion: Camera,
+    set_cursor_style: Wand,
+    set_audio_volume: Volume,
+    set_audio_muted: Volume,
+    toggle_mouse_click_sounds: Volume,
+    run_transcription: FileText,
+    set_subtitles_enabled: FileText,
+    update_subtitle_cue: FileText,
+    remove_subtitle_cue: FileText,
+    save_project: Wand,
+    export_video: Wand,
+    get_video_frame_at: Camera,
+  }
+  return map[name] ?? Wand
 }

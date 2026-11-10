@@ -15,7 +15,6 @@ import { CompositionLayoutSettings } from './sidepanel/CompositionLayoutSettings
 import { SubtitlesSettings } from './sidepanel/SubtitlesSettings'
 import { VisualEffectsSettings } from './sidepanel/VisualEffectsSettings'
 import { PanelHeader } from './PanelHeader'
-import { AIPanel } from '../ai/AIPanel'
 
 /**
  * Inspector destinations. The store values are unchanged from the icon rail
@@ -30,7 +29,6 @@ const TABS: { id: SidePanelTab; label: string }[] = [
   { id: 'animation', label: 'Motion' },
   { id: 'cursor', label: 'Cursor' },
   { id: 'subtitles', label: 'Captions' },
-  { id: 'ai', label: 'Ed ✨' },
 ]
 
 function FrameSettingsPanel() {
@@ -307,15 +305,6 @@ export function SidePanel() {
           hidden={activeSidePanelTab !== 'subtitles'}
         >
           <SubtitlesSettings />
-        </div>
-        <div
-          role="tabpanel"
-          id="inspector-panel-ai"
-          aria-labelledby="inspector-tab-ai"
-          className="h-full"
-          hidden={activeSidePanelTab !== 'ai'}
-        >
-          <AIPanel />
         </div>
       </div>
     </div>

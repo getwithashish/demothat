@@ -22,7 +22,7 @@ import { BuyCreditsDialog } from '../components/editor/cloud/BuyCreditsDialog'
 import { WaitingForPaymentDialog } from '../components/editor/cloud/WaitingForPaymentDialog'
 import { ResumeCloudDialog } from '../components/editor/cloud/ResumeCloudDialog'
 import { firstPurchaseProductId } from '../../shared/pricing'
-import { Stack3, Loader2, Check, Settings, Share, Wand } from 'tabler-icons-react'
+import { Stack3, Loader2, Check, Settings, Share } from 'tabler-icons-react'
 import { ICON_SIZE, ICON_STROKE } from '../components/ui/icons'
 import { cn, formatTime } from '../lib/utils'
 import { projectNameFromPath } from '../lib/recent-projects'
@@ -36,8 +36,8 @@ import { usePurchaseFlow } from '../hooks/usePurchaseFlow'
 import { Button } from '../components/ui/button'
 import { useShallow } from 'zustand/react/shallow'
 import { useAIToolDispatcher } from '../components/ai/useAIToolDispatcher'
-import { AICommandBar } from '../components/ai/AICommandBar'
-import { AIPanel } from '../components/ai/AIPanel'
+import { EdCommandPalette } from '../features/ed/palette/EdCommandPalette'
+import { EdSidebar } from '../features/ed/sidebar/EdSidebar'
 
 export function EditorPage() {
   const {
@@ -72,7 +72,6 @@ export function EditorPage() {
     subtitleCues,
     balance,
     videoPath,
-    aiPinned,
   } = useEditorStore(
     useShallow((state) => ({
       presetSaveStatus: state.presetSaveStatus,
@@ -86,7 +85,6 @@ export function EditorPage() {
       subtitleCues: state.subtitleCues,
       balance: state.balance,
       videoPath: state.videoPath,
-      aiPinned: state.aiPinned,
     })),
   )
   // Top-bar meta (DESIGN_SPEC §5 shows "project | timecode · resolution"). Display only.
@@ -452,12 +450,14 @@ export function EditorPage() {
         variant="secondary"
         size="sm"
         onClick={() => setIsCommandBarOpen(true)}
-        className="h-8 gap-1.5 border-indigo-500/30 bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 shadow-sm"
+        className="h-8 gap-1.5 border-line bg-ctl text-fg hover:bg-ctl-hover shadow-sm"
         title="Command Ed (Cmd+K)"
       >
-        <Wand size={14} className="text-indigo-400" />
-        <span>Ask Ed</span>
-        <kbd className="hidden sm:inline-block rounded bg-bg/50 px-1 py-0.5 font-mono text-[11px] text-muted">⌘K</kbd>
+        <img src="./demothat-mascot-ed-neutral.svg" alt="Ed" className="h-4 w-4 object-contain" />
+        <span>Ed</span>
+        <kbd className="hidden sm:inline-block rounded bg-panel px-1 py-0.5 font-mono text-[11px] text-muted">
+          {platform === 'darwin' ? '⌘K' : 'Ctrl+K'}
+        </kbd>
       </Button>,
       <ExportButton key="export" isExporting={isExporting} onClick={openExportModal} disabled={duration <= 0} />,
       <Button
@@ -618,10 +618,10 @@ export function EditorPage() {
           </div>
         </div>
 
-        {/* Pinned Ed AI Sidebar on the right */}
-        {aiPinned && !isPreviewFullScreen && (
+        {/* Ed Assistant on the right */}
+        {!isPreviewFullScreen && (
           <div className="w-80 shrink-0 border-l border-line bg-panel overflow-hidden">
-            <AIPanel />
+            <EdSidebar />
           </div>
         )}
       </div>
@@ -739,8 +739,8 @@ export function EditorPage() {
       {/* Kept clear of the minimised-export bubble in the same corner. */}
       <ToastViewport className={isExporting && isExportMinimized ? 'bottom-20' : 'bottom-5'} />
 
-      {/* Floating AI Command Bar (Cmd+K / Ctrl+K) */}
-      <AICommandBar isOpen={isCommandBarOpen} onClose={() => setIsCommandBarOpen(false)} />
+      {/* Floating AI Command Palette (Cmd+K / Ctrl+K) */}
+      <EdCommandPalette isOpen={isCommandBarOpen} onClose={() => setIsCommandBarOpen(false)} />
     </main>
   )
 }

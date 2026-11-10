@@ -22,7 +22,9 @@ ipcMain.handle('settings:get', (_e, key) => {
 })
 ipcMain.handle('settings:set', () => true)
 ipcMain.handle('presets:load', () => ({}))
-ipcMain.handle('desktop:get-displays', () => [{ id: '1', name: 'Primary Display', bounds: { x: 0, y: 0, width: 1920, height: 1080 } }])
+ipcMain.handle('desktop:get-displays', () => [
+  { id: '1', name: 'Primary Display', bounds: { x: 0, y: 0, width: 1920, height: 1080 } },
+])
 ipcMain.handle('desktop:get-cursor-themes', () => ['default'])
 ipcMain.handle('desktop:load-cursor-theme', () => ({}))
 ipcMain.handle('app:getVersion', () => '1.0.0')
@@ -117,11 +119,11 @@ app.whenReady().then(async () => {
     type: 'tool_call_start',
     id: 'tool-run-1',
     name: 'run_tidy_up',
-    arguments: { threshold: 0.5 }
+    arguments: { threshold: 0.5 },
   })
   win.webContents.send('ai:chunk', {
     type: 'text',
-    delta: "I'm analyzing the recording audio and video to detect silences..."
+    delta: "I'm analyzing the recording audio and video to detect silences...",
   })
   await sleep(500)
   await capture(win, '02_sidebar_running_action_dark.png')
@@ -135,10 +137,10 @@ app.whenReady().then(async () => {
   win.webContents.send('ai:chunk', {
     type: 'tool_result',
     id: 'tool-run-1',
-    result: { cutsRemoved: 8, totalDurationSaved: '14.2s', addedCutAt: 2.5 }
+    result: { cutsRemoved: 8, totalDurationSaved: '14.2s', addedCutAt: 2.5 },
   })
   win.webContents.send('ai:chunk', {
-    type: 'done'
+    type: 'done',
   })
   await sleep(500)
   await capture(win, '03_sidebar_completed_action_dark.png')
@@ -153,12 +155,12 @@ app.whenReady().then(async () => {
     type: 'tool_call_start',
     id: 'tool-fail-1',
     name: 'add_zoom_region',
-    arguments: { zoomLevel: 3, startTime: 5.2 }
+    arguments: { zoomLevel: 3, startTime: 5.2 },
   })
   win.webContents.send('ai:chunk', {
     type: 'tool_result',
     id: 'tool-fail-1',
-    error: 'Could not detect mouse click near 5.2s'
+    error: 'Could not detect mouse click near 5.2s',
   })
   await sleep(500)
   await capture(win, '04_sidebar_failed_action_dark.png')
@@ -174,7 +176,7 @@ app.whenReady().then(async () => {
     id: 'tool-appr-1',
     name: 'add_cut_region',
     arguments: { startTime: 12.0, duration: 4.5 },
-    summary: 'Ed proposes cutting 4.5s of dead air between 12.0s and 16.5s'
+    summary: 'Ed proposes cutting 4.5s of dead air between 12.0s and 16.5s',
   })
   await sleep(500)
   await capture(win, '05_sidebar_approval_state_dark.png')

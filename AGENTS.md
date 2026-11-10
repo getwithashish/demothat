@@ -23,9 +23,10 @@ This repository has two permanent protected branches:
 
 ### Rules — do NOT violate these:
 
-- **NEVER push commits directly to `main` or `staging`.** All changes must arrive via Pull Request.
+- **NEVER push commits or merge directly into `main` or `staging`.** All changes must arrive exclusively via Pull Request on GitHub. Even if instructed to merge, never run a local git merge into `staging` or `main` and push; the merge must happen through the GitHub PR.
 - **Feature and bug-fix branches MUST branch off `staging`**, not `main`.
 - **Feature and bug-fix PRs MUST target `staging`**, not `main`.
+- **Delete remote feature branches immediately after merging:** Once a PR into `staging` is merged, the remote topic branch must be deleted immediately to prevent stale branches from accumulating.
 - **The only branch that may open a PR into `main` is `staging`** — this is the promotion step from beta to stable, executed by human maintainers.
 - `main` must ONLY receive merges from `staging`. It is never a direct target for individual feature, fix, or chore branches.
 
@@ -60,13 +61,50 @@ git checkout -b feat/<short-description>   # or fix/, chore/, docs/, perf/
 - Run the full verification pipeline locally before opening a PR (see Section 8).
 - Use [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) for all commit messages.
 - Fill out the PR template in [`.github/PULL_REQUEST_TEMPLATE.md`](file:///home/ashish/Empire/demothat_WS/demothat/.github/PULL_REQUEST_TEMPLATE.md).
+- **Use the GitHub CLI (`gh`) to open the PR:**
+  ```bash
+  gh pr create --base staging --head feat/<short-description> --title "feat(scope): imperative summary" --body-file .github/PULL_REQUEST_TEMPLATE.md
+  # Or with inline body:
+  # gh pr create --base staging --head feat/<short-description> --title "feat(scope): summary" --body "Detailed description..."
+  ```
 
-### 3.3 Promoting beta → stable
+### 3.3 Merging the PR & Remote Branch Cleanup — MANDATORY
+
+Once the PR into `staging` is approved and all CI checks in `checks.yml` pass:
+
+1. **Verify CI checks via GitHub CLI:**
+   ```bash
+   gh pr checks
+   ```
+2. **Merge the PR and delete the remote branch in one step:**
+   ```bash
+   gh pr merge --merge --delete-branch
+   # Or using squash if single commit desired:
+   # gh pr merge --squash --delete-branch
+   ```
+   **NEVER bypass this with a direct local merge and push to `staging`.**
+3. **Clean up locally:**
+   ```bash
+   git checkout staging
+   git pull origin staging
+   git branch -d feat/<short-description>
+   git remote prune origin
+   ```
+   This guarantees that no stale, dangling branches remain on the remote repository.
+
+### 3.4 Promoting beta → stable
 
 When changes in `staging` have been validated in pre-release builds:
 
-1. A human maintainer opens a Pull Request from `staging` → `main`.
-2. When merged into `main`, GitHub Actions automatically tags and publishes the stable release.
+1. A Pull Request is opened from `staging` → `main`:
+   ```bash
+   gh pr create --base main --head staging --title "chore(release): promote staging to main" --body "Promoting validated beta release from staging to main."
+   ```
+2. Once CI passes, merge it into `main`:
+   ```bash
+   gh pr merge --merge
+   ```
+3. When merged into `main`, GitHub Actions automatically tags and publishes the stable release.
 
 ---
 
@@ -212,15 +250,16 @@ npm run contract:types
 git diff --exit-code -- shared/api-types.ts
 
 # 7. Verify production build succeeds
-DEMOTHAT_DEFAULT_API_BASE_URL=http://localhost:8788 npx vite build
+npx vite build --mode development
 ```
 
 ---
 
 ## 9. What Agents Must NOT Do
 
-- **NEVER** push commits directly to `main` or `staging`.
+- **NEVER** push commits or perform direct local merges into `main` or `staging`. ALL code must arrive via Pull Request.
 - **NEVER** open PRs from a feature/fix branch targeting `main`. Target `staging`.
+- **NEVER** leave merged feature/fix branches lingering on `origin` — always delete the remote branch immediately after merging the PR.
 - **NEVER** create release git tags manually — semantic-release manages all tags.
 - **NEVER** modify `CHANGELOG.md` or bump `version` in `package.json` manually — semantic-release manages these during release.
 - **NEVER** introduce raw color literals in component code outside `tokens.css`.

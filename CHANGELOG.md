@@ -1,3 +1,9 @@
+## [1.20.0](https://github.com/getwithashish/DemoThat/compare/v1.19.0...v1.20.0) (2026-11-04)
+
+### Features
+
+* add new brand logo ([#51](https://github.com/getwithashish/DemoThat/issues/51)) ([2d46a75](https://github.com/getwithashish/DemoThat/commit/2d46a75a02e4e5bc5bd71dd096732b46966738a0))
+
 ## [1.19.0](https://github.com/getwithashish/DemoThat/compare/v1.18.1...v1.19.0) (2026-11-04)
 
 ### Features

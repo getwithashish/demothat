@@ -61,21 +61,33 @@ git checkout -b feat/<short-description>   # or fix/, chore/, docs/, perf/
 - Run the full verification pipeline locally before opening a PR (see Section 8).
 - Use [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) for all commit messages.
 - Fill out the PR template in [`.github/PULL_REQUEST_TEMPLATE.md`](file:///home/ashish/Empire/demothat_WS/demothat/.github/PULL_REQUEST_TEMPLATE.md).
+- **Use the GitHub CLI (`gh`) to open the PR:**
+  ```bash
+  gh pr create --base staging --head feat/<short-description> --title "feat(scope): imperative summary" --body-file .github/PULL_REQUEST_TEMPLATE.md
+  # Or with inline body:
+  # gh pr create --base staging --head feat/<short-description> --title "feat(scope): summary" --body "Detailed description..."
+  ```
 
 ### 3.3 Merging the PR & Remote Branch Cleanup — MANDATORY
 
 Once the PR into `staging` is approved and all CI checks in `checks.yml` pass:
 
-1. **Merge the PR on GitHub:** Merge the PR using the GitHub PR interface (or API). **NEVER bypass this with a direct local merge and push to `staging`.**
-2. **Delete the remote branch immediately:** Delete the remote feature/fix branch via GitHub or terminal:
+1. **Verify CI checks via GitHub CLI:**
    ```bash
-   git push origin --delete feat/<name>
+   gh pr checks
    ```
+2. **Merge the PR and delete the remote branch in one step:**
+   ```bash
+   gh pr merge --merge --delete-branch
+   # Or using squash if single commit desired:
+   # gh pr merge --squash --delete-branch
+   ```
+   **NEVER bypass this with a direct local merge and push to `staging`.**
 3. **Clean up locally:**
    ```bash
    git checkout staging
    git pull origin staging
-   git branch -d feat/<name>
+   git branch -d feat/<short-description>
    git remote prune origin
    ```
    This guarantees that no stale, dangling branches remain on the remote repository.
@@ -84,8 +96,15 @@ Once the PR into `staging` is approved and all CI checks in `checks.yml` pass:
 
 When changes in `staging` have been validated in pre-release builds:
 
-1. A human maintainer opens a Pull Request from `staging` → `main`.
-2. When merged into `main`, GitHub Actions automatically tags and publishes the stable release.
+1. A Pull Request is opened from `staging` → `main`:
+   ```bash
+   gh pr create --base main --head staging --title "chore(release): promote staging to main" --body "Promoting validated beta release from staging to main."
+   ```
+2. Once CI passes, merge it into `main`:
+   ```bash
+   gh pr merge --merge
+   ```
+3. When merged into `main`, GitHub Actions automatically tags and publishes the stable release.
 
 ---
 

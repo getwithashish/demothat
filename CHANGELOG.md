@@ -1,3 +1,9 @@
+## [1.21.0-beta.2](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.1...v1.21.0-beta.2) (2026-11-10)
+
+### Features
+
+* **timeline:** move zoom and 3d camera buttons into effects dropdown ([9edad25](https://github.com/getwithashish/DemoThat/commit/9edad2526f3c6dafdd915ca79053d025d593cf0a))
+
 ## [1.21.0-beta.1](https://github.com/getwithashish/DemoThat/compare/v1.20.0...v1.21.0-beta.1) (2026-11-10)
 
 ### Features

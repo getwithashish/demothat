@@ -94,13 +94,16 @@ Once the PR into `staging` is approved and all CI checks in `checks.yml` pass:
 
 ### 3.4 Promoting beta → stable
 
-When changes in `staging` have been validated in pre-release builds:
+> [!CRITICAL]
+> **STRICT PERMISSION RULE:** Agents MUST NEVER open a Pull Request from `staging` into `main` or merge into `main` unless the user explicitly and verbatim requests a stable release promotion. Promotions from `staging` to `main` cut public stable production releases and are strictly controlled by human maintainers.
+
+When explicitly instructed by the user to promote validated changes in `staging` to `main`:
 
 1. A Pull Request is opened from `staging` → `main`:
    ```bash
    gh pr create --base main --head staging --title "chore(release): promote staging to main" --body "Promoting validated beta release from staging to main."
    ```
-2. Once CI passes, merge it into `main`:
+2. Once CI passes and user approval is confirmed, merge it into `main`:
    ```bash
    gh pr merge --merge
    ```
@@ -259,6 +262,7 @@ npx vite build --mode development
 
 - **NEVER** push commits or perform direct local merges into `main` or `staging`. ALL code must arrive via Pull Request.
 - **NEVER** open PRs from a feature/fix branch targeting `main`. Target `staging`.
+- **NEVER** open a PR from `staging` into `main` or merge into `main` without explicit, verbatim instructions from the user.
 - **NEVER** leave merged feature/fix branches lingering on `origin` — always delete the remote branch immediately after merging the PR.
 - **NEVER** create release git tags manually — semantic-release manages all tags.
 - **NEVER** modify `CHANGELOG.md` or bump `version` in `package.json` manually — semantic-release manages these during release.

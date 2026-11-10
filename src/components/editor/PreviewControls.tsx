@@ -21,7 +21,7 @@ import { Button } from '../ui/button'
 import { ToolbarButton } from '../ui/toolbar-button'
 import { ICON_SIZE, ICON_STROKE } from '../ui/icons'
 import { COMPOSITION_LAYOUTS } from '../../lib/constants'
-import { ContextMenu, ContextMenuItem, ContextMenuLabel } from '../ui/context-menu'
+import { ContextMenu, ContextMenuItem, ContextMenuLabel, ContextMenuDivider } from '../ui/context-menu'
 import { useZoomControls } from '../../hooks/useZoomControls'
 
 const iconProps = { size: ICON_SIZE, strokeWidth: ICON_STROKE } as const
@@ -88,27 +88,6 @@ export function PreviewControls() {
   return (
     <div className="flex flex-wrap items-center justify-between gap-y-1.5 border-b border-line bg-panel px-3 py-2.5">
       <div className="flex items-center gap-1">
-        <ToolbarButton
-          icon={<ZoomIn {...iconProps} />}
-          title="Add Zoom Region"
-          onClick={() => addZoomRegion()}
-          disabled={!!selectedRegionId}
-        >
-          Zoom
-        </ToolbarButton>
-        <ToolbarButton
-          icon={<Camera {...iconProps} />}
-          title="Add Cinematic 3D Camera"
-          onClick={() => {
-            const start = Math.max(0, Math.min(currentTime, Math.max(0, duration - 0.1)))
-            addCameraMotion('dolly-in', start, Math.min(duration || start + 2, start + 2))
-            const added = useEditorStore.getState().cameraMotions.at(-1)
-            if (added) setSelectedRegionId(added.id)
-          }}
-        >
-          3D Camera
-        </ToolbarButton>
-
         <div className="flex items-center">
           <ToolbarButton
             icon={<LayoutBoard {...iconProps} />}
@@ -137,24 +116,26 @@ export function PreviewControls() {
         <div className="flex items-center">
           <ToolbarButton
             icon={<Bolt {...iconProps} />}
-            title="Add effect at the playhead"
-            disabled={!!selectedRegionId}
+            title="Add effect, zoom, or 3D camera"
             className="rounded-r-none"
-            onClick={() => addEffect('mask')}
+            onClick={(event) => {
+              const rect = (event.currentTarget as HTMLButtonElement).getBoundingClientRect()
+              setEffectMenuPosition({ x: rect.left, y: rect.bottom + 4 })
+              setEffectMenuOpen((prev) => !prev)
+            }}
           >
             Effects
           </ToolbarButton>
           <ToolbarButton
             iconOnly
             icon={<ChevronDown {...iconProps} />}
-            title="Choose an effect type"
-            aria-label="Choose an effect type"
-            disabled={!!selectedRegionId}
+            title="Choose an effect, zoom, or camera"
+            aria-label="Choose an effect, zoom, or camera"
             className="-ml-px rounded-l-none"
             onClick={(event) => {
               const rect = (event.currentTarget as HTMLButtonElement).getBoundingClientRect()
               setEffectMenuPosition({ x: rect.left, y: rect.bottom + 4 })
-              setEffectMenuOpen(true)
+              setEffectMenuOpen((prev) => !prev)
             }}
           />
         </div>
@@ -294,9 +275,36 @@ export function PreviewControls() {
         isOpen={isEffectMenuOpen}
         onClose={() => setEffectMenuOpen(false)}
         position={effectMenuPosition}
-        className="min-w-[200px]"
+        className="min-w-[210px]"
       >
-        <ContextMenuLabel>Effect type</ContextMenuLabel>
+        <ContextMenuLabel>Zoom & Camera</ContextMenuLabel>
+        <ContextMenuItem
+          onClick={() => {
+            addZoomRegion()
+            setEffectMenuOpen(false)
+          }}
+          disabled={!!selectedRegionId}
+        >
+          <ZoomIn {...iconProps} className="text-muted" />
+          <span>Zoom region</span>
+        </ContextMenuItem>
+        <ContextMenuItem
+          onClick={() => {
+            const start = Math.max(0, Math.min(currentTime, Math.max(0, duration - 0.1)))
+            addCameraMotion('dolly-in', start, Math.min(duration || start + 2, start + 2))
+            const added = useEditorStore.getState().cameraMotions.at(-1)
+            if (added) setSelectedRegionId(added.id)
+            setEffectMenuOpen(false)
+          }}
+          disabled={duration <= currentTime}
+        >
+          <Camera {...iconProps} className="text-muted" />
+          <span>3D Camera</span>
+        </ContextMenuItem>
+
+        <ContextMenuDivider />
+
+        <ContextMenuLabel>Visual Effects</ContextMenuLabel>
         {EFFECT_KINDS.map((option) => (
           <ContextMenuItem
             key={option.value}
@@ -305,7 +313,8 @@ export function PreviewControls() {
               setEffectMenuOpen(false)
             }}
           >
-            {option.label}
+            <Bolt {...iconProps} className="text-muted" />
+            <span>{option.label}</span>
           </ContextMenuItem>
         ))}
       </ContextMenu>

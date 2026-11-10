@@ -1,3 +1,13 @@
+## [1.21.0-beta.1](https://github.com/getwithashish/DemoThat/compare/v1.20.0...v1.21.0-beta.1) (2026-11-10)
+
+### Features
+
+* **ai:** integrate AI assistant Ed with interactive timeline tools and multi-provider support ([eec421d](https://github.com/getwithashish/DemoThat/commit/eec421d3b1847fdd026408ea5437475884cd4982))
+* **branding:** replace legacy app-icon SVG with new brand mascot ([bd6bf07](https://github.com/getwithashish/DemoThat/commit/bd6bf07e4c43577553a772707b6bd4857c63734b))
+* **ed:** redesign Ed assistant UI with right-side sidebar and command palette ([5f98262](https://github.com/getwithashish/DemoThat/commit/5f98262a7411cd949017a00dc0a673b4ce372938))
+* **recorder:** add brand logo to the recorder toolbar drag handle ([229c05f](https://github.com/getwithashish/DemoThat/commit/229c05f1afdd47f7b2a6459bc589745aa00f1911))
+* **ui:** show app icon behind spinner on the saving screen ([6b2eef3](https://github.com/getwithashish/DemoThat/commit/6b2eef36b568e3b9358ea322c16ffdce396a2bab))
+
 ## [1.20.0](https://github.com/getwithashish/DemoThat/compare/v1.19.0...v1.20.0) (2026-11-04)
 
 ### Features

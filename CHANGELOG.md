@@ -1,3 +1,10 @@
+## [1.21.0-beta.3](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.2...v1.21.0-beta.3) (2026-11-11)
+
+### Features
+
+* **motion:** implement one-organism morphing surfaces and return flight ([429d27f](https://github.com/getwithashish/DemoThat/commit/429d27f2043177a23fac17ea590c34004c98e8e4))
+* **slider:** add dedicated timeline scrubber and subpixel continuous tracking ([9ad9460](https://github.com/getwithashish/DemoThat/commit/9ad94603219ed450c0e5d5fe586c1e09afe277c3))
+
 ## [1.21.0-beta.2](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.1...v1.21.0-beta.2) (2026-11-10)
 
 ### Features

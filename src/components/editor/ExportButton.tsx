@@ -11,7 +11,7 @@ interface ExportButtonProps {
 
 export function ExportButton({ onClick, isExporting, disabled }: ExportButtonProps) {
   return (
-    <Button onClick={onClick} disabled={isExporting || disabled}>
+    <Button id="export-trigger-btn" onClick={onClick} disabled={isExporting || disabled}>
       {isExporting ? (
         <Loader2 size={ICON_SIZE} strokeWidth={ICON_STROKE} className="mr-2 animate-spin" />
       ) : (

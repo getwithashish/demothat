@@ -15,6 +15,7 @@ import { Loader2, Trash, Link, CircleCheck, CircleX, Clock, Eye } from 'tabler-i
 import { ICON_SIZE, ICON_STROKE } from '../../ui/icons'
 import { formatBytes } from '../../../../shared/publish-cost'
 import type { PublicationAnalytics, PublicationAnalyticsRange, PublicationView } from '../../../hooks/usePublish'
+import { useMorphSurface } from '../../../hooks/useMorphSurface'
 
 interface SharedLinksDialogProps {
   isOpen: boolean
@@ -129,16 +130,25 @@ export function SharedLinksDialog({
     [publications, selectedId],
   )
 
-  if (!isOpen) return null
+  const { surfaceRef, isRendered, requestClose } = useMorphSurface({
+    isOpen,
+    triggerSelector: '#publish-trigger-btn',
+    targetRadius: 12,
+    duration: 600,
+    onClosed: onClose,
+  })
+
+  if (!isRendered) return null
 
   const totalCredits = publications
     .filter((publication) => publication.status === 'active')
     .reduce((total, publication) => total + (publication.creditsCharged ?? publication.estimatedCost), 0)
 
   return (
-    <div className="modal-backdrop flex items-center justify-center">
+    <div className="modal-backdrop flex items-center justify-center" onClick={requestClose}>
       <div
-        className="card-clean pointer-events-auto m-4 flex h-[80vh] w-full max-w-4xl flex-col overflow-hidden"
+        ref={surfaceRef}
+        className="card-clean pointer-events-auto relative m-4 flex h-[80vh] w-full max-w-4xl flex-col overflow-hidden"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-border/60 px-5 py-3">
@@ -159,7 +169,7 @@ export function SharedLinksDialog({
                 'Refresh'
               )}
             </Button>
-            <Button variant="secondary" size="sm" onClick={onClose}>
+            <Button variant="secondary" size="sm" onClick={requestClose}>
               Close
             </Button>
           </div>

@@ -4,7 +4,7 @@ import App from './App.tsx'
 import './index.css'
 import { useEditorStore } from './store/editorStore'
 
-if (typeof window !== 'undefined' && import.meta.env.DEV) {
+if (typeof window !== 'undefined') {
   ;(window as unknown as { __editorStore: typeof useEditorStore }).__editorStore = useEditorStore
 }
 

@@ -53,10 +53,11 @@ export function SwatchGrid({
             title={item.label}
             onClick={() => onSelect(item.id)}
             className={cn(
-              'aspect-square overflow-hidden rounded-ctl',
-              'border border-line',
+              'aspect-square overflow-hidden rounded-ctl cursor-pointer',
+              'border border-line select-none',
+              'transition-transform duration-120 ease-golden hover:scale-105 active:scale-95',
               'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
-              selected ? 'outline-solid outline-2 outline-offset-2 outline-accent' : 'hover:border-fg/40',
+              selected ? 'outline-solid outline-2 outline-offset-2 outline-accent scale-[1.03]' : 'hover:border-fg/40',
             )}
           >
             {item.imageUrl ? (

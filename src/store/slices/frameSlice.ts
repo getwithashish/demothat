@@ -53,12 +53,18 @@ export const recalculateCanvasDimensions = (state: {
   aspectRatio: AspectRatio
   canvasDimensions: { width: number; height: number }
 }) => {
-  if (!state.screenSize || !state.aspectRatio) {
-    state.canvasDimensions = { width: 1920, height: 1080 } // Fallback
+  const [ratioW, ratioH] = (state.aspectRatio || '16:9').split(':').map(Number)
+  if (!state.screenSize) {
+    const base = 1080
+    const w = ratioW >= ratioH ? Math.round(base * (ratioW / ratioH)) : base
+    const h = ratioW >= ratioH ? base : Math.round(base * (ratioH / ratioW))
+    state.canvasDimensions = {
+      width: w % 2 === 0 ? w : w + 1,
+      height: h % 2 === 0 ? h : h + 1,
+    }
     return
   }
   const { width: screenWidth, height: screenHeight } = state.screenSize
-  const [ratioW, ratioH] = state.aspectRatio.split(':').map(Number)
   const screenAspectRatio = screenWidth / screenHeight
   const targetAspectRatio = ratioW / ratioH
 

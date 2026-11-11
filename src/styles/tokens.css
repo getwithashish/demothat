@@ -81,6 +81,12 @@
    Declared once and resolved against whichever theme is active. */
 :root {
   --sa-ctl-hover: color-mix(in srgb, var(--sa-ctl), var(--sa-text) 6%);
+
+  /* Motion tokens: "Family Values" / "One Living Organism" */
+  --ease-golden: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-travel: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-tap: cubic-bezier(0.2, 0, 0, 1);
 }
 
 @theme inline {
@@ -101,6 +107,11 @@
 
   --font-sans: 'Public Sans', system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+  --ease-golden: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-travel: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-tap: cubic-bezier(0.2, 0, 0, 1);
 
   --radius-ctl: 6px; /* buttons, selects, swatches, inputs */
   --radius-seg: 7px; /* segmented control, position grid */

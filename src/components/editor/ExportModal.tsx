@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, useMemo } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { Button } from '../ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
-import { Loader2, CircleCheck, CircleX, Folder, Ban } from 'tabler-icons-react'
+import { Loader2, CircleX, Folder, Ban } from 'tabler-icons-react'
 import { ICON_SIZE, ICON_STROKE } from '../ui/icons'
 import { Input } from '../ui/input'
 import { Section } from '../ui/section'
@@ -35,6 +35,7 @@ import { CloudExportProgress } from './cloud/CloudExportProgress'
 import { CancelExportDialog } from './cloud/CancelExportDialog'
 import { OutOfCreditsDialog } from './cloud/OutOfCreditsDialog'
 import type { CloudProgressInfo, CloudRetryRequest, ExportResult } from '../../hooks/useExportProcess'
+import { useMorphSurface } from '../../hooks/useMorphSurface'
 
 export type ExportSettings = {
   format: 'mp4' | 'gif'
@@ -766,7 +767,18 @@ const ResultView = ({
       return <Ban size={ICON_SIZE} strokeWidth={ICON_STROKE} className="text-muted" />
     }
     if (result.success) {
-      return <CircleCheck size={ICON_SIZE} strokeWidth={ICON_STROKE} className="text-accent" />
+      return (
+        <svg
+          className="ok-draw h-12 w-12 text-accent"
+          viewBox="0 0 64 64"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="3"
+        >
+          <circle cx="32" cy="32" r="29" />
+          <path d="M20 33l8 8 16-18" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      )
     }
     return <CircleX size={ICON_SIZE} strokeWidth={ICON_STROKE} className="text-danger" />
   }
@@ -829,29 +841,48 @@ export function ExportModal({
   onRetryCloud,
   onFallbackStandard,
 }: ExportModalProps) {
-  if (!isOpen) return null
+  const { surfaceRef, isRendered, requestClose } = useMorphSurface({
+    isOpen,
+    triggerSelector: '#export-trigger-btn',
+    targetRadius: 12,
+    duration: 640,
+    onClosed: onClose,
+  })
+
+  if (!isRendered) return null
 
   const renderContent = () => {
     if (result) {
       return (
-        <ResultView
-          result={result}
-          onClose={onClose}
-          onRetryCloud={onRetryCloud}
-          onFallbackStandard={onFallbackStandard}
-        />
+        <div key="result" className="st">
+          <ResultView
+            result={result}
+            onClose={requestClose}
+            onRetryCloud={onRetryCloud}
+            onFallbackStandard={onFallbackStandard}
+          />
+        </div>
       )
     }
     if (isExporting) {
-      return <ProgressView progress={progress} cloudProgress={cloudProgress} onCancel={onCancelExport} />
+      return (
+        <div key="progress" className="st">
+          <ProgressView progress={progress} cloudProgress={cloudProgress} onCancel={onCancelExport} />
+        </div>
+      )
     }
-    return <SettingsView onStartExport={onStartExport} onClose={onClose} />
+    return (
+      <div key="settings" className="st">
+        <SettingsView onStartExport={onStartExport} onClose={requestClose} />
+      </div>
+    )
   }
 
   return (
-    <div className="modal-backdrop flex items-center justify-center">
+    <div className="modal-backdrop flex items-center justify-center" onClick={requestClose}>
       <div
-        className="card-clean pointer-events-auto m-4 flex w-full max-w-2xl flex-col overflow-hidden"
+        ref={surfaceRef}
+        className="card-clean pointer-events-auto relative m-4 flex w-full max-w-2xl flex-col overflow-hidden transition-[height] duration-500 ease-golden"
         onClick={(e) => e.stopPropagation()}
       >
         {isExporting && onMinimize && (

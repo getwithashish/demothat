@@ -10,9 +10,11 @@ import { cva } from 'class-variance-authority'
  */
 export const buttonVariants = cva(
   [
-    'inline-flex items-center justify-center whitespace-nowrap font-normal transition-colors',
+    'inline-flex items-center justify-center whitespace-nowrap font-normal select-none cursor-pointer',
+    'transition-[background-color,border-color,color,box-shadow,transform] duration-120',
+    'active:scale-[0.96]',
     'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
-    'disabled:pointer-events-none disabled:opacity-45',
+    'disabled:pointer-events-none disabled:opacity-45 disabled:cursor-not-allowed',
   ].join(' '),
   {
     variants: {

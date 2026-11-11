@@ -1,13 +1,14 @@
 // Modal shell for the cloud/credits dialogs.
 //
-// Mirrors the reference file's "card-clean + PanelHeader + Section" modal: a
-// scrim, a card with hairline sections, one primary action right-aligned in the
-// footer (design rules §3), and the 180ms rise/scale entrance (§9).
+// Compact dropdown card anchored beneath the trigger button,
+// physically growing from and shrinking back into the button badge.
 
-import { useEffect, type ReactNode } from 'react'
+import { useCallback, useLayoutEffect, useState, type ReactNode } from 'react'
 import { cn } from '../../../lib/utils'
+import { useMorphSurface } from '../../../hooks/useMorphSurface'
 
 export interface CloudDialogProps {
+  isOpen?: boolean
   /** Dialog name; used as the header title (form) and the accessible label. */
   title: string
   /** Second line under the title. Also used as the body in the 'state' layout. */
@@ -25,6 +26,8 @@ export interface CloudDialogProps {
   /** Icon shown above the title in the 'state' layout. */
   icon?: ReactNode
   className?: string
+  /** CSS selector for the trigger element to morph from */
+  triggerSelector?: string
 }
 
 /** One hairline section inside a CloudDialog. */
@@ -33,36 +36,70 @@ export function CloudDialogSection({ children, className }: { children: ReactNod
 }
 
 export function CloudDialog({
+  isOpen = true,
   title,
   subtitle,
   children,
   footer,
   onClose,
-  maxWidth = 440,
+  maxWidth = 420,
   variant = 'form',
   icon,
   className,
+  triggerSelector = '#buy-credits-trigger-btn, #get-pro-trigger-btn, #credits-trigger-btn',
 }: CloudDialogProps) {
-  useEffect(() => {
-    if (!onClose) return
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
+  const computeAnchoredStyle = useCallback((): React.CSSProperties => {
+    if (typeof document !== 'undefined' && triggerSelector) {
+      const trigger = document.querySelector<HTMLElement>(triggerSelector)
+      if (trigger) {
+        const tRect = trigger.getBoundingClientRect()
+        const top = Math.round(tRect.bottom + 8)
+        const left = Math.round(Math.max(16, Math.min(window.innerWidth - maxWidth - 16, tRect.right - maxWidth)))
+        return {
+          position: 'absolute',
+          top: `${top}px`,
+          left: `${left}px`,
+          width: `${maxWidth}px`,
+          maxWidth: 'calc(100vw - 32px)',
+        }
+      }
     }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [onClose])
+    return {
+      width: `${maxWidth}px`,
+      maxWidth: 'calc(100vw - 32px)',
+    }
+  }, [triggerSelector, maxWidth])
+
+  const [anchoredStyle, setAnchoredStyle] = useState<React.CSSProperties>(computeAnchoredStyle)
+
+  // Calculate resting destination position anchored right below the trigger button
+  useLayoutEffect(() => {
+    setAnchoredStyle(computeAnchoredStyle())
+  }, [computeAnchoredStyle])
+
+  const { surfaceRef, isRendered, requestClose } = useMorphSurface({
+    isOpen,
+    triggerSelector,
+    targetRadius: 12,
+    duration: 440,
+    onClosed: onClose,
+  })
+
+  if (!isRendered) return null
 
   return (
-    <div className="modal-backdrop flex items-center justify-center" onClick={onClose} role="presentation">
+    <div
+      className={cn('modal-backdrop', !anchoredStyle.position && 'flex items-center justify-center')}
+      onClick={requestClose}
+      role="presentation"
+    >
       <div
+        ref={surfaceRef}
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        style={{ maxWidth }}
-        className={cn(
-          'card-clean animate-dialog-in pointer-events-auto m-4 flex w-full flex-col overflow-hidden',
-          className,
-        )}
+        style={anchoredStyle}
+        className={cn('card-clean pointer-events-auto flex flex-col overflow-hidden shadow-2xl', className)}
         onClick={(event) => event.stopPropagation()}
       >
         {variant === 'form' ? (

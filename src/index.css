@@ -12,7 +12,8 @@
 @layer components {
   .modal-backdrop {
     /* Above every timeline surface: region clips go up to z-200 (playhead). */
-    @apply fixed inset-0 z-[250] bg-scrim;
+    @apply fixed inset-0 z-[250] bg-scrim backdrop-blur-sm;
+    animation: sa-fade-in 220ms var(--ease-golden);
   }
 
   .stable-scrollbar {
@@ -72,12 +73,12 @@
   }
 }
 
-/* Dialog entrance (design motion table §9): rises 8px and scales from 0.98 over
-   180ms on the single shared easing. Backdrop fade uses sa-fade-in. */
+/* Dialog entrance (Family Values golden easing): rises 10px and scales from 0.96 over
+   260ms on the shared golden curve. */
 @keyframes sa-dialog-in {
   from {
     opacity: 0;
-    transform: translateY(8px) scale(0.98);
+    transform: translateY(10px) scale(0.96);
   }
   to {
     opacity: 1;
@@ -86,15 +87,216 @@
 }
 
 .animate-status-in {
-  animation: sa-fade-in 150ms ease-out;
+  animation: sa-fade-in 180ms var(--ease-golden);
 }
 
 .animate-menu-in {
-  animation: sa-fade-scale-in 120ms ease-out;
+  animation: sa-fade-scale-in 150ms var(--ease-golden);
 }
 
 .animate-dialog-in {
-  animation: sa-dialog-in 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  animation: sa-dialog-in 260ms var(--ease-golden);
+}
+
+/* Continuous aspect ratio morphing stage (Section 5.5 + Section 11 of Prototype) */
+.morph-viewport {
+  transition:
+    aspect-ratio 500ms var(--ease-golden),
+    width 500ms var(--ease-golden),
+    height 500ms var(--ease-golden),
+    border-radius 400ms var(--ease-golden),
+    box-shadow 400ms var(--ease-golden);
+  will-change: aspect-ratio, width, height;
+}
+
+/* Staggered entrance for list items and dialog sections */
+.st {
+  animation: stIn 450ms var(--ease-golden) both;
+  animation-delay: calc(var(--i, 0) * 45ms + 100ms);
+}
+
+@keyframes stIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+/* Rolling Number Display (Family Values Motion) */
+.roll {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  height: 1.25rem;
+  line-height: 1.1em;
+  font-variant-numeric: tabular-nums;
+  vertical-align: middle;
+}
+.roll-digit {
+  display: inline-block;
+  width: 1ch;
+  height: 1.1em;
+  line-height: 1.1em;
+  overflow: hidden;
+  vertical-align: middle;
+  text-align: center;
+  flex: none;
+  transition: width 0.35s var(--ease-golden);
+}
+.roll-strip {
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.35s var(--ease-golden);
+}
+.roll-strip span {
+  height: 1.1em;
+  line-height: 1.1em;
+  flex: none;
+  display: block;
+  text-align: center;
+}
+.roll-symbol {
+  display: inline-block;
+  height: 1.1em;
+  line-height: 1.1em;
+  vertical-align: middle;
+  overflow: visible;
+  white-space: pre;
+  width: auto;
+  min-width: max-content;
+  flex: none;
+}
+
+/* Morphing sheet body & views (Section 5.2) */
+.morph-sheet-body {
+  position: relative;
+  overflow: hidden;
+  transition: height 520ms var(--ease-golden);
+}
+.morph-view {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  opacity: 0;
+  filter: blur(8px);
+  transform: scale(0.97);
+  pointer-events: none;
+  visibility: hidden;
+  transition:
+    opacity 200ms var(--ease-exit),
+    filter 200ms var(--ease-exit),
+    transform 200ms var(--ease-exit);
+}
+.morph-view.is-active {
+  position: relative;
+  opacity: 1;
+  filter: blur(0);
+  transform: scale(1);
+  pointer-events: auto;
+  visibility: visible;
+  transition:
+    opacity 450ms var(--ease-golden) 80ms,
+    filter 450ms var(--ease-golden) 80ms,
+    transform 450ms var(--ease-golden) 80ms;
+}
+
+/* Drawn checkmark for completion moments */
+.ok-draw circle {
+  stroke-dasharray: 185;
+  stroke-dashoffset: 185;
+  animation: drawCircle 500ms var(--ease-golden) forwards;
+}
+.ok-draw path {
+  stroke-dasharray: 40;
+  stroke-dashoffset: 40;
+  animation: drawCheck 400ms var(--ease-golden) 300ms forwards;
+}
+@keyframes drawCircle {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes drawCheck {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* Family Values Motion System: Overlapping blur-crossfade text morphing */
+.sw {
+  display: inline-grid;
+  vertical-align: middle;
+}
+.sw > * {
+  grid-area: 1 / 1;
+}
+
+@keyframes swIn {
+  from {
+    opacity: 0;
+    filter: blur(5px);
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: scale(1);
+  }
+}
+
+@keyframes swOut {
+  from {
+    opacity: 1;
+    filter: blur(0);
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    filter: blur(5px);
+    transform: scale(0.97);
+  }
+}
+
+.sw-in {
+  animation: swIn 320ms var(--ease-golden) both;
+}
+
+.sw-out {
+  animation: swOut 200ms var(--ease-exit) both;
+}
+
+/* Tactile press physics */
+.pressable {
+  transition:
+    transform 120ms var(--ease-tap),
+    background-color 150ms ease,
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+  user-select: none;
+}
+.pressable:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+/* Accordion expand/collapse transition */
+.accordion-content {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 280ms var(--ease-golden);
+}
+.accordion-content[data-state='open'],
+.accordion-content.is-open {
+  grid-template-rows: 1fr;
+}
+.accordion-content > div {
+  overflow: hidden;
 }
 
 @keyframes sa-credit-pulse {
@@ -136,7 +338,10 @@
   .animate-menu-in,
   .animate-dialog-in,
   .animate-credit-pulse,
-  .animate-credit-chip {
+  .animate-credit-chip,
+  .sw-in,
+  .sw-out {
     animation: none;
+    transition: none;
   }
 }

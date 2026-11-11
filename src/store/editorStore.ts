@@ -160,3 +160,7 @@ useEditorStore.subscribe((state) => {
     window.electronAPI.setProjectDirty(dirty)
   }
 })
+
+if (typeof window !== 'undefined') {
+  ;(window as unknown as { useEditorStore: typeof useEditorStore }).useEditorStore = useEditorStore
+}

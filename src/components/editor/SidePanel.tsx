@@ -8,6 +8,7 @@ import { CursorSettings } from './sidepanel/CursorSettings'
 import { AnimationSettingsPanel } from './sidepanel/AnimationSettingsPanel'
 import { useShallow } from 'zustand/react/shallow'
 import { useEffect, useMemo, useRef } from 'react'
+import { motion } from 'motion/react'
 import { cn } from '../../lib/utils'
 import { AudioSettings } from './sidepanel/AudioSettings'
 import { CameraMotionSettings } from './sidepanel/CameraMotionSettings'
@@ -224,17 +225,21 @@ export function SidePanel() {
                 onClick={() => setActiveSidePanelTab(tab.id)}
                 onKeyDown={(event) => handleTabKeyDown(event, index)}
                 className={cn(
-                  // py-2 (8px, per the DESIGN_SPEC "12px 8px padding" for text
-                  // tabs). No -mb-px: the hairline is on the wrapper now, so the
-                  // scroll box's client height equals the tab height and the
-                  // strip cannot scroll vertically — only horizontally.
-                  'shrink-0 whitespace-nowrap border-b-2 border-transparent px-2 py-2 text-ui transition-colors',
-                  active ? 'border-accent text-fg' : 'text-muted hover:text-fg',
+                  'relative shrink-0 whitespace-nowrap px-2.5 py-2 text-ui select-none',
+                  'transition-[color,transform] duration-150 active:scale-[0.97]',
+                  active ? 'text-fg font-medium' : 'text-muted hover:text-fg',
                   disabled && 'cursor-not-allowed opacity-45 hover:text-muted',
                   'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
                 )}
               >
-                {tab.label}
+                <span className="relative z-10">{tab.label}</span>
+                {active && (
+                  <motion.div
+                    layoutId="sidepanel-tab-underline"
+                    className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent"
+                    transition={{ type: 'spring', stiffness: 500, damping: 38 }}
+                  />
+                )}
               </button>
             )
           })}
@@ -248,7 +253,7 @@ export function SidePanel() {
           role="tabpanel"
           id="inspector-panel-general"
           aria-labelledby="inspector-tab-general"
-          className="h-full"
+          className={cn('h-full', activeSidePanelTab === 'general' && 'st')}
           hidden={activeSidePanelTab !== 'general'}
         >
           {selectedCompositionLayout ? (
@@ -265,7 +270,7 @@ export function SidePanel() {
           role="tabpanel"
           id="inspector-panel-camera"
           aria-labelledby="inspector-tab-camera"
-          className="h-full"
+          className={cn('h-full', activeSidePanelTab === 'camera' && 'st')}
           hidden={activeSidePanelTab !== 'camera'}
         >
           <CameraSettings />
@@ -274,7 +279,7 @@ export function SidePanel() {
           role="tabpanel"
           id="inspector-panel-audio"
           aria-labelledby="inspector-tab-audio"
-          className="h-full"
+          className={cn('h-full', activeSidePanelTab === 'audio' && 'st')}
           hidden={activeSidePanelTab !== 'audio'}
         >
           <AudioSettings />
@@ -283,7 +288,7 @@ export function SidePanel() {
           role="tabpanel"
           id="inspector-panel-animation"
           aria-labelledby="inspector-tab-animation"
-          className="h-full"
+          className={cn('h-full', activeSidePanelTab === 'animation' && 'st')}
           hidden={activeSidePanelTab !== 'animation'}
         >
           <AnimationSettingsPanel />
@@ -292,7 +297,7 @@ export function SidePanel() {
           role="tabpanel"
           id="inspector-panel-cursor"
           aria-labelledby="inspector-tab-cursor"
-          className="h-full"
+          className={cn('h-full', activeSidePanelTab === 'cursor' && 'st')}
           hidden={activeSidePanelTab !== 'cursor'}
         >
           <CursorSettings />
@@ -301,7 +306,7 @@ export function SidePanel() {
           role="tabpanel"
           id="inspector-panel-subtitles"
           aria-labelledby="inspector-tab-subtitles"
-          className="h-full"
+          className={cn('h-full', activeSidePanelTab === 'subtitles' && 'st')}
           hidden={activeSidePanelTab !== 'subtitles'}
         >
           <SubtitlesSettings />

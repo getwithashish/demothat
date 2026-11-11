@@ -38,6 +38,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
             className={cn(
               'flex w-full rounded-ctl border border-line bg-ctl px-2.5 py-2 text-ui text-fg',
               'placeholder:text-muted',
+              'transition-[background-color,border-color,box-shadow] duration-150 ease-golden',
               'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
               'hover:bg-ctl-hover',
               'disabled:cursor-not-allowed disabled:opacity-45',

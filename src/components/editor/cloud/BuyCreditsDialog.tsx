@@ -48,7 +48,6 @@ export function BuyCreditsDialog({ isOpen, onClose, shortfall }: BuyCreditsDialo
   // Re-pick the pack each time the dialog opens for a new shortfall.
   useEffect(() => {
     if (!isOpen) return
-    setSelected(recommendedPackIndex(shortfall, visiblePacks(packs ?? [], licensed)))
     setBusy(false)
     window.electronAPI
       .getCloudCapabilities?.()
@@ -56,11 +55,14 @@ export function BuyCreditsDialog({ isOpen, onClose, shortfall }: BuyCreditsDialo
       .catch(() => setCreditsPerFrame(undefined))
     window.electronAPI
       .listProducts?.()
-      .then((result) => setPacks(toCreditPackViews(result?.products)))
+      .then((result) => {
+        const views = toCreditPackViews(result?.products)
+        setPacks(views)
+        const visible = visiblePacks(views, licensed)
+        setSelected(recommendedPackIndex(shortfall, visible))
+      })
       .catch(() => setPacks([]))
-  }, [isOpen, shortfall, licensed, packs])
-
-  if (!isOpen) return null
+  }, [isOpen, shortfall, licensed])
 
   // The server's catalogue while it is loading too: it is the real answer.
   const options: CreditPackView[] = visiblePacks(packs ?? [], licensed)
@@ -78,6 +80,7 @@ export function BuyCreditsDialog({ isOpen, onClose, shortfall }: BuyCreditsDialo
 
   return (
     <CloudDialog
+      isOpen={isOpen}
       title="Buy credits"
       subtitle={
         shortfall != null && shortfall > 0

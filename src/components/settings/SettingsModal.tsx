@@ -6,6 +6,7 @@ import { GeneralTab } from './GeneralTab'
 import { AboutTab } from './AboutTab'
 import { ShortcutsTab } from './ShortcutsTab'
 import { AITab } from './AITab'
+import { useMorphSurface } from '../../hooks/useMorphSurface'
 
 interface SettingsModalProps {
   isOpen: boolean
@@ -23,8 +24,15 @@ const TABS: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>('general')
+  const { surfaceRef, isRendered, requestClose } = useMorphSurface({
+    isOpen,
+    triggerSelector: '#settings-trigger-btn',
+    targetRadius: 12,
+    duration: 600,
+    onClosed: onClose,
+  })
 
-  if (!isOpen) return null
+  if (!isRendered) return null
 
   const renderContent = () => {
     switch (activeTab) {
@@ -42,9 +50,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   }
 
   return (
-    <div className="modal-backdrop flex items-center justify-center" onClick={onClose}>
+    <div className="modal-backdrop flex items-center justify-center" onClick={requestClose}>
       <div
-        className="card-clean pointer-events-auto m-4 flex h-[60vh] max-h-[500px] w-full max-w-3xl flex-row overflow-hidden"
+        ref={surfaceRef}
+        className="card-clean pointer-events-auto relative m-4 flex h-[60vh] max-h-[500px] w-full max-w-3xl flex-row overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Tabs */}

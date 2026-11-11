@@ -80,7 +80,7 @@ export function ContextMenu({ isOpen, onClose, position, children, className }: 
       <div
         ref={menuRef}
         className={cn(
-          'fixed min-w-[200px] overflow-hidden rounded-ctl',
+          'animate-menu-in fixed min-w-[200px] overflow-hidden rounded-ctl',
           'border border-line bg-panel',
           'shadow-[var(--sa-popover-shadow)]',
           className,
@@ -110,10 +110,10 @@ export const ContextMenuItem = React.forwardRef<
   <button
     ref={ref}
     className={cn(
-      'w-full px-3 py-1.5 text-left text-sm font-medium',
+      'w-full px-3 py-1.5 text-left text-sm font-medium select-none',
       'text-fg hover:text-fg',
       'hover:bg-ctl active:bg-ctl',
-      'transition-colors duration-75',
+      'transition-[background-color,color,transform] duration-120 active:scale-[0.98]',
       'flex items-center gap-2',
       'disabled:opacity-50 disabled:cursor-not-allowed',
       inset && 'pl-8',

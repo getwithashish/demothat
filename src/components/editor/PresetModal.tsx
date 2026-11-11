@@ -9,6 +9,7 @@ import { cn } from '../../lib/utils'
 import { ICON_SIZE, ICON_STROKE } from '../ui/icons'
 import { PanelHeader } from './PanelHeader'
 import { Plus, Trash, Check, Lock, Rectangle, BoxPadding, BorderRadius, Shadow, BorderAll } from 'tabler-icons-react'
+import { useMorphSurface } from '../../hooks/useMorphSurface'
 
 interface PresetModalProps {
   isOpen: boolean
@@ -49,7 +50,15 @@ export function PresetModal({ isOpen, onClose }: PresetModalProps) {
     }
   }, [isOpen, activePresetId, defaultPreset])
 
-  if (!isOpen) return null
+  const { surfaceRef, isRendered, requestClose } = useMorphSurface({
+    isOpen,
+    triggerSelector: '#presets-trigger-btn',
+    targetRadius: 12,
+    duration: 640,
+    onClosed: onClose,
+  })
+
+  if (!isRendered) return null
 
   const presetList = Object.values(presets)
   const previewPreset = previewId ? presets[previewId] : defaultPreset || null
@@ -84,7 +93,7 @@ export function PresetModal({ isOpen, onClose }: PresetModalProps) {
   const handleSelect = () => {
     if (previewId) {
       applyPreset(previewId)
-      onClose()
+      requestClose()
     }
   }
 
@@ -112,9 +121,10 @@ export function PresetModal({ isOpen, onClose }: PresetModalProps) {
     : []
 
   return (
-    <div className="modal-backdrop flex items-center justify-center" onClick={onClose}>
+    <div className="modal-backdrop flex items-center justify-center" onClick={requestClose}>
       <div
-        className="card-clean pointer-events-auto m-4 flex h-[85vh] max-h-[800px] w-full max-w-5xl flex-col overflow-hidden"
+        ref={surfaceRef}
+        className="card-clean pointer-events-auto relative m-4 flex h-[85vh] max-h-[800px] w-full max-w-5xl flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         <PanelHeader title="Manage presets" subtitle="Select, create, or delete your frame style presets." />
@@ -227,7 +237,7 @@ export function PresetModal({ isOpen, onClose }: PresetModalProps) {
         </div>
 
         <div className="flex flex-shrink-0 justify-end gap-2 border-t border-line p-4">
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="secondary" onClick={requestClose}>
             Cancel
           </Button>
           <Button onClick={handleSelect} disabled={!previewId}>

@@ -39,6 +39,7 @@ import type {
   PublicationView,
   PublishingCapabilities,
 } from '../../../hooks/usePublish'
+import { useMorphSurface } from '../../../hooks/useMorphSurface'
 
 interface PublishDialogProps {
   isOpen: boolean
@@ -170,7 +171,15 @@ export function PublishDialog({
     return estimatePublishCredits(capabilities, { sizeBytes: fileSizeBytes, storageDays, kind })
   }, [capabilities, fileSizeBytes, storageDays, kind])
 
-  if (!isOpen) return null
+  const { surfaceRef, isRendered, requestClose } = useMorphSurface({
+    isOpen,
+    triggerSelector: '#publish-trigger-btn',
+    targetRadius: 12,
+    duration: 600,
+    onClosed: onClose,
+  })
+
+  if (!isRendered) return null
 
   const tooBig = capabilities !== null && !fitsSizeLimit(capabilities, fileSizeBytes)
   const canPublish =
@@ -202,7 +211,7 @@ export function PublishDialog({
         <Link size={ICON_SIZE} strokeWidth={ICON_STROKE} className="text-accent" />
         <h2 className="text-sm font-semibold text-fg">Instant publishing</h2>
       </div>
-      <Button variant="ghost" size="sm" onClick={onClose} disabled={isPublishing}>
+      <Button variant="ghost" size="sm" onClick={requestClose} disabled={isPublishing}>
         Close
       </Button>
     </div>
@@ -212,7 +221,7 @@ export function PublishDialog({
   if (result !== null && !isPublishing) {
     if (!result.ok) {
       return (
-        <Wrapper>
+        <Wrapper surfaceRef={surfaceRef} onClose={requestClose}>
           {header}
           <div className="space-y-3 p-5">
             <div className="flex items-start gap-2 text-sm text-fg">
@@ -243,7 +252,7 @@ export function PublishDialog({
     const publication: PublicationView = result.publication
     const charged = publication.creditsCharged ?? publication.estimatedCost
     return (
-      <Wrapper>
+      <Wrapper surfaceRef={surfaceRef} onClose={requestClose}>
         {header}
         <div className="space-y-4 p-5">
           <div className="flex items-center gap-2 text-sm font-medium text-fg">
@@ -335,7 +344,7 @@ export function PublishDialog({
   // --- Progress ----------------------------------------------------------------
   if (isPublishing || started) {
     return (
-      <Wrapper>
+      <Wrapper surfaceRef={surfaceRef} onClose={requestClose}>
         {header}
         <div className="space-y-3 p-5">
           <div className="flex items-center gap-2 text-sm text-fg">
@@ -364,7 +373,7 @@ export function PublishDialog({
 
   // --- Settings ----------------------------------------------------------------
   return (
-    <Wrapper>
+    <Wrapper surfaceRef={surfaceRef} onClose={requestClose}>
       {header}
       <div className="max-h-[70vh] space-y-4 overflow-y-auto p-5">
         {!configured && (
@@ -503,11 +512,20 @@ export function PublishDialog({
   )
 }
 
-function Wrapper({ children }: { children: React.ReactNode }) {
+function Wrapper({
+  children,
+  surfaceRef,
+  onClose,
+}: {
+  children: React.ReactNode
+  surfaceRef?: React.RefObject<HTMLDivElement>
+  onClose?: () => void
+}) {
   return (
-    <div className="modal-backdrop flex items-center justify-center">
+    <div className="modal-backdrop flex items-center justify-center" onClick={onClose}>
       <div
-        className="card-clean pointer-events-auto m-4 flex w-full max-w-xl flex-col overflow-hidden"
+        ref={surfaceRef}
+        className="card-clean pointer-events-auto relative m-4 flex w-full max-w-xl flex-col overflow-hidden"
         onClick={(event) => event.stopPropagation()}
       >
         {children}

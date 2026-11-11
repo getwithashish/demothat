@@ -16,13 +16,14 @@
  */
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { Command } from 'cmdk'
-import { AnimatePresence, motion } from 'motion/react'
+import { motion } from 'motion/react'
 import { ArrowRight } from 'tabler-icons-react'
 import { useAIChat } from '../../../components/ai/useAIChat'
 import { useEdContext } from '../hooks/useEdContext'
 import { useReducedMotion } from '../hooks/useReducedMotion'
 import { ED_ACTIONS, resolvePrompt, type EdActionGroup, type EdAction } from '../actions/registry'
 import { cn } from '../../../lib/utils'
+import { useMorphSurface } from '../../../hooks/useMorphSurface'
 
 interface EdCommandPaletteProps {
   isOpen: boolean
@@ -61,6 +62,14 @@ export function EdCommandPalette({ isOpen, onClose }: EdCommandPaletteProps) {
   const [activeHighlight, setActiveHighlight] = useState<string | null>(null)
   const prevFocusRef = useRef<HTMLElement | null>(null)
 
+  const { surfaceRef, isRendered, requestClose } = useMorphSurface({
+    isOpen,
+    triggerSelector: '#ed-command-trigger-btn',
+    targetRadius: 14,
+    duration: reduced ? 50 : 600,
+    onClosed: onClose,
+  })
+
   // Rotate placeholder examples
   useEffect(() => {
     if (!isOpen) return
@@ -83,9 +92,9 @@ export function EdCommandPalette({ isOpen, onClose }: EdCommandPaletteProps) {
     (promptText: string, keepOpen = false) => {
       if (!promptText.trim() || isStreaming) return
       sendPrompt(promptText)
-      if (!keepOpen) onClose()
+      if (!keepOpen) requestClose()
     },
-    [sendPrompt, onClose, isStreaming],
+    [sendPrompt, requestClose, isStreaming],
   )
 
   // Group actions by their group field
@@ -95,187 +104,157 @@ export function EdCommandPalette({ isOpen, onClose }: EdCommandPaletteProps) {
     actions: ED_ACTIONS.filter((a: EdAction) => a.group === g && a.id !== 'wand-custom'),
   })).filter((g) => g.actions.length > 0)
 
-  const springProps = reduced ? { duration: 0.1 } : { type: 'spring' as const, stiffness: 400, damping: 30 }
+  if (!isRendered) return null
 
   return (
-    <AnimatePresence>
-      {isOpen && (
-        <>
-          {/* Backdrop */}
-          <motion.div
-            className="fixed inset-0 z-[200] bg-scrim/80 backdrop-blur-[2px]"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: reduced ? 0.1 : 0.15 }}
-            onClick={onClose}
-            aria-hidden="true"
-          />
-
-          {/* Dialog container */}
-          <motion.div
-            className="fixed inset-0 z-[201] flex items-start justify-center pt-[14vh] px-4 pointer-events-none"
-            initial={{ opacity: 0, scale: reduced ? 1 : 0.96, y: reduced ? 0 : -8 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: reduced ? 1 : 0.97, y: reduced ? 0 : -4 }}
-            transition={springProps}
-          >
-            <div
-              className="pointer-events-auto relative w-full max-w-[560px] overflow-hidden rounded-[14px] border border-line bg-panel shadow-2xl"
-              style={{ boxShadow: 'var(--sa-popover-shadow), 0 0 0 1px var(--sa-line)' }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <Command
-                label="Ed command palette"
-                shouldFilter={true}
-                loop
-                onKeyDown={(e) => {
-                  if (e.key === 'Escape') {
-                    e.preventDefault()
-                    onClose()
-                  }
-                }}
-                className="w-full bg-panel text-fg"
-              >
-                {/* Search input */}
-                <div className="flex items-center gap-3 border-b border-line px-4 py-3 bg-ctl/30">
-                  {/* Ed mascot avatar */}
-                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-line/60 bg-ctl/70 p-0.5">
-                    <img src="./demothat-mascot-ed-neutral.svg" alt="Ed" className="h-full w-full object-contain" />
-                  </div>
-
-                  <Command.Input
-                    value={inputValue}
-                    onValueChange={setInputValue}
-                    placeholder={PLACEHOLDER_EXAMPLES[placeholderIdx]}
-                    className="flex-1 bg-transparent text-[14px] font-medium text-fg placeholder:text-muted outline-none leading-none"
-                    autoFocus
-                  />
-
-                  <div className="flex items-center gap-2 shrink-0">
-                    {inputValue && (
-                      <span className="rounded-md border border-line bg-ctl px-1.5 py-0.5 text-[11px] font-mono text-muted">
-                        ↵
-                      </span>
-                    )}
-                    <span className="rounded-md border border-line bg-ctl px-1.5 py-0.5 text-[11px] font-mono text-muted">
-                      Esc
-                    </span>
-                  </div>
-                </div>
-
-                {/* Results list */}
-                <Command.List
-                  className="max-h-[380px] overflow-y-auto overscroll-contain no-scrollbar py-1.5"
-                  role="listbox"
-                >
-                  <Command.Empty>
-                    <div className="py-6 text-center">
-                      <p className="text-sm text-muted">No matching actions</p>
-                      {inputValue && (
-                        <button
-                          type="button"
-                          className="mt-3 flex items-center gap-2 mx-auto rounded-lg bg-accent/15 px-3 py-1.5 text-sm text-accent hover:bg-accent/25 transition-colors"
-                          onClick={() => run(inputValue)}
-                        >
-                          <img src="./demothat-mascot-ed-neutral.svg" alt="Ed" className="h-4 w-4 object-contain" />
-                          Command Ed: &ldquo;{inputValue}&rdquo;
-                        </button>
-                      )}
-                    </div>
-                  </Command.Empty>
-
-                  {/* Free-text Command Ed — always visible when typing */}
-                  {inputValue.trim() && (
-                    <Command.Group>
-                      <PaletteItem
-                        id="ask-ed-free"
-                        icon={
-                          <img src="./demothat-mascot-ed-neutral.svg" alt="Ed" className="h-4 w-4 object-contain" />
-                        }
-                        label={`Command Ed: "${inputValue}"`}
-                        isActive={activeHighlight === 'ask-ed-free'}
-                        onHighlight={() => setActiveHighlight('ask-ed-free')}
-                        onSelect={() => run(inputValue)}
-                        badge="Enter"
-                      />
-                    </Command.Group>
-                  )}
-
-                  {grouped.map(({ group, label, actions }) => (
-                    <Command.Group key={group}>
-                      <div
-                        aria-hidden
-                        className="mb-1 mt-2.5 px-3.5 text-[11px] font-semibold uppercase tracking-wider text-muted first:mt-1"
-                      >
-                        {label}
-                      </div>
-                      {actions.map((action: EdAction) => {
-                        const displayLabel = action.contextLabel ? action.contextLabel(ctx) : action.title
-                        const ActionIcon = action.icon
-                        return (
-                          <PaletteItem
-                            key={action.id}
-                            id={action.id}
-                            icon={<ActionIcon size={16} className="text-muted" />}
-                            label={displayLabel}
-                            description={action.description}
-                            isActive={activeHighlight === action.id}
-                            onHighlight={() => setActiveHighlight(action.id)}
-                            onSelect={() => run(resolvePrompt(action, ctx))}
-                            shortcut={action.shortcut}
-                          />
-                        )
-                      })}
-                    </Command.Group>
-                  ))}
-
-                  {/* Custom Command Ed (at bottom when no input) */}
-                  {!inputValue.trim() && (
-                    <Command.Group>
-                      <div
-                        aria-hidden
-                        className="mb-1 mt-2.5 px-3.5 text-[11px] font-semibold uppercase tracking-wider text-muted"
-                      >
-                        Custom
-                      </div>
-                      <PaletteItem
-                        id="ask-ed-custom"
-                        icon={
-                          <img src="./demothat-mascot-ed-neutral.svg" alt="Ed" className="h-4 w-4 object-contain" />
-                        }
-                        label="Command Ed…"
-                        description="Type a custom instruction in plain language"
-                        isActive={activeHighlight === 'ask-ed-custom'}
-                        onHighlight={() => setActiveHighlight('ask-ed-custom')}
-                        onSelect={() => {
-                          onClose()
-                        }}
-                      />
-                    </Command.Group>
-                  )}
-                </Command.List>
-
-                {/* Footer */}
-                <div className="flex items-center justify-between border-t border-line/60 bg-ctl/30 px-4 py-2">
-                  <span className="text-[11px] text-muted">
-                    <span className="font-mono">↑↓</span> navigate <span className="font-mono">·</span>{' '}
-                    <span className="font-mono">↵</span> run <span className="font-mono">·</span>{' '}
-                    <span className="font-mono">esc</span> close
-                  </span>
-                  <span className="text-[11px] text-muted">
-                    Undo with{' '}
-                    <span className="rounded border border-line bg-ctl px-1 py-0.5 font-mono text-[11px]">
-                      {isMac() ? '⌘Z' : 'Ctrl+Z'}
-                    </span>
-                  </span>
-                </div>
-              </Command>
+    <div className="modal-backdrop flex items-start justify-center pt-[14vh] px-4" onClick={requestClose}>
+      <div
+        ref={surfaceRef}
+        className="card-clean pointer-events-auto relative w-full max-w-[560px] overflow-hidden rounded-[14px]"
+        style={{ boxShadow: 'var(--sa-popover-shadow), 0 0 0 1px var(--sa-line)' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <Command
+          label="Ed command palette"
+          shouldFilter={true}
+          loop
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              e.preventDefault()
+              requestClose()
+            }
+          }}
+          className="w-full bg-panel text-fg"
+        >
+          {/* Search input */}
+          <div className="flex items-center gap-3 border-b border-line px-4 py-3 bg-ctl/30">
+            {/* Ed mascot avatar */}
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-line/60 bg-ctl/70 p-0.5">
+              <img src="./demothat-mascot-ed-neutral.svg" alt="Ed" className="h-full w-full object-contain" />
             </div>
-          </motion.div>
-        </>
-      )}
-    </AnimatePresence>
+
+            <Command.Input
+              value={inputValue}
+              onValueChange={setInputValue}
+              placeholder={PLACEHOLDER_EXAMPLES[placeholderIdx]}
+              className="flex-1 bg-transparent text-[14px] font-medium text-fg placeholder:text-muted outline-none leading-none"
+              autoFocus
+            />
+
+            <div className="flex items-center gap-2 shrink-0">
+              {inputValue && (
+                <span className="rounded-md border border-line bg-ctl px-1.5 py-0.5 text-[11px] font-mono text-muted">
+                  ↵
+                </span>
+              )}
+              <span className="rounded-md border border-line bg-ctl px-1.5 py-0.5 text-[11px] font-mono text-muted">
+                Esc
+              </span>
+            </div>
+          </div>
+
+          {/* Results list */}
+          <Command.List className="max-h-[380px] overflow-y-auto overscroll-contain no-scrollbar py-1.5" role="listbox">
+            <Command.Empty>
+              <div className="py-6 text-center">
+                <p className="text-sm text-muted">No matching actions</p>
+                {inputValue && (
+                  <button
+                    type="button"
+                    className="mt-3 flex items-center gap-2 mx-auto rounded-lg bg-accent/15 px-3 py-1.5 text-sm text-accent hover:bg-accent/25 transition-colors"
+                    onClick={() => run(inputValue)}
+                  >
+                    <img src="./demothat-mascot-ed-neutral.svg" alt="Ed" className="h-4 w-4 object-contain" />
+                    Command Ed: &ldquo;{inputValue}&rdquo;
+                  </button>
+                )}
+              </div>
+            </Command.Empty>
+
+            {/* Free-text Command Ed — always visible when typing */}
+            {inputValue.trim() && (
+              <Command.Group>
+                <PaletteItem
+                  id="ask-ed-free"
+                  icon={<img src="./demothat-mascot-ed-neutral.svg" alt="Ed" className="h-4 w-4 object-contain" />}
+                  label={`Command Ed: "${inputValue}"`}
+                  isActive={activeHighlight === 'ask-ed-free'}
+                  onHighlight={() => setActiveHighlight('ask-ed-free')}
+                  onSelect={() => run(inputValue)}
+                  badge="Enter"
+                />
+              </Command.Group>
+            )}
+
+            {grouped.map(({ group, label, actions }) => (
+              <Command.Group key={group}>
+                <div
+                  aria-hidden
+                  className="mb-1 mt-2.5 px-3.5 text-[11px] font-semibold uppercase tracking-wider text-muted first:mt-1"
+                >
+                  {label}
+                </div>
+                {actions.map((action: EdAction) => {
+                  const displayLabel = action.contextLabel ? action.contextLabel(ctx) : action.title
+                  const ActionIcon = action.icon
+                  return (
+                    <PaletteItem
+                      key={action.id}
+                      id={action.id}
+                      icon={<ActionIcon size={16} className="text-muted" />}
+                      label={displayLabel}
+                      description={action.description}
+                      isActive={activeHighlight === action.id}
+                      onHighlight={() => setActiveHighlight(action.id)}
+                      onSelect={() => run(resolvePrompt(action, ctx))}
+                      shortcut={action.shortcut}
+                    />
+                  )
+                })}
+              </Command.Group>
+            ))}
+
+            {/* Custom Command Ed (at bottom when no input) */}
+            {!inputValue.trim() && (
+              <Command.Group>
+                <div
+                  aria-hidden
+                  className="mb-1 mt-2.5 px-3.5 text-[11px] font-semibold uppercase tracking-wider text-muted"
+                >
+                  Custom
+                </div>
+                <PaletteItem
+                  id="ask-ed-custom"
+                  icon={<img src="./demothat-mascot-ed-neutral.svg" alt="Ed" className="h-4 w-4 object-contain" />}
+                  label="Command Ed…"
+                  description="Type a custom instruction in plain language"
+                  isActive={activeHighlight === 'ask-ed-custom'}
+                  onHighlight={() => setActiveHighlight('ask-ed-custom')}
+                  onSelect={() => {
+                    requestClose()
+                  }}
+                />
+              </Command.Group>
+            )}
+          </Command.List>
+
+          {/* Footer */}
+          <div className="flex items-center justify-between border-t border-line/60 bg-ctl/30 px-4 py-2">
+            <span className="text-[11px] text-muted">
+              <span className="font-mono">↑↓</span> navigate <span className="font-mono">·</span>{' '}
+              <span className="font-mono">↵</span> run <span className="font-mono">·</span>{' '}
+              <span className="font-mono">esc</span> close
+            </span>
+            <span className="text-[11px] text-muted">
+              Undo with{' '}
+              <span className="rounded border border-line bg-ctl px-1 py-0.5 font-mono text-[11px]">
+                {isMac() ? '⌘Z' : 'Ctrl+Z'}
+              </span>
+            </span>
+          </div>
+        </Command>
+      </div>
+    </div>
   )
 }
 

@@ -26,11 +26,12 @@ export const ToolbarButton = React.forwardRef<HTMLButtonElement, ToolbarButtonPr
       aria-pressed={active}
       className={cn(
         'inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-ctl border border-line',
-        'text-ui transition-colors',
+        'text-ui select-none cursor-pointer',
+        'transition-[background-color,border-color,color,transform] duration-120 active:scale-[0.96]',
         iconOnly ? 'h-8 w-8 p-0' : 'h-8 px-3',
         active ? 'bg-accent text-on-accent hover:bg-accent/90' : 'bg-ctl text-fg hover:bg-ctl-hover',
         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
-        'disabled:pointer-events-none disabled:opacity-45',
+        'disabled:pointer-events-none disabled:opacity-45 disabled:cursor-not-allowed',
         className,
       )}
       {...props}

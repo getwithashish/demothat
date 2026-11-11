@@ -102,6 +102,7 @@ export function CreditCapsule({ onBuyCredits, onGetPro, onEnterKey }: CreditCaps
   return (
     <div className="relative inline-flex whitespace-nowrap" style={{ WebkitAppRegion: 'no-drag' }}>
       <div
+        id="credits-trigger-btn"
         className={cn(
           'inline-flex h-8 items-stretch overflow-hidden rounded-ctl border border-line bg-ctl transition-colors duration-300',
           pulse && 'animate-credit-pulse',
@@ -131,6 +132,7 @@ export function CreditCapsule({ onBuyCredits, onGetPro, onEnterKey }: CreditCaps
             </button>
             <button
               type="button"
+              id="buy-credits-trigger-btn"
               onClick={onBuyCredits}
               className={cn(
                 'border-l border-line px-2.5 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent',
@@ -144,6 +146,7 @@ export function CreditCapsule({ onBuyCredits, onGetPro, onEnterKey }: CreditCaps
           <>
             <button
               type="button"
+              id="get-pro-trigger-btn"
               onClick={onGetPro}
               className="bg-accent px-2.5 font-semibold text-on-accent hover:opacity-90 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
             >

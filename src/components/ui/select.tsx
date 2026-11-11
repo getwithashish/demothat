@@ -11,8 +11,9 @@ const SelectGroup = SelectPrimitive.Group
 const SelectValue = SelectPrimitive.Value
 
 const TRIGGER_CLASS = [
-  'flex w-full items-center justify-between gap-2 rounded-ctl border border-line bg-ctl',
-  'px-2.5 py-2 text-left text-ui text-fg',
+  'group flex w-full items-center justify-between gap-2 rounded-ctl border border-line bg-ctl',
+  'px-2.5 py-2 text-left text-ui text-fg select-none',
+  'transition-[background-color,border-color,transform] duration-120 active:scale-[0.98]',
   'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
   'hover:bg-ctl-hover active:bg-ctl-hover data-[state=open]:bg-ctl-hover',
   'disabled:cursor-not-allowed disabled:opacity-45',
@@ -45,7 +46,11 @@ const SelectTrigger = React.forwardRef<
     >
       <span className="min-w-0 flex-1 truncate">{children}</span>
       <SelectPrimitive.Icon asChild>
-        <ChevronDown size={ICON_SIZE} strokeWidth={ICON_STROKE} className="h-4 w-4 shrink-0 text-muted" />
+        <ChevronDown
+          size={ICON_SIZE}
+          strokeWidth={ICON_STROKE}
+          className="h-4 w-4 shrink-0 text-muted transition-transform duration-200 ease-golden group-data-[state=open]:rotate-180"
+        />
       </SelectPrimitive.Icon>
     </SelectPrimitive.Trigger>
   )
@@ -109,7 +114,7 @@ const SelectContent = React.forwardRef<
     <SelectPrimitive.Content
       ref={ref}
       className={cn(
-        'relative z-[300] max-h-96 min-w-[8rem] overflow-hidden',
+        'animate-menu-in relative z-[300] max-h-96 min-w-[8rem] overflow-hidden',
         'rounded-ctl border border-line bg-panel text-fg shadow-[var(--sa-popover-shadow)]',
         position === 'popper' &&
           'data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1',
@@ -155,6 +160,7 @@ const SelectItem = React.forwardRef<
     className={cn(
       'relative flex w-full cursor-default select-none items-center rounded-[5px]',
       'py-1.5 pr-2.5 pl-7 text-ui text-fg',
+      'transition-[background-color,color,transform] duration-120 active:scale-[0.98]',
       'focus:bg-ctl-hover',
       'data-[disabled]:pointer-events-none data-[disabled]:opacity-45',
       className,

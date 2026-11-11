@@ -447,6 +447,7 @@ export function EditorPage() {
     const actions = [
       <Button
         key="ask-ed"
+        id="ed-command-trigger-btn"
         variant="secondary"
         size="sm"
         onClick={() => setIsCommandBarOpen(true)}
@@ -462,6 +463,7 @@ export function EditorPage() {
       <ExportButton key="export" isExporting={isExporting} onClick={openExportModal} disabled={duration <= 0} />,
       <Button
         key="publish"
+        id="publish-trigger-btn"
         variant="secondary"
         size="sm"
         onClick={() => setPublishOpen(true)}
@@ -478,6 +480,7 @@ export function EditorPage() {
       </Button>,
       <Button
         key="presets"
+        id="presets-trigger-btn"
         variant="secondary"
         size="sm"
         onClick={() => setPresetModalOpen(true)}
@@ -492,6 +495,7 @@ export function EditorPage() {
       </Button>,
       <Button
         key="settings"
+        id="settings-trigger-btn"
         variant="ghost"
         size="icon"
         onClick={() => setSettingsModalOpen(true)}
@@ -521,109 +525,111 @@ export function EditorPage() {
 
   return (
     <main className="flex h-screen w-screen flex-col overflow-hidden bg-app select-none">
-      {/*
-        Instead of conditionally rendering the entire layout, we now render it once
-        and use CSS classes to hide/show elements and expand the preview for fullscreen.
-        This prevents components like SidePanel from unmounting, preserving their internal state.
-      */}
-      <header
-        className={cn(
-          'relative flex h-11 flex-shrink-0 items-center justify-between gap-3 border-b border-line bg-panel px-3',
-          isPreviewFullScreen && 'hidden', // Hide header in fullscreen
-        )}
-        style={{ WebkitAppRegion: 'drag' }}
-      >
-        {/* Left: window controls (Linux) / actions (Windows), then the app wordmark */}
-        <div className="flex min-w-0 items-center gap-3">
-          {platform === 'linux' && (
-            <div className="flex h-full items-center">
-              <WindowControls />
-            </div>
+      <div className="flex h-full w-full flex-col overflow-hidden">
+        {/*
+          Instead of conditionally rendering the entire layout, we now render it once
+          and use CSS classes to hide/show elements and expand the preview for fullscreen.
+          This prevents components like SidePanel from unmounting, preserving their internal state.
+        */}
+        <header
+          className={cn(
+            'relative flex h-11 flex-shrink-0 items-center justify-between gap-3 border-b border-line bg-panel px-3',
+            isPreviewFullScreen && 'hidden', // Hide header in fullscreen
           )}
-          {platform === 'win32' && (
+          style={{ WebkitAppRegion: 'drag' }}
+        >
+          {/* Left: window controls (Linux) / actions (Windows), then the app wordmark */}
+          <div className="flex min-w-0 items-center gap-3">
+            {platform === 'linux' && (
+              <div className="flex h-full items-center">
+                <WindowControls />
+              </div>
+            )}
+            {platform === 'win32' && (
+              <div
+                className="flex flex-row-reverse items-center gap-2" // Use flex-row-reverse to get desired order
+                style={{ WebkitAppRegion: 'no-drag' }}
+              >
+                {renderHeaderActions()}
+              </div>
+            )}
+            <div className="pointer-events-none flex min-w-0 items-center gap-2 pl-1">
+              <ProjectMenu
+                onOpenProject={() => void openProject()}
+                onOpenRecent={(path) => void openProject(path)}
+                onSave={() => void handleSaveNow()}
+                onSaveCopy={() => void handleSaveCopy()}
+                onRename={handleRename}
+                onOpenRecovery={() => void handleOpenRecovery()}
+                onShowInFolder={handleShowInFolder}
+                onNewRecording={handleNewRecording}
+              />
+              {metaLabel && <span className="truncate font-mono text-sm text-muted">{metaLabel}</span>}
+              <SaveStatusIndicator />
+            </div>
+          </div>
+
+          {/* Right side controls (for non-Windows) */}
+          {platform !== 'win32' && (
             <div
-              className="flex flex-row-reverse items-center gap-2" // Use flex-row-reverse to get desired order
+              className="flex items-center gap-2" // Use flex-row-reverse to get desired order
               style={{ WebkitAppRegion: 'no-drag' }}
             >
               {renderHeaderActions()}
             </div>
           )}
-          <div className="pointer-events-none flex min-w-0 items-center gap-2 pl-1">
-            <ProjectMenu
-              onOpenProject={() => void openProject()}
-              onOpenRecent={(path) => void openProject(path)}
-              onSave={() => void handleSaveNow()}
-              onSaveCopy={() => void handleSaveCopy()}
-              onRename={handleRename}
-              onOpenRecovery={() => void handleOpenRecovery()}
-              onShowInFolder={handleShowInFolder}
-              onNewRecording={handleNewRecording}
-            />
-            {metaLabel && <span className="truncate font-mono text-sm text-muted">{metaLabel}</span>}
-            <SaveStatusIndicator />
-          </div>
-        </div>
+        </header>
 
-        {/* Right side controls (for non-Windows) */}
-        {platform !== 'win32' && (
+        <div className={cn('flex flex-1 overflow-hidden', isPreviewFullScreen && 'h-full w-full')}>
           <div
-            className="flex items-center gap-2" // Use flex-row-reverse to get desired order
-            style={{ WebkitAppRegion: 'no-drag' }}
+            className={cn('flex-shrink-0 overflow-hidden bg-panel', isPreviewFullScreen && 'hidden')}
+            style={isPreviewFullScreen ? undefined : { width: sidebarWidth }}
           >
-            {renderHeaderActions()}
+            <SidePanel />
           </div>
-        )}
-      </header>
-
-      <div className={cn('flex flex-1 overflow-hidden', isPreviewFullScreen && 'h-full w-full')}>
-        <div
-          className={cn('flex-shrink-0 overflow-hidden bg-panel', isPreviewFullScreen && 'hidden')}
-          style={isPreviewFullScreen ? undefined : { width: sidebarWidth }}
-        >
-          <SidePanel />
-        </div>
-        {/* Drag handle to resize the inspector, mirroring the timeline's height handle. */}
-        {!isPreviewFullScreen && (
-          <div
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="Resize inspector panel"
-            title="Drag to resize the inspector"
-            onMouseDown={beginSidebarResize}
-            className="group/inspector-resize relative z-10 w-1.5 shrink-0 cursor-ew-resize border-r border-line bg-panel
+          {/* Drag handle to resize the inspector, mirroring the timeline's height handle. */}
+          {!isPreviewFullScreen && (
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize inspector panel"
+              title="Drag to resize the inspector"
+              onMouseDown={beginSidebarResize}
+              className="group/inspector-resize relative z-10 w-1.5 shrink-0 cursor-ew-resize border-r border-line bg-panel
               after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-transparent
               hover:after:bg-accent active:after:bg-accent"
-          />
-        )}
-        <div className="flex flex-1 flex-col overflow-hidden bg-stage">
-          <div
-            className={cn(
-              'flex min-h-0 flex-1 items-center justify-center overflow-hidden p-6',
-              // Make the preview container expand to fill the screen in fullscreen mode
-              isPreviewFullScreen && 'fixed inset-0 z-50 bg-black p-0',
-            )}
-          >
-            <Preview videoRef={videoRef} onSeekFrame={handleSeekFrame} />
+            />
+          )}
+          <div className="flex flex-1 flex-col overflow-hidden bg-stage">
+            <div
+              className={cn(
+                'flex min-h-0 flex-1 items-center justify-center overflow-hidden p-6',
+                // Make the preview container expand to fill the screen in fullscreen mode
+                isPreviewFullScreen && 'fixed inset-0 z-50 bg-black p-0',
+              )}
+            >
+              <Preview videoRef={videoRef} onSeekFrame={handleSeekFrame} />
+            </div>
+            <div className={cn('flex-shrink-0', isPreviewFullScreen && 'hidden')}>
+              <PreviewControls />
+            </div>
+            <div
+              className={cn(
+                'flex-shrink-0 overflow-hidden border-t border-line bg-panel',
+                isPreviewFullScreen && 'hidden', // Hide Timeline in fullscreen
+              )}
+            >
+              <Timeline videoRef={videoRef} />
+            </div>
           </div>
-          <div className={cn('flex-shrink-0', isPreviewFullScreen && 'hidden')}>
-            <PreviewControls />
-          </div>
-          <div
-            className={cn(
-              'flex-shrink-0 overflow-hidden border-t border-line bg-panel',
-              isPreviewFullScreen && 'hidden', // Hide Timeline in fullscreen
-            )}
-          >
-            <Timeline videoRef={videoRef} />
-          </div>
-        </div>
 
-        {/* Ed Assistant on the right */}
-        {!isPreviewFullScreen && (
-          <div className="w-80 shrink-0 border-l border-line bg-panel overflow-hidden">
-            <EdSidebar />
-          </div>
-        )}
+          {/* Ed Assistant on the right */}
+          {!isPreviewFullScreen && (
+            <div className="w-80 shrink-0 border-l border-line bg-panel overflow-hidden">
+              <EdSidebar />
+            </div>
+          )}
+        </div>
       </div>
 
       {isExporting && isExportMinimized && (

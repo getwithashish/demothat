@@ -1,5 +1,6 @@
-import React, { useState, useRef, useCallback } from 'react'
+import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { cn } from '../../lib/utils'
+import { roll } from '../../lib/roll'
 
 export interface SliderProps {
   min?: number
@@ -22,11 +23,13 @@ export interface SliderProps {
 }
 
 /**
- * Slider (DESIGN_SPEC §6): label left, mono value right (12px), 4px ctl track with
- * an accent fill and a 14px text-coloured thumb.
- *
- * Pointer behaviour is unchanged from the previous implementation (drag + click to
- * seek). Keyboard support (arrows / Home / End) is additive.
+ * Slider (DESIGN_SPEC §6 + Family Values Motion System):
+ * - Direct subpixel tracking locked to pointer tip on drag and click.
+ * - Rolling digit odometer animation on value changes.
+ * - Zero CPU overhead at idle and during video/timeline playback.
+ * - Tactile feedback: thumb scales up on hover and dragging with soft accent glow ring.
+ * - Tabular monospace value readout with unclipped symbols (%, px, °, ×, s).
+ * - Full accessibility: role="slider", aria-valuenow, keyboard navigation.
  */
 export const Slider: React.FC<SliderProps> = ({
   min = 0,
@@ -42,47 +45,150 @@ export const Slider: React.FC<SliderProps> = ({
   className = '',
 }) => {
   const [internalValue, setInternalValue] = useState(value ?? defaultValue)
-  const sliderRef = useRef<HTMLDivElement>(null)
+  const [isDragging, setIsDragging] = useState(false)
 
   const currentValue = value ?? internalValue
-  const percentage = max === min ? 0 : ((currentValue - min) / (max - min)) * 100
+  const percentage = max === min ? 0 : Math.min(Math.max(((currentValue - min) / (max - min)) * 100, 0), 100)
 
-  const handleChange = useCallback(
-    (newValue: number) => {
-      const clampedValue = Math.min(Math.max(newValue, min), max)
-      const steppedValue = Math.round(clampedValue / step) * step
+  const sliderRef = useRef<HTMLDivElement>(null)
+  const fillRef = useRef<HTMLDivElement>(null)
+  const thumbRef = useRef<HTMLDivElement>(null)
+  const rollRef = useRef<HTMLSpanElement>(null)
+  const isDraggingRef = useRef(false)
+  const lastReportedRef = useRef(currentValue)
+  const cachedRectRef = useRef<DOMRect | null>(null)
+  const dragPctRef = useRef<number | null>(null)
+  const pendingChangeRef = useRef<number | null>(null)
+  const rafIdRef = useRef<number | null>(null)
 
-      setInternalValue(steppedValue)
-      onChange?.(steppedValue)
+  const onChangeRef = useRef(onChange)
+  onChangeRef.current = onChange
+
+  const formatRef = useRef(formatValue)
+  formatRef.current = formatValue
+
+  const getFormatted = useCallback((v: number) => {
+    return formatRef.current ? formatRef.current(v) : String(v)
+  }, [])
+
+  // Sync rolling digit odometer with currentValue
+  useEffect(() => {
+    if (rollRef.current) {
+      roll(rollRef.current, getFormatted(currentValue))
+    }
+    lastReportedRef.current = currentValue
+  }, [currentValue, getFormatted])
+
+  // Sync DOM styles when not dragging
+  useEffect(() => {
+    if (!isDraggingRef.current) {
+      if (fillRef.current) fillRef.current.style.width = `${percentage}%`
+      if (thumbRef.current) thumbRef.current.style.left = `${percentage}%`
+    }
+  }, [percentage])
+
+  const handlePointerStart = useCallback(
+    (clientX: number) => {
+      if (disabled || !sliderRef.current) return
+      const rect = sliderRef.current.getBoundingClientRect()
+      cachedRectRef.current = rect
+      isDraggingRef.current = true
+      setIsDragging(true)
+
+      const updateFromPointer = (x: number) => {
+        const r = cachedRectRef.current || sliderRef.current?.getBoundingClientRect()
+        if (!r || r.width <= 0) return
+        const ratio = Math.min(Math.max((x - r.left) / r.width, 0), 1)
+        const pct = ratio * 100
+        dragPctRef.current = pct
+
+        // Subpixel continuous glide directly locked to pointer tip
+        if (fillRef.current) fillRef.current.style.width = `${pct}%`
+        if (thumbRef.current) thumbRef.current.style.left = `${pct}%`
+
+        const raw = min + ratio * (max - min)
+        const stepped = Math.round((raw - min) / step) * step + min
+        const decimals = step.toString().split('.')[1]?.length ?? 0
+        const rounded = Number(stepped.toFixed(decimals))
+
+        if (lastReportedRef.current !== rounded) {
+          lastReportedRef.current = rounded
+          if (sliderRef.current) {
+            sliderRef.current.setAttribute('aria-valuenow', String(rounded))
+          }
+          if (rollRef.current) {
+            roll(rollRef.current, getFormatted(rounded))
+          }
+
+          // Schedule store update via animation frame with startTransition
+          // to prevent canvas re-renders from stalling continuous pointer movement
+          pendingChangeRef.current = rounded
+          if (rafIdRef.current === null) {
+            rafIdRef.current = requestAnimationFrame(() => {
+              rafIdRef.current = null
+              if (pendingChangeRef.current !== null) {
+                const v = pendingChangeRef.current
+                pendingChangeRef.current = null
+                React.startTransition(() => {
+                  onChangeRef.current?.(v)
+                })
+              }
+            })
+          }
+        }
+      }
+
+      updateFromPointer(clientX)
+
+      const handleMove = (ev: PointerEvent) => {
+        if (!isDraggingRef.current) return
+        updateFromPointer(ev.clientX)
+      }
+
+      const handleEnd = () => {
+        isDraggingRef.current = false
+        setIsDragging(false)
+        cachedRectRef.current = null
+        dragPctRef.current = null
+
+        window.removeEventListener('pointermove', handleMove)
+        window.removeEventListener('pointerup', handleEnd)
+        window.removeEventListener('pointercancel', handleEnd)
+
+        if (rafIdRef.current !== null) {
+          cancelAnimationFrame(rafIdRef.current)
+          rafIdRef.current = null
+        }
+        if (pendingChangeRef.current !== null) {
+          const v = pendingChangeRef.current
+          pendingChangeRef.current = null
+          onChangeRef.current?.(v)
+        } else {
+          onChangeRef.current?.(lastReportedRef.current)
+        }
+
+        setInternalValue(lastReportedRef.current)
+      }
+
+      window.addEventListener('pointermove', handleMove)
+      window.addEventListener('pointerup', handleEnd)
+      window.addEventListener('pointercancel', handleEnd)
     },
-    [min, max, step, onChange],
+    [disabled, min, max, step, getFormatted],
   )
 
-  const handleMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      if (disabled) return
-
-      const updateValue = (clientX: number) => {
-        if (!sliderRef.current) return
-
-        const rect = sliderRef.current.getBoundingClientRect()
-        const percentage = Math.min(Math.max((clientX - rect.left) / rect.width, 0), 1)
-        const newValue = min + percentage * (max - min)
-        handleChange(newValue)
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (disabled || e.button !== 0) return
+      e.preventDefault()
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId)
+      } catch (err) {
+        void err
       }
-
-      updateValue(e.clientX)
-
-      const handleMouseMove = (e: MouseEvent) => updateValue(e.clientX)
-      const handleMouseUp = () => {
-        document.removeEventListener('mousemove', handleMouseMove)
-        document.removeEventListener('mouseup', handleMouseUp)
-      }
-
-      document.addEventListener('mousemove', handleMouseMove)
-      document.addEventListener('mouseup', handleMouseUp)
+      handlePointerStart(e.clientX)
     },
-    [disabled, min, max, handleChange],
+    [disabled, handlePointerStart],
   )
 
   const handleKeyDown = useCallback(
@@ -102,24 +208,43 @@ export const Slider: React.FC<SliderProps> = ({
       const next = keys[e.key]
       if (next === undefined) return
       e.preventDefault()
-      handleChange(next)
+      const clamped = Math.min(Math.max(next, min), max)
+      const stepped = Math.round((clamped - min) / step) * step + min
+      const decimals = step.toString().split('.')[1]?.length ?? 0
+      const rounded = Number(stepped.toFixed(decimals))
+      lastReportedRef.current = rounded
+      setInternalValue(rounded)
+      onChangeRef.current?.(rounded)
+      if (rollRef.current) {
+        roll(rollRef.current, getFormatted(rounded))
+      }
     },
-    [disabled, min, max, step, currentValue, handleChange],
+    [disabled, min, max, step, currentValue, getFormatted],
   )
 
+  const displayString = getFormatted(currentValue)
+  const displayPercentage = isDragging && dragPctRef.current !== null ? dragPctRef.current : percentage
+
   return (
-    <div className={cn('w-full', className)}>
+    <div className={cn('w-full select-none', className)}>
       {(label || showValue) && (
         <div className="mb-1.5 flex items-center justify-between gap-3">
           {label ? <span className="text-ui text-fg">{label}</span> : <span aria-hidden="true" />}
           {showValue && (
-            <span className="font-mono text-sm tabular-nums text-muted">
-              {formatValue ? formatValue(currentValue) : String(currentValue)}
-            </span>
+            <div className="flex items-center justify-end shrink-0 min-w-[3.5rem] text-right">
+              <span ref={rollRef} className="roll" aria-hidden="true" />
+              <span className="sr-only">{displayString}</span>
+            </div>
           )}
         </div>
       )}
-      <div className="relative flex h-3.5 items-center">
+      <div
+        className={cn(
+          'relative flex h-6 w-full items-center touch-none cursor-pointer',
+          disabled && 'cursor-not-allowed opacity-45',
+        )}
+        onPointerDown={handlePointerDown}
+      >
         <div
           ref={sliderRef}
           role="slider"
@@ -129,21 +254,24 @@ export const Slider: React.FC<SliderProps> = ({
           aria-valuenow={currentValue}
           aria-label={label}
           aria-disabled={disabled}
-          className={cn(
-            'relative h-1 w-full rounded-[2px] bg-ctl',
-            'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
-            disabled ? 'cursor-not-allowed opacity-45' : 'cursor-pointer',
-          )}
-          onMouseDown={handleMouseDown}
+          className="relative h-1 w-full rounded-[2px] bg-ctl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
           onKeyDown={handleKeyDown}
         >
-          <div className="absolute top-0 left-0 h-full rounded-[2px] bg-accent" style={{ width: `${percentage}%` }} />
           <div
+            ref={fillRef}
+            className="absolute top-0 left-0 h-full rounded-[2px] bg-accent pointer-events-none"
+            style={{ width: `${displayPercentage}%` }}
+          />
+          <div
+            ref={thumbRef}
             className={cn(
-              'absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-fg',
-              disabled ? 'cursor-not-allowed' : 'cursor-pointer',
+              'absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-fg pointer-events-none',
+              'transition-transform duration-150',
+              'hover:scale-120',
+              isDragging && 'scale-125 shadow-md ring-4 ring-accent/20 cursor-grabbing',
+              disabled ? 'cursor-not-allowed' : 'cursor-grab',
             )}
-            style={{ left: `${percentage}%`, boxShadow: 'var(--sa-thumb-shadow)' }}
+            style={{ left: `${displayPercentage}%`, boxShadow: 'var(--sa-thumb-shadow)' }}
           />
         </div>
       </div>

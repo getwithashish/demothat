@@ -11,7 +11,7 @@ import {
 } from 'tabler-icons-react'
 import { useShallow } from 'zustand/react/shallow'
 import { formatTime } from '../../lib/utils'
-import { Slider } from '../ui/slider'
+import { TimelineScrubber } from './TimelineScrubber'
 import { Button } from '../ui/button'
 import { drawScene, getClipSourceTime, type VideoClipLayer } from '../../lib/renderer'
 import { cn } from '../../lib/utils'
@@ -407,6 +407,8 @@ export const Preview = memo(
       }
     }, [canvasDimensions, isPreviewFullScreen, videoUrl])
 
+    const hasSizedRef = useRef(false)
+
     // Size the canvas backing store to the DISPLAYED preview box (×dpr, aspect
     // preserved) instead of the 1920×1080 source. Keeps drawScene's output
     // pixel count near what the screen actually shows — the single biggest
@@ -414,11 +416,13 @@ export const Preview = memo(
     useEffect(() => {
       const container = previewContainerRef.current
       const { width: srcW, height: srcH } = canvasDimensions
-      if (!container || !videoUrl || !srcW || !srcH) return
+      if (!container || !srcW || !srcH) return
       const aspect = srcW / srcH
       const dpr = Math.min(window.devicePixelRatio || 1, 2)
       let raf = 0
-      const sync = () => {
+      let resizeTimer: number | null = null
+
+      const sync = (immediate = false) => {
         cancelAnimationFrame(raf)
         raf = requestAnimationFrame(() => {
           const r = container.getBoundingClientRect()
@@ -431,28 +435,39 @@ export const Preview = memo(
           }
           const fitW = w * dpr
           const fitH = h * dpr
-          // Never rasterize more pixels than the source video holds: beyond the
-          // source resolution the extra pixels add no detail, only cost — which
-          // is the stutter when the preview is enlarged (dpr can push a big box
-          // to 3MP+ per frame). Small previews still use their display size.
           const maxScale = Math.min(1, srcW / fitW, srcH / fitH)
           const nextW = Math.max(1, Math.round(fitW * maxScale))
           const nextH = Math.max(1, Math.round(fitH * maxScale))
-          setBackingSize((prev) =>
-            prev && prev.width === nextW && prev.height === nextH ? prev : { width: nextW, height: nextH },
-          )
+
+          const applySize = () => {
+            hasSizedRef.current = true
+            setBackingSize((prev) =>
+              prev && prev.width === nextW && prev.height === nextH ? prev : { width: nextW, height: nextH },
+            )
+          }
+
+          // During live timeline dragging or continuous resizing, debounce buffer resizing
+          // so HTML5 canvas is NEVER cleared to black while the user resizes!
+          if (immediate || !hasSizedRef.current) {
+            applySize()
+          } else {
+            if (resizeTimer !== null) window.clearTimeout(resizeTimer)
+            resizeTimer = window.setTimeout(applySize, 200)
+          }
         })
       }
-      sync()
-      const observer = new ResizeObserver(sync)
+
+      sync(true)
+      const observer = new ResizeObserver(() => sync(false))
       observer.observe(container)
-      window.addEventListener('resize', sync)
+      window.addEventListener('resize', () => sync(false))
       return () => {
         observer.disconnect()
-        window.removeEventListener('resize', sync)
+        window.removeEventListener('resize', () => sync(false))
         cancelAnimationFrame(raf)
+        if (resizeTimer !== null) window.clearTimeout(resizeTimer)
       }
-    }, [videoUrl, canvasDimensions, isPreviewFullScreen])
+    }, [canvasDimensions, isPreviewFullScreen])
 
     const beginEffectTransform = (event: React.MouseEvent, effect: VisualEffectRegion, mode: 'move' | 'resize') => {
       event.preventDefault()
@@ -755,51 +770,53 @@ export const Preview = memo(
       >
         <div
           id="preview-container"
-          className="transition-all duration-300 ease-out flex items-center justify-center w-full flex-1 min-h-0"
+          className="transition-all duration-450 ease-golden flex items-center justify-center w-full flex-1 min-h-0"
         >
-          {videoUrl ? (
-            // The wrapper hugs the canvas so the caption sits over the picture and not
-            // over the empty space around it. `container-type` lets the caption's size
-            // follow the preview's, which is the only way it stays legible when the
-            // window is resized. Both get EXPLICIT fill sizes: `width:auto/height:auto`
-            // + `maxWidth/maxHeight:100%` on the canvas depends on the wrapper's size,
-            // which depends on the canvas — a circular constraint that resolves to
-            // 0x0 (invisible preview), which is exactly the "black screen" bug:
-            // the canvas held pixels all along, but was never laid out on screen.
-            <div
-              className="relative flex items-center justify-center"
-              style={{ containerType: 'inline-size', width: '100%', height: '100%', minHeight: 0 }}
-            >
-              <canvas
-                ref={canvasRef}
-                width={backingSize?.width ?? canvasDimensions.width}
-                height={backingSize?.height ?? canvasDimensions.height}
-                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                className="rounded-pv"
-              />
-              {activeCue && (
-                <div
-                  className="pointer-events-none absolute inset-x-0 bottom-[6%] flex justify-center px-[4%]"
-                  data-preview-caption
-                >
-                  <span
-                    className="rounded-[4px] bg-black/70 px-2 py-1 text-center leading-snug text-white"
-                    style={{ fontSize: 'clamp(11px, 2.6cqw, 26px)' }}
+          <div
+            id="morph-viewport"
+            className="morph-viewport relative flex items-center justify-center transition-all duration-500 ease-golden"
+            style={{
+              containerType: 'inline-size',
+              aspectRatio: `${canvasDimensions.width} / ${canvasDimensions.height}`,
+              maxWidth: '100%',
+              maxHeight: '100%',
+              width: '100%',
+              height: '100%',
+            }}
+          >
+            {videoUrl ? (
+              <>
+                <canvas
+                  ref={canvasRef}
+                  width={backingSize?.width ?? canvasDimensions.width}
+                  height={backingSize?.height ?? canvasDimensions.height}
+                  style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                  className="rounded-pv block"
+                />
+                {activeCue && (
+                  <div
+                    className="pointer-events-none absolute inset-x-0 bottom-[6%] flex justify-center px-[4%]"
+                    data-preview-caption
                   >
-                    {activeCue.text}
-                  </span>
+                    <span
+                      className="rounded-[4px] bg-black/70 px-2 py-1 text-center leading-snug text-white"
+                      style={{ fontSize: 'clamp(11px, 2.6cqw, 26px)' }}
+                    >
+                      {activeCue.text}
+                    </span>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="flex h-full w-full flex-col items-center justify-center gap-3 rounded-pv border border-dashed border-line text-muted">
+                <Movie size={32} strokeWidth={ICON_STROKE} className="text-muted" />
+                <div className="space-y-0.5 text-center">
+                  <p className="text-title font-semibold text-fg">No project loaded</p>
+                  <p className="text-sm text-muted">Load a project to begin editing</p>
                 </div>
-              )}
-            </div>
-          ) : (
-            <div className="flex h-full w-full flex-col items-center justify-center gap-3 rounded-pv border border-dashed border-line text-muted">
-              <Movie size={32} strokeWidth={ICON_STROKE} className="text-muted" />
-              <div className="space-y-0.5 text-center">
-                <p className="text-title font-semibold text-fg">No project loaded</p>
-                <p className="text-sm text-muted">Load a project to begin editing</p>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {videoUrl && effectOverlayBounds.width > 0 && effectOverlayBounds.height > 0 && (
@@ -1027,10 +1044,9 @@ export const Preview = memo(
               <span className="ml-1 shrink-0 font-mono text-sm tabular-nums text-fg">
                 {formatTime(currentTime, true)}
               </span>
-              <Slider
+              <TimelineScrubber
                 min={0}
                 max={duration}
-                step={0.01}
                 value={currentTime}
                 onChange={handleScrub}
                 disabled={duration === 0}

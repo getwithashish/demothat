@@ -221,7 +221,7 @@ export function PreviewControls() {
             onClick={() => void resetZoom()}
             title="Reset interface zoom (Cmd/Ctrl 0)"
             aria-label="Reset interface zoom"
-            className="h-8 min-w-[48px] rounded-ctl px-1 font-mono text-sm tabular-nums text-muted transition-colors hover:bg-ctl hover:text-fg"
+            className="h-8 min-w-[48px] select-none rounded-ctl px-1 font-mono text-sm tabular-nums text-muted transition-[background-color,color,transform] duration-120 active:scale-95 hover:bg-ctl hover:text-fg"
           >
             {Math.round(zoomFactor * 100)}%
           </button>

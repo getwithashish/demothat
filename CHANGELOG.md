@@ -1,3 +1,9 @@
+## [1.21.0-beta.5](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.4...v1.21.0-beta.5) (2026-11-13)
+
+### Features
+
+* **export:** implement multi-process parallel video export engine ([06086a2](https://github.com/getwithashish/DemoThat/commit/06086a2d19646674f81284a8371247d17de30dd3))
+
 ## [1.21.0-beta.4](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.3...v1.21.0-beta.4) (2026-11-13)
 
 ### Features

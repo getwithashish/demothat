@@ -15,6 +15,7 @@ type RenderStartPayload = {
   exportSettings: ExportSettings
   renderWidth?: number
   renderHeight?: number
+  duration?: number
 }
 
 // These are needed to regenerate bitmaps within the renderer worker context.
@@ -140,7 +141,11 @@ export function RendererPage() {
 
         canvas.width = outputWidth
         canvas.height = outputHeight
-        const ctx = canvas.getContext('2d', { alpha: false })
+        const ctx = canvas.getContext('2d', {
+          alpha: false,
+          desynchronized: true,
+          willReadFrequently: true,
+        })
         if (!ctx) throw new Error('Failed to get 2D context from canvas.')
 
         // --- 2. PREPARE STATE AND ASSETS ---
@@ -247,12 +252,18 @@ export function RendererPage() {
         clipVideos.sort((a, b) => (a.clip.order ?? 0) - (b.clip.order ?? 0))
 
         // --- 4. CALCULATE EXPORT DURATION AND FRAMES ---
-        let exportDuration = projectState.duration
-        Object.values(projectState.cutRegions).forEach((region) => (exportDuration -= region.duration))
-        Object.values(projectState.speedRegions).forEach((region) => {
-          exportDuration -= region.duration
-          exportDuration += region.duration / region.speed
-        })
+        let exportDuration: number
+        if (typeof payload.duration === 'number' && Number.isFinite(payload.duration)) {
+          exportDuration = payload.duration
+        } else {
+          let calculated = Number(projectState.duration) || 0
+          Object.values(projectState.cutRegions).forEach((region) => (calculated -= region.duration))
+          Object.values(projectState.speedRegions).forEach((region) => {
+            calculated -= region.duration
+            calculated += region.duration / region.speed
+          })
+          exportDuration = calculated
+        }
         exportDuration = Math.max(0, exportDuration)
         const totalFrames = Math.floor(exportDuration * fps)
         log.info(
@@ -260,24 +271,49 @@ export function RendererPage() {
         )
 
         // --- 5. SETUP SEEK-DRIVEN RENDER LOOP ---
-        const seekPromise = (videoElement: HTMLVideoElement) => {
-          return new Promise<void>((resolve) => {
-            const timeout = setTimeout(() => {
-              log.warn('[RendererPage] Seek operation timed out.')
-              videoElement.removeEventListener('seeked', onSeeked) // Clean up listener on timeout
-              resolve() // Resolve anyway to not block the loop
-            }, 1000) // 1 second timeout
+        const seekVideo = (videoElement: HTMLVideoElement, targetTime: number): Promise<void> => {
+          const maxDuration =
+            Number.isFinite(videoElement.duration) && videoElement.duration > 0 ? videoElement.duration : Infinity
+          const clampedTarget = Math.max(0, Math.min(targetTime, maxDuration))
 
-            const onSeeked = () => {
-              clearTimeout(timeout)
-              videoElement.removeEventListener('seeked', onSeeked)
+          if (Math.abs(videoElement.currentTime - clampedTarget) < 0.001) {
+            return Promise.resolve()
+          }
+          return new Promise<void>((resolve) => {
+            let timeout: NodeJS.Timeout | null = null
+            const onDone = () => {
+              if (timeout) clearTimeout(timeout)
+              videoElement.removeEventListener('seeked', onDone)
+              videoElement.removeEventListener('error', onDone)
               resolve()
             }
-            videoElement.addEventListener('seeked', onSeeked)
+            timeout = setTimeout(onDone, 300)
+            videoElement.addEventListener('seeked', onDone, { once: true })
+            videoElement.addEventListener('error', onDone, { once: true })
+            const prevTime = videoElement.currentTime
+            videoElement.currentTime = clampedTarget
+            if (videoElement.currentTime === prevTime && !videoElement.seeking) {
+              onDone()
+            }
           })
         }
 
+        // Bounded pipeline for in-flight frame writes. This keeps Chromium's render engine
+        // and FFmpeg's encoding process running in parallel without unbounded memory growth.
+        const MAX_IN_FLIGHT = 3
+        const inFlightWrites: Promise<{ aborted: boolean }>[] = []
+        let isAborted = false
+
         for (let frame = 0; frame < totalFrames; frame++) {
+          if (inFlightWrites.length >= MAX_IN_FLIGHT) {
+            const earliest = await inFlightWrites.shift()!
+            if (earliest.aborted) {
+              log.info('[RendererPage] Export aborted by the main process; stopping render loop.')
+              isAborted = true
+              break
+            }
+          }
+
           const exportTimestamp = frame / fps
           const sourceTimestamp = mapExportTimeToSourceTime(
             exportTimestamp,
@@ -286,9 +322,9 @@ export function RendererPage() {
             projectState.speedRegions,
           )
 
-          // Create seek promises for both videos
-          const mainSeek = seekPromise(video)
-          const webcamSeek = hasWebcam && webcamVideo ? seekPromise(webcamVideo) : Promise.resolve()
+          // Create seek promises for all video elements
+          const mainSeek = seekVideo(video, sourceTimestamp)
+          const webcamSeek = hasWebcam && webcamVideo ? seekVideo(webcamVideo, sourceTimestamp) : Promise.resolve()
 
           // Imported clips only contribute frames while the playhead is inside
           // their range; each one is seeked to its own source time.
@@ -298,15 +334,8 @@ export function RendererPage() {
             const clipSourceTime = sourceTimestamp - clip.startTime
             if (clipSourceTime < 0 || clipSourceTime >= clip.duration) continue
             const clamped = getClipSourceTime(clip, sourceTimestamp, clip.sourceDuration || element.duration || 0)
-            clipSeeks.push(seekPromise(element))
-            element.currentTime = clamped
+            clipSeeks.push(seekVideo(element, clamped))
             activeClipLayers.push({ clip, element })
-          }
-
-          // Set currentTime for both videos to trigger seeking
-          video.currentTime = sourceTimestamp
-          if (hasWebcam && webcamVideo) {
-            webcamVideo.currentTime = sourceTimestamp
           }
 
           // Wait for all seeks to complete
@@ -325,17 +354,31 @@ export function RendererPage() {
             activeClipLayers,
           )
 
-          // Send the rendered frame to the main process. The call resolves once
-          // FFmpeg has accepted the frame (backpressure), or with aborted=true
-          // when the export was cancelled or FFmpeg died — stop the loop then.
+          // Send the rendered frame to the main process. Direct view on buffer avoids re-allocation.
           const imageData = ctx.getImageData(0, 0, outputWidth, outputHeight)
-          const frameBuffer = Buffer.from(imageData.data.buffer)
+          const frameBuffer = new Uint8Array(
+            imageData.data.buffer,
+            imageData.data.byteOffset,
+            imageData.data.byteLength,
+          )
           const progress = ((frame + 1) / totalFrames) * 100
-          const { aborted } = await window.electronAPI.sendFrameToMain({ frame: frameBuffer, progress })
-          if (aborted) {
-            log.info('[RendererPage] Export aborted by the main process; stopping render loop.')
+          inFlightWrites.push(
+            window.electronAPI.sendFrameToMain({ frame: frameBuffer, progress }).catch(() => ({ aborted: true })),
+          )
+        }
+
+        // Drain remaining in-flight writes
+        for (const pending of inFlightWrites) {
+          const res = await pending
+          if (res.aborted) {
+            isAborted = true
             break
           }
+        }
+
+        if (isAborted) {
+          log.info('[RendererPage] Render aborted; skipping finishRender signal.')
+          return
         }
 
         // --- 6. FINISH ---
@@ -343,7 +386,6 @@ export function RendererPage() {
         window.electronAPI.finishRender()
       } catch (error) {
         log.error('[RendererPage] CRITICAL ERROR during render process:', error)
-        window.electronAPI.finishRender() // Ensure we always finish, even on error
       }
     })
 

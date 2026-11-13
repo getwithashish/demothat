@@ -216,7 +216,8 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
     height: 720,
     webPreferences: {
       preload: PRELOAD_SCRIPT,
-      offscreen: true,
+      offscreen: false,
+      backgroundThrottling: false,
       webSecurity: false,
     },
   })
@@ -304,8 +305,13 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
     })
   }
 
-  const emitProgress = () => {
+  let lastProgressEmitTime = 0
+  const emitProgress = (force = false) => {
     if (!editorWindow || editorWindow.isDestroyed()) return
+    const now = Date.now()
+    if (!force && now - lastProgressEmitTime < 100) return
+    lastProgressEmitTime = now
+
     const percent = Math.min(100, Math.max(frameProgress, encodeProgress))
     if (useCloud) {
       // The same render, reported against the cloud flow's own bar and label.
@@ -389,20 +395,33 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
         done(true)
         return
       }
-      if (stdin.write(frame)) {
-        done(false)
-        return
+      try {
+        if (stdin.write(frame)) {
+          done(false)
+          return
+        }
+        stdin.once('drain', onDrain)
+        stdin.once('error', onError)
+        unblockPendingWrite = () => done(true)
+      } catch (err) {
+        log.warn('[ExportManager] Error writing frame to stdin:', err)
+        done(true)
       }
-      stdin.once('drain', onDrain)
-      stdin.once('error', onError)
-      unblockPendingWrite = () => done(true)
     })
+
+  let writeQueue: Promise<void> = Promise.resolve()
 
   const frameHandler = async (
     _event: IpcMainInvokeEvent,
     { frame, progress }: { frame: Uint8Array; progress: number },
   ): Promise<FrameWriteResult> => {
-    const result = await writeFrame(frame)
+    // Chain writes in FIFO order so pipelined frames from renderer enter FFmpeg sequentially
+    const currentWrite = writeQueue.then(() => writeFrame(frame))
+    writeQueue = currentWrite.then(
+      () => {},
+      () => {},
+    )
+    const result = await currentWrite
     if (!result.aborted) framesWritten += 1
     frameProgress = Math.max(frameProgress, Number(progress) || 0)
     emitProgress()
@@ -431,10 +450,11 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
     for (const temporaryFile of temporaryFiles) fsPromises.unlink(temporaryFile).catch(() => undefined)
   }
 
-  const finishListener = () => {
+  const finishListener = async () => {
     log.info('[ExportManager] Render finished. Closing FFmpeg stdin.')
     renderFinished = true
-    emitProgress()
+    emitProgress(true)
+    await writeQueue.catch(() => {})
     if (!ffmpegClosed && ffmpeg.stdin?.writable) {
       ffmpeg.stdin.end()
     }
@@ -562,6 +582,7 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
         exportSettings,
         renderWidth,
         renderHeight,
+        duration: exportDuration,
       })
     }
   })

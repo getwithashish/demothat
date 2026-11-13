@@ -48,7 +48,19 @@ This project uses two permanent branches:
     - `docs: update README with installation instructions` → no release
     - `BREAKING CHANGE:` in the commit footer → triggers a major release
 8.  **Push to your fork:** `git push origin feat/your-amazing-feature`
-9.  **Open a Pull Request targeting `staging`** (not `main`). Fill out the PR template with as much detail as possible.
+9.  **Sign the CLA & Open a Pull Request:** All contributors must agree to the [DemoThat Contributor License Agreement (CLA)](CLA.md). When opening a Pull Request targeting `staging` (not `main`), check the CLA box in the PR template or comment on the PR to confirm agreement. Fill out the PR template with as much detail as possible.
+
+## Contributor License Agreement (CLA)
+
+DemoThat requires all contributors to sign our Contributor License Agreement before contributions can be merged. The CLA clarifies IP grants, guarantees that code remains free and open-source under GNU GPL v3, and confirms agreement to project guidelines and rules (`AGENTS.md`).
+
+You can sign the CLA by:
+
+- Checking the CLA agreement box in the Pull Request checklist.
+- Commenting `I have read the CLA Document and I hereby sign the CLA` on Your Pull Request.
+- Signing off your commits (`git commit -s`).
+
+See [CLA.md](CLA.md) for the full text.
 
 ## Release Flow
 

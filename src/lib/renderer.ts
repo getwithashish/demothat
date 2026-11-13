@@ -59,16 +59,86 @@ function lerp(start: number, end: number, t: number): number {
   return start * (1 - t) + end * t
 }
 
+interface CachedShadow {
+  canvas: HTMLCanvasElement
+  key: string
+  pad: number
+}
+let shadowCache: CachedShadow | null = null
+
+function drawCachedShadow(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  borderRadius: number,
+  blur: number,
+  offsetX: number,
+  offsetY: number,
+  color: string,
+): void {
+  if (typeof document === 'undefined') {
+    ctx.save()
+    ctx.shadowColor = color
+    ctx.shadowBlur = blur
+    ctx.shadowOffsetX = offsetX
+    ctx.shadowOffsetY = offsetY
+    const shadowPath = new Path2D()
+    shadowPath.roundRect(0, 0, width, height, borderRadius)
+    ctx.fillStyle = 'rgba(0,0,0,1)'
+    ctx.fill(shadowPath)
+    ctx.restore()
+    return
+  }
+
+  const roundedW = Math.round(width)
+  const roundedH = Math.round(height)
+  const key = `${roundedW}_${roundedH}_${borderRadius}_${blur}_${offsetX}_${offsetY}_${color}`
+
+  if (!shadowCache || shadowCache.key !== key) {
+    const pad = Math.ceil(blur * 2 + Math.max(Math.abs(offsetX), Math.abs(offsetY)))
+    const canvas = document.createElement('canvas')
+    canvas.width = roundedW + pad * 2
+    canvas.height = roundedH + pad * 2
+    const shadowCtx = canvas.getContext('2d')
+    if (shadowCtx) {
+      shadowCtx.shadowColor = color
+      shadowCtx.shadowBlur = blur
+      shadowCtx.shadowOffsetX = offsetX
+      shadowCtx.shadowOffsetY = offsetY
+      const shadowPath = new Path2D()
+      shadowPath.roundRect(pad, pad, roundedW, roundedH, borderRadius)
+      shadowCtx.fillStyle = 'rgba(0,0,0,1)'
+      shadowCtx.fill(shadowPath)
+      shadowCache = { canvas, key, pad }
+    }
+  }
+
+  if (shadowCache && shadowCache.key === key) {
+    ctx.drawImage(shadowCache.canvas, -shadowCache.pad, -shadowCache.pad)
+  } else {
+    ctx.save()
+    ctx.shadowColor = color
+    ctx.shadowBlur = blur
+    ctx.shadowOffsetX = offsetX
+    ctx.shadowOffsetY = offsetY
+    const shadowPath = new Path2D()
+    shadowPath.roundRect(0, 0, width, height, borderRadius)
+    ctx.fillStyle = 'rgba(0,0,0,1)'
+    ctx.fill(shadowPath)
+    ctx.restore()
+  }
+}
+
 /**
  * Draws the background with optimized rendering
  */
-const drawBackground = async (
+const drawBackground = (
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
   backgroundState: EditorState['frameStyles']['background'],
   preloadedImage: HTMLImageElement | null,
-): Promise<void> => {
+): void => {
   ctx.clearRect(0, 0, width, height)
 
   switch (backgroundState.type) {
@@ -204,21 +274,19 @@ const drawFrameLayer = (
 
   const { shadowBlur, shadowOffsetX, shadowOffsetY, borderRadius, shadowColor, borderWidth, borderColor } = frameStyles
 
-  // Shadow if needed (SKIPPED while live-previewing: blurring a 1080p path
-  // every playback frame is the single most expensive canvas op in the scene,
-  // and the shadow never changes — it only needs to exist on still frames and
-  // on export, where the full path runs).
+  // Shadow if needed (cached offscreen to eliminate per-frame Gaussian blur overhead).
+  // Skipped while live-previewing.
   if (shadowBlur > 0 && !livePreview) {
-    ctx.save()
-    ctx.shadowColor = shadowColor
-    ctx.shadowBlur = shadowBlur
-    ctx.shadowOffsetX = shadowOffsetX
-    ctx.shadowOffsetY = shadowOffsetY
-    const shadowPath = new Path2D()
-    shadowPath.roundRect(0, 0, frameContentWidth, frameContentHeight, borderRadius)
-    ctx.fillStyle = 'rgba(0,0,0,1)'
-    ctx.fill(shadowPath)
-    ctx.restore()
+    drawCachedShadow(
+      ctx,
+      frameContentWidth,
+      frameContentHeight,
+      borderRadius,
+      shadowBlur,
+      shadowOffsetX,
+      shadowOffsetY,
+      shadowColor,
+    )
   }
 
   // Draw the video and border
@@ -236,18 +304,23 @@ const drawFrameLayer = (
   }
   ctx.restore()
 
-  // --- 4. Draw Click Animations ---
-  if (state.cursorStyles.clickRippleEffect && state.recordingGeometry) {
+  // --- 4. Draw Click Animations & Cursor Setup ---
+  const lastEventIndex = findLastMetadataIndex(state.metadata, currentTime)
+
+  if (state.cursorStyles.clickRippleEffect && state.recordingGeometry && lastEventIndex > -1) {
     const { clickRippleDuration, clickRippleSize, clickRippleColor } = state.cursorStyles
     const rippleEasing = EASING_MAP.Balanced // Ripple uses a standard ease-out
 
-    const recentRippleClicks = state.metadata.filter(
-      (event) =>
-        event.type === 'click' &&
-        event.pressed &&
-        currentTime >= event.timestamp &&
-        currentTime < event.timestamp + clickRippleDuration,
-    )
+    // Search backwards from lastEventIndex instead of scanning the full metadata array
+    const minRippleTimestamp = currentTime - clickRippleDuration
+    const recentRippleClicks = []
+    for (let i = lastEventIndex; i >= 0; i--) {
+      const event = state.metadata[i]
+      if (event.timestamp < minRippleTimestamp) break
+      if (event.type === 'click' && event.pressed && currentTime >= event.timestamp) {
+        recentRippleClicks.push(event)
+      }
+    }
 
     for (const click of recentRippleClicks) {
       const progress = (currentTime - click.timestamp) / clickRippleDuration
@@ -272,8 +345,6 @@ const drawFrameLayer = (
   }
 
   // --- 5. Draw Cursor ---
-  const lastEventIndex = findLastMetadataIndex(state.metadata, currentTime)
-
   if (state.cursorStyles.showCursor && lastEventIndex > -1 && state.recordingGeometry) {
     // Smoothing turns the recorded samples into a continuous glide (see
     // lib/cursor-path.ts); with it off this is the raw last sample, as before.
@@ -322,17 +393,18 @@ const drawFrameLayer = (
 
         // Handle click scale animation
         let cursorScale = 1
-        if (state.cursorStyles.clickScaleEffect) {
+        if (state.cursorStyles.clickScaleEffect && lastEventIndex > -1) {
           const { clickScaleDuration, clickScaleAmount, clickScaleEasing } = state.cursorStyles
-          const mostRecentClick = state.metadata
-            .filter(
-              (e) =>
-                e.type === 'click' &&
-                e.pressed &&
-                e.timestamp <= currentTime &&
-                e.timestamp > currentTime - clickScaleDuration,
-            )
-            .pop()
+          let mostRecentClick
+          const minScaleTimestamp = currentTime - clickScaleDuration
+          for (let i = lastEventIndex; i >= 0; i--) {
+            const e = state.metadata[i]
+            if (e.timestamp <= minScaleTimestamp) break
+            if (e.type === 'click' && e.pressed && e.timestamp <= currentTime) {
+              mostRecentClick = e
+              break
+            }
+          }
 
           if (mostRecentClick) {
             const progress = (currentTime - mostRecentClick.timestamp) / clickScaleDuration
@@ -423,16 +495,16 @@ const drawClipLayer = (
   ctx.translate(frameX, frameY)
 
   if (shadowBlur > 0) {
-    ctx.save()
-    ctx.shadowColor = shadowColor
-    ctx.shadowBlur = shadowBlur
-    ctx.shadowOffsetX = shadowOffsetX
-    ctx.shadowOffsetY = shadowOffsetY
-    const shadowPath = new Path2D()
-    shadowPath.roundRect(0, 0, frameContentWidth, frameContentHeight, borderRadius)
-    ctx.fillStyle = 'rgba(0,0,0,1)'
-    ctx.fill(shadowPath)
-    ctx.restore()
+    drawCachedShadow(
+      ctx,
+      frameContentWidth,
+      frameContentHeight,
+      borderRadius,
+      shadowBlur,
+      shadowOffsetX,
+      shadowOffsetY,
+      shadowColor,
+    )
   }
 
   ctx.save()
@@ -490,7 +562,7 @@ export const drawScene = async (
   ctx.imageSmoothingQuality = options.livePreview ? 'low' : 'high'
 
   // --- 1. Draw Background ---
-  await drawBackground(ctx, outputWidth, outputHeight, state.frameStyles.background, preloadedBgImage)
+  drawBackground(ctx, outputWidth, outputHeight, state.frameStyles.background, preloadedBgImage)
 
   // --- 2. Calculate Frame and Content Dimensions ---
   const camera = getCameraPoseAtTime(state.cameraMotions, currentTime) ?? {
@@ -646,18 +718,19 @@ export const drawScene = async (
       }
 
       currentPos = getTargetPosAtTime(currentTime)
+      previousPos = currentPos
       const checkInterval = 0.05
+      const transitionDuration = DEFAULTS.CAMERA.SMART_POSITION.TRANSITION_DURATION
+      // Any position change older than transitionDuration has already finished its transition.
+      // Searching further back than transitionDuration is redundant work.
+      const minSearchTime = Math.max(0, currentTime - transitionDuration - checkInterval)
 
-      for (let t = currentTime; t >= 0; t -= checkInterval) {
+      for (let t = currentTime; t >= minSearchTime; t -= checkInterval) {
         const posAtT = getTargetPosAtTime(t)
         if (posAtT !== currentPos) {
           previousPos = posAtT
           timeOfChange = t + checkInterval
           break
-        }
-        if (t === 0) {
-          previousPos = currentPos
-          timeOfChange = 0
         }
       }
     }
@@ -788,8 +861,8 @@ export const drawScene = async (
       ctx.drawImage(screenSnapshot, drawX, drawY, drawWidth, drawHeight)
       ctx.restore()
     }
-    const drawBaseBackground = async () => {
-      await drawBackground(ctx, outputWidth, outputHeight, state.frameStyles.background, preloadedBgImage)
+    const drawBaseBackground = () => {
+      drawBackground(ctx, outputWidth, outputHeight, state.frameStyles.background, preloadedBgImage)
     }
 
     const largeWidth = Math.min(outputWidth * 0.48, initialWebcamWidth * Math.max(1, finalWebcamScale) * 1.55)
@@ -899,7 +972,7 @@ export const drawScene = async (
     const presenterAlpha = lerp(fromComposition.presenterAlpha, toComposition.presenterAlpha, eased)
     const presenterRadius = lerp(fromComposition.presenterRadius, toComposition.presenterRadius, eased)
 
-    await drawBaseBackground()
+    drawBaseBackground()
     drawScreenInRect(screenRect, screenAlpha)
     drawPresenter(presenterRect, presenterRadius, presenterAlpha)
   }

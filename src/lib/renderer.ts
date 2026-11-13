@@ -62,13 +62,13 @@ function lerp(start: number, end: number, t: number): number {
 /**
  * Draws the background with optimized rendering
  */
-const drawBackground = async (
+const drawBackground = (
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
   backgroundState: EditorState['frameStyles']['background'],
   preloadedImage: HTMLImageElement | null,
-): Promise<void> => {
+): void => {
   ctx.clearRect(0, 0, width, height)
 
   switch (backgroundState.type) {
@@ -236,18 +236,23 @@ const drawFrameLayer = (
   }
   ctx.restore()
 
-  // --- 4. Draw Click Animations ---
-  if (state.cursorStyles.clickRippleEffect && state.recordingGeometry) {
+  // --- 4. Draw Click Animations & Cursor Setup ---
+  const lastEventIndex = findLastMetadataIndex(state.metadata, currentTime)
+
+  if (state.cursorStyles.clickRippleEffect && state.recordingGeometry && lastEventIndex > -1) {
     const { clickRippleDuration, clickRippleSize, clickRippleColor } = state.cursorStyles
     const rippleEasing = EASING_MAP.Balanced // Ripple uses a standard ease-out
 
-    const recentRippleClicks = state.metadata.filter(
-      (event) =>
-        event.type === 'click' &&
-        event.pressed &&
-        currentTime >= event.timestamp &&
-        currentTime < event.timestamp + clickRippleDuration,
-    )
+    // Search backwards from lastEventIndex instead of scanning the full metadata array
+    const minRippleTimestamp = currentTime - clickRippleDuration
+    const recentRippleClicks = []
+    for (let i = lastEventIndex; i >= 0; i--) {
+      const event = state.metadata[i]
+      if (event.timestamp < minRippleTimestamp) break
+      if (event.type === 'click' && event.pressed && currentTime >= event.timestamp) {
+        recentRippleClicks.push(event)
+      }
+    }
 
     for (const click of recentRippleClicks) {
       const progress = (currentTime - click.timestamp) / clickRippleDuration
@@ -272,8 +277,6 @@ const drawFrameLayer = (
   }
 
   // --- 5. Draw Cursor ---
-  const lastEventIndex = findLastMetadataIndex(state.metadata, currentTime)
-
   if (state.cursorStyles.showCursor && lastEventIndex > -1 && state.recordingGeometry) {
     // Smoothing turns the recorded samples into a continuous glide (see
     // lib/cursor-path.ts); with it off this is the raw last sample, as before.
@@ -322,17 +325,18 @@ const drawFrameLayer = (
 
         // Handle click scale animation
         let cursorScale = 1
-        if (state.cursorStyles.clickScaleEffect) {
+        if (state.cursorStyles.clickScaleEffect && lastEventIndex > -1) {
           const { clickScaleDuration, clickScaleAmount, clickScaleEasing } = state.cursorStyles
-          const mostRecentClick = state.metadata
-            .filter(
-              (e) =>
-                e.type === 'click' &&
-                e.pressed &&
-                e.timestamp <= currentTime &&
-                e.timestamp > currentTime - clickScaleDuration,
-            )
-            .pop()
+          let mostRecentClick
+          const minScaleTimestamp = currentTime - clickScaleDuration
+          for (let i = lastEventIndex; i >= 0; i--) {
+            const e = state.metadata[i]
+            if (e.timestamp <= minScaleTimestamp) break
+            if (e.type === 'click' && e.pressed && e.timestamp <= currentTime) {
+              mostRecentClick = e
+              break
+            }
+          }
 
           if (mostRecentClick) {
             const progress = (currentTime - mostRecentClick.timestamp) / clickScaleDuration
@@ -490,7 +494,7 @@ export const drawScene = async (
   ctx.imageSmoothingQuality = options.livePreview ? 'low' : 'high'
 
   // --- 1. Draw Background ---
-  await drawBackground(ctx, outputWidth, outputHeight, state.frameStyles.background, preloadedBgImage)
+  drawBackground(ctx, outputWidth, outputHeight, state.frameStyles.background, preloadedBgImage)
 
   // --- 2. Calculate Frame and Content Dimensions ---
   const camera = getCameraPoseAtTime(state.cameraMotions, currentTime) ?? {
@@ -646,18 +650,19 @@ export const drawScene = async (
       }
 
       currentPos = getTargetPosAtTime(currentTime)
+      previousPos = currentPos
       const checkInterval = 0.05
+      const transitionDuration = DEFAULTS.CAMERA.SMART_POSITION.TRANSITION_DURATION
+      // Any position change older than transitionDuration has already finished its transition.
+      // Searching further back than transitionDuration is redundant work.
+      const minSearchTime = Math.max(0, currentTime - transitionDuration - checkInterval)
 
-      for (let t = currentTime; t >= 0; t -= checkInterval) {
+      for (let t = currentTime; t >= minSearchTime; t -= checkInterval) {
         const posAtT = getTargetPosAtTime(t)
         if (posAtT !== currentPos) {
           previousPos = posAtT
           timeOfChange = t + checkInterval
           break
-        }
-        if (t === 0) {
-          previousPos = currentPos
-          timeOfChange = 0
         }
       }
     }
@@ -788,8 +793,8 @@ export const drawScene = async (
       ctx.drawImage(screenSnapshot, drawX, drawY, drawWidth, drawHeight)
       ctx.restore()
     }
-    const drawBaseBackground = async () => {
-      await drawBackground(ctx, outputWidth, outputHeight, state.frameStyles.background, preloadedBgImage)
+    const drawBaseBackground = () => {
+      drawBackground(ctx, outputWidth, outputHeight, state.frameStyles.background, preloadedBgImage)
     }
 
     const largeWidth = Math.min(outputWidth * 0.48, initialWebcamWidth * Math.max(1, finalWebcamScale) * 1.55)
@@ -899,7 +904,7 @@ export const drawScene = async (
     const presenterAlpha = lerp(fromComposition.presenterAlpha, toComposition.presenterAlpha, eased)
     const presenterRadius = lerp(fromComposition.presenterRadius, toComposition.presenterRadius, eased)
 
-    await drawBaseBackground()
+    drawBaseBackground()
     drawScreenInRect(screenRect, screenAlpha)
     drawPresenter(presenterRect, presenterRadius, presenterAlpha)
   }

@@ -140,7 +140,11 @@ export function RendererPage() {
 
         canvas.width = outputWidth
         canvas.height = outputHeight
-        const ctx = canvas.getContext('2d', { alpha: false })
+        const ctx = canvas.getContext('2d', {
+          alpha: false,
+          desynchronized: true,
+          willReadFrequently: true,
+        })
         if (!ctx) throw new Error('Failed to get 2D context from canvas.')
 
         // --- 2. PREPARE STATE AND ASSETS ---
@@ -260,24 +264,39 @@ export function RendererPage() {
         )
 
         // --- 5. SETUP SEEK-DRIVEN RENDER LOOP ---
-        const seekPromise = (videoElement: HTMLVideoElement) => {
+        const seekVideo = (videoElement: HTMLVideoElement, targetTime: number): Promise<void> => {
+          if (Math.abs(videoElement.currentTime - targetTime) < 0.001) {
+            return Promise.resolve()
+          }
           return new Promise<void>((resolve) => {
-            const timeout = setTimeout(() => {
-              log.warn('[RendererPage] Seek operation timed out.')
-              videoElement.removeEventListener('seeked', onSeeked) // Clean up listener on timeout
-              resolve() // Resolve anyway to not block the loop
-            }, 1000) // 1 second timeout
-
-            const onSeeked = () => {
-              clearTimeout(timeout)
-              videoElement.removeEventListener('seeked', onSeeked)
+            let timeout: NodeJS.Timeout | null = null
+            const onDone = () => {
+              if (timeout) clearTimeout(timeout)
+              videoElement.removeEventListener('seeked', onDone)
+              videoElement.removeEventListener('error', onDone)
               resolve()
             }
-            videoElement.addEventListener('seeked', onSeeked)
+            timeout = setTimeout(onDone, 500)
+            videoElement.addEventListener('seeked', onDone, { once: true })
+            videoElement.addEventListener('error', onDone, { once: true })
+            videoElement.currentTime = targetTime
           })
         }
 
+        // Bounded pipeline for in-flight frame writes. This keeps Chromium's render engine
+        // and FFmpeg's encoding process running in parallel without unbounded memory growth.
+        const MAX_IN_FLIGHT = 3
+        const inFlightWrites: Promise<{ aborted: boolean }>[] = []
+
         for (let frame = 0; frame < totalFrames; frame++) {
+          if (inFlightWrites.length >= MAX_IN_FLIGHT) {
+            const earliest = await inFlightWrites.shift()!
+            if (earliest.aborted) {
+              log.info('[RendererPage] Export aborted by the main process; stopping render loop.')
+              break
+            }
+          }
+
           const exportTimestamp = frame / fps
           const sourceTimestamp = mapExportTimeToSourceTime(
             exportTimestamp,
@@ -286,9 +305,9 @@ export function RendererPage() {
             projectState.speedRegions,
           )
 
-          // Create seek promises for both videos
-          const mainSeek = seekPromise(video)
-          const webcamSeek = hasWebcam && webcamVideo ? seekPromise(webcamVideo) : Promise.resolve()
+          // Create seek promises for all video elements
+          const mainSeek = seekVideo(video, sourceTimestamp)
+          const webcamSeek = hasWebcam && webcamVideo ? seekVideo(webcamVideo, sourceTimestamp) : Promise.resolve()
 
           // Imported clips only contribute frames while the playhead is inside
           // their range; each one is seeked to its own source time.
@@ -298,15 +317,8 @@ export function RendererPage() {
             const clipSourceTime = sourceTimestamp - clip.startTime
             if (clipSourceTime < 0 || clipSourceTime >= clip.duration) continue
             const clamped = getClipSourceTime(clip, sourceTimestamp, clip.sourceDuration || element.duration || 0)
-            clipSeeks.push(seekPromise(element))
-            element.currentTime = clamped
+            clipSeeks.push(seekVideo(element, clamped))
             activeClipLayers.push({ clip, element })
-          }
-
-          // Set currentTime for both videos to trigger seeking
-          video.currentTime = sourceTimestamp
-          if (hasWebcam && webcamVideo) {
-            webcamVideo.currentTime = sourceTimestamp
           }
 
           // Wait for all seeks to complete
@@ -325,17 +337,23 @@ export function RendererPage() {
             activeClipLayers,
           )
 
-          // Send the rendered frame to the main process. The call resolves once
-          // FFmpeg has accepted the frame (backpressure), or with aborted=true
-          // when the export was cancelled or FFmpeg died — stop the loop then.
+          // Send the rendered frame to the main process. Direct view on buffer avoids re-allocation.
           const imageData = ctx.getImageData(0, 0, outputWidth, outputHeight)
-          const frameBuffer = Buffer.from(imageData.data.buffer)
+          const frameBuffer = new Uint8Array(
+            imageData.data.buffer,
+            imageData.data.byteOffset,
+            imageData.data.byteLength,
+          )
           const progress = ((frame + 1) / totalFrames) * 100
-          const { aborted } = await window.electronAPI.sendFrameToMain({ frame: frameBuffer, progress })
-          if (aborted) {
-            log.info('[RendererPage] Export aborted by the main process; stopping render loop.')
-            break
-          }
+          inFlightWrites.push(
+            window.electronAPI.sendFrameToMain({ frame: frameBuffer, progress }).catch(() => ({ aborted: true })),
+          )
+        }
+
+        // Drain remaining in-flight writes
+        for (const pending of inFlightWrites) {
+          const res = await pending
+          if (res.aborted) break
         }
 
         // --- 6. FINISH ---

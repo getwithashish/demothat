@@ -2,6 +2,8 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { activeSeeks, loadVideo, seekVideo } from './video-seek'
+import { mapExportTimeToSourceTime } from './utils'
+import type { CutRegion } from '../types'
 
 describe('video-seek loading and seek engine', () => {
   let video: HTMLVideoElement
@@ -186,6 +188,41 @@ describe('video-seek loading and seek engine', () => {
       video.dispatchEvent(new Event('seeked'))
       await promise
       expect(resolved).toBe(true)
+    })
+  })
+
+  describe('chunk pre-seek calculation', () => {
+    it('computes correct initial source timestamp for chunk starting at frame 192 (6.4s at 30fps)', () => {
+      const fps = 30
+      const startFrame = 192
+      const initialExportTime = startFrame / fps // 6.4s
+
+      const duration = 8.0
+      const cutRegions = {}
+      const speedRegions = {}
+
+      const sourceTimestamp = mapExportTimeToSourceTime(initialExportTime, duration, cutRegions, speedRegions)
+      expect(sourceTimestamp).toBeCloseTo(6.4, 3)
+    })
+
+    it('accounts for cut regions when calculating pre-seek timestamp for chunked worker', () => {
+      const fps = 30
+      const startFrame = 60 // 2.0s in exported timeline
+      const initialExportTime = startFrame / fps
+
+      // A 1.0s cut region from 0.5s to 1.5s
+      const cut1: CutRegion = {
+        id: 'cut1',
+        type: 'cut',
+        startTime: 0.5,
+        duration: 1.0,
+        zIndex: 0,
+      }
+      const cutRegions: Record<string, CutRegion> = { cut1 }
+
+      const sourceTimestamp = mapExportTimeToSourceTime(initialExportTime, 10.0, cutRegions, {})
+      // Because 1.0s was cut prior to 2.0s export time, source timestamp is shifted by +1.0s to 3.0s
+      expect(sourceTimestamp).toBeCloseTo(3.0, 3)
     })
   })
 })

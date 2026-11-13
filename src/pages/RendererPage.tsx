@@ -15,6 +15,7 @@ type RenderStartPayload = {
   exportSettings: ExportSettings
   renderWidth?: number
   renderHeight?: number
+  duration?: number
 }
 
 // These are needed to regenerate bitmaps within the renderer worker context.
@@ -251,12 +252,18 @@ export function RendererPage() {
         clipVideos.sort((a, b) => (a.clip.order ?? 0) - (b.clip.order ?? 0))
 
         // --- 4. CALCULATE EXPORT DURATION AND FRAMES ---
-        let exportDuration = projectState.duration
-        Object.values(projectState.cutRegions).forEach((region) => (exportDuration -= region.duration))
-        Object.values(projectState.speedRegions).forEach((region) => {
-          exportDuration -= region.duration
-          exportDuration += region.duration / region.speed
-        })
+        let exportDuration: number
+        if (typeof payload.duration === 'number' && Number.isFinite(payload.duration)) {
+          exportDuration = payload.duration
+        } else {
+          let calculated = Number(projectState.duration) || 0
+          Object.values(projectState.cutRegions).forEach((region) => (calculated -= region.duration))
+          Object.values(projectState.speedRegions).forEach((region) => {
+            calculated -= region.duration
+            calculated += region.duration / region.speed
+          })
+          exportDuration = calculated
+        }
         exportDuration = Math.max(0, exportDuration)
         const totalFrames = Math.floor(exportDuration * fps)
         log.info(
@@ -265,7 +272,11 @@ export function RendererPage() {
 
         // --- 5. SETUP SEEK-DRIVEN RENDER LOOP ---
         const seekVideo = (videoElement: HTMLVideoElement, targetTime: number): Promise<void> => {
-          if (Math.abs(videoElement.currentTime - targetTime) < 0.001) {
+          const maxDuration =
+            Number.isFinite(videoElement.duration) && videoElement.duration > 0 ? videoElement.duration : Infinity
+          const clampedTarget = Math.max(0, Math.min(targetTime, maxDuration))
+
+          if (Math.abs(videoElement.currentTime - clampedTarget) < 0.001) {
             return Promise.resolve()
           }
           return new Promise<void>((resolve) => {
@@ -276,10 +287,14 @@ export function RendererPage() {
               videoElement.removeEventListener('error', onDone)
               resolve()
             }
-            timeout = setTimeout(onDone, 500)
+            timeout = setTimeout(onDone, 300)
             videoElement.addEventListener('seeked', onDone, { once: true })
             videoElement.addEventListener('error', onDone, { once: true })
-            videoElement.currentTime = targetTime
+            const prevTime = videoElement.currentTime
+            videoElement.currentTime = clampedTarget
+            if (videoElement.currentTime === prevTime && !videoElement.seeking) {
+              onDone()
+            }
           })
         }
 
@@ -287,12 +302,14 @@ export function RendererPage() {
         // and FFmpeg's encoding process running in parallel without unbounded memory growth.
         const MAX_IN_FLIGHT = 3
         const inFlightWrites: Promise<{ aborted: boolean }>[] = []
+        let isAborted = false
 
         for (let frame = 0; frame < totalFrames; frame++) {
           if (inFlightWrites.length >= MAX_IN_FLIGHT) {
             const earliest = await inFlightWrites.shift()!
             if (earliest.aborted) {
               log.info('[RendererPage] Export aborted by the main process; stopping render loop.')
+              isAborted = true
               break
             }
           }
@@ -353,7 +370,15 @@ export function RendererPage() {
         // Drain remaining in-flight writes
         for (const pending of inFlightWrites) {
           const res = await pending
-          if (res.aborted) break
+          if (res.aborted) {
+            isAborted = true
+            break
+          }
+        }
+
+        if (isAborted) {
+          log.info('[RendererPage] Render aborted; skipping finishRender signal.')
+          return
         }
 
         // --- 6. FINISH ---
@@ -361,7 +386,6 @@ export function RendererPage() {
         window.electronAPI.finishRender()
       } catch (error) {
         log.error('[RendererPage] CRITICAL ERROR during render process:', error)
-        window.electronAPI.finishRender() // Ensure we always finish, even on error
       }
     })
 

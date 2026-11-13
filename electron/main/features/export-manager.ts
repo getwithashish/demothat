@@ -395,13 +395,18 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
         done(true)
         return
       }
-      if (stdin.write(frame)) {
-        done(false)
-        return
+      try {
+        if (stdin.write(frame)) {
+          done(false)
+          return
+        }
+        stdin.once('drain', onDrain)
+        stdin.once('error', onError)
+        unblockPendingWrite = () => done(true)
+      } catch (err) {
+        log.warn('[ExportManager] Error writing frame to stdin:', err)
+        done(true)
       }
-      stdin.once('drain', onDrain)
-      stdin.once('error', onError)
-      unblockPendingWrite = () => done(true)
     })
 
   let writeQueue: Promise<void> = Promise.resolve()
@@ -445,10 +450,11 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
     for (const temporaryFile of temporaryFiles) fsPromises.unlink(temporaryFile).catch(() => undefined)
   }
 
-  const finishListener = () => {
+  const finishListener = async () => {
     log.info('[ExportManager] Render finished. Closing FFmpeg stdin.')
     renderFinished = true
     emitProgress(true)
+    await writeQueue.catch(() => {})
     if (!ffmpegClosed && ffmpeg.stdin?.writable) {
       ffmpeg.stdin.end()
     }
@@ -576,6 +582,7 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
         exportSettings,
         renderWidth,
         renderHeight,
+        duration: exportDuration,
       })
     }
   })

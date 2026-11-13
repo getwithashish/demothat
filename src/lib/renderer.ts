@@ -59,6 +59,76 @@ function lerp(start: number, end: number, t: number): number {
   return start * (1 - t) + end * t
 }
 
+interface CachedShadow {
+  canvas: HTMLCanvasElement
+  key: string
+  pad: number
+}
+let shadowCache: CachedShadow | null = null
+
+function drawCachedShadow(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  borderRadius: number,
+  blur: number,
+  offsetX: number,
+  offsetY: number,
+  color: string,
+): void {
+  if (typeof document === 'undefined') {
+    ctx.save()
+    ctx.shadowColor = color
+    ctx.shadowBlur = blur
+    ctx.shadowOffsetX = offsetX
+    ctx.shadowOffsetY = offsetY
+    const shadowPath = new Path2D()
+    shadowPath.roundRect(0, 0, width, height, borderRadius)
+    ctx.fillStyle = 'rgba(0,0,0,1)'
+    ctx.fill(shadowPath)
+    ctx.restore()
+    return
+  }
+
+  const roundedW = Math.round(width)
+  const roundedH = Math.round(height)
+  const key = `${roundedW}_${roundedH}_${borderRadius}_${blur}_${offsetX}_${offsetY}_${color}`
+
+  if (!shadowCache || shadowCache.key !== key) {
+    const pad = Math.ceil(blur * 2 + Math.max(Math.abs(offsetX), Math.abs(offsetY)))
+    const canvas = document.createElement('canvas')
+    canvas.width = roundedW + pad * 2
+    canvas.height = roundedH + pad * 2
+    const shadowCtx = canvas.getContext('2d')
+    if (shadowCtx) {
+      shadowCtx.shadowColor = color
+      shadowCtx.shadowBlur = blur
+      shadowCtx.shadowOffsetX = offsetX
+      shadowCtx.shadowOffsetY = offsetY
+      const shadowPath = new Path2D()
+      shadowPath.roundRect(pad, pad, roundedW, roundedH, borderRadius)
+      shadowCtx.fillStyle = 'rgba(0,0,0,1)'
+      shadowCtx.fill(shadowPath)
+      shadowCache = { canvas, key, pad }
+    }
+  }
+
+  if (shadowCache && shadowCache.key === key) {
+    ctx.drawImage(shadowCache.canvas, -shadowCache.pad, -shadowCache.pad)
+  } else {
+    ctx.save()
+    ctx.shadowColor = color
+    ctx.shadowBlur = blur
+    ctx.shadowOffsetX = offsetX
+    ctx.shadowOffsetY = offsetY
+    const shadowPath = new Path2D()
+    shadowPath.roundRect(0, 0, width, height, borderRadius)
+    ctx.fillStyle = 'rgba(0,0,0,1)'
+    ctx.fill(shadowPath)
+    ctx.restore()
+  }
+}
+
 /**
  * Draws the background with optimized rendering
  */
@@ -204,21 +274,19 @@ const drawFrameLayer = (
 
   const { shadowBlur, shadowOffsetX, shadowOffsetY, borderRadius, shadowColor, borderWidth, borderColor } = frameStyles
 
-  // Shadow if needed (SKIPPED while live-previewing: blurring a 1080p path
-  // every playback frame is the single most expensive canvas op in the scene,
-  // and the shadow never changes — it only needs to exist on still frames and
-  // on export, where the full path runs).
+  // Shadow if needed (cached offscreen to eliminate per-frame Gaussian blur overhead).
+  // Skipped while live-previewing.
   if (shadowBlur > 0 && !livePreview) {
-    ctx.save()
-    ctx.shadowColor = shadowColor
-    ctx.shadowBlur = shadowBlur
-    ctx.shadowOffsetX = shadowOffsetX
-    ctx.shadowOffsetY = shadowOffsetY
-    const shadowPath = new Path2D()
-    shadowPath.roundRect(0, 0, frameContentWidth, frameContentHeight, borderRadius)
-    ctx.fillStyle = 'rgba(0,0,0,1)'
-    ctx.fill(shadowPath)
-    ctx.restore()
+    drawCachedShadow(
+      ctx,
+      frameContentWidth,
+      frameContentHeight,
+      borderRadius,
+      shadowBlur,
+      shadowOffsetX,
+      shadowOffsetY,
+      shadowColor,
+    )
   }
 
   // Draw the video and border
@@ -427,16 +495,16 @@ const drawClipLayer = (
   ctx.translate(frameX, frameY)
 
   if (shadowBlur > 0) {
-    ctx.save()
-    ctx.shadowColor = shadowColor
-    ctx.shadowBlur = shadowBlur
-    ctx.shadowOffsetX = shadowOffsetX
-    ctx.shadowOffsetY = shadowOffsetY
-    const shadowPath = new Path2D()
-    shadowPath.roundRect(0, 0, frameContentWidth, frameContentHeight, borderRadius)
-    ctx.fillStyle = 'rgba(0,0,0,1)'
-    ctx.fill(shadowPath)
-    ctx.restore()
+    drawCachedShadow(
+      ctx,
+      frameContentWidth,
+      frameContentHeight,
+      borderRadius,
+      shadowBlur,
+      shadowOffsetX,
+      shadowOffsetY,
+      shadowColor,
+    )
   }
 
   ctx.save()

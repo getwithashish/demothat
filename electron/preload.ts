@@ -88,6 +88,7 @@ type RenderStartPayload = {
   exportSettings: any
   renderWidth?: number
   renderHeight?: number
+  duration?: number
 }
 
 type WindowSource = {

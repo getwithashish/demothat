@@ -13,6 +13,7 @@ export default defineConfig({
     // boot the real Electron runtime.
     alias: {
       'electron-log/main': path.resolve(__dirname, 'electron/test/stubs/electron-log-main.ts'),
+      'electron-log/renderer': path.resolve(__dirname, 'electron/test/stubs/electron-log-main.ts'),
       'electron-log': path.resolve(__dirname, 'electron/test/stubs/electron-log-main.ts'),
       electron: path.resolve(__dirname, 'electron/test/stubs/electron.ts'),
     },

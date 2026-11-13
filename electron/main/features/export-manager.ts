@@ -357,7 +357,7 @@ async function runParallelExport(options: ParallelExportOptions) {
 
   let exportAborted = false
   let concatProcess: ChildProcessWithoutNullStreams | null = null
-  let unblockPendingChunkWrite: (() => void) | null = null
+  const unblockPendingChunkWrites: Array<(() => void) | null> = Array(numWorkers).fill(null)
 
   const chunkWriteQueues: Promise<void>[] = Array(numWorkers).fill(Promise.resolve())
   const chunkFramesWritten: number[] = Array(numWorkers).fill(0)
@@ -368,7 +368,7 @@ async function runParallelExport(options: ParallelExportOptions) {
       const proc = chunkProcesses[chunkIndex]
       const stdin = proc?.stdin
       const done = (aborted: boolean) => {
-        unblockPendingChunkWrite = null
+        unblockPendingChunkWrites[chunkIndex] = null
         stdin?.off('drain', onDrain)
         stdin?.off('error', onError)
         resolve({ aborted })
@@ -387,7 +387,7 @@ async function runParallelExport(options: ParallelExportOptions) {
         }
         stdin.once('drain', onDrain)
         stdin.once('error', onError)
-        unblockPendingChunkWrite = () => done(true)
+        unblockPendingChunkWrites[chunkIndex] = () => done(true)
       } catch (err) {
         log.warn(`[ExportManager] Error writing frame to chunk #${chunkIndex} stdin:`, err)
         done(true)
@@ -421,9 +421,11 @@ async function runParallelExport(options: ParallelExportOptions) {
     exportAborted = true
     log.warn(`[ExportManager] Aborting parallel export: ${reason}`)
 
-    const unblock = unblockPendingChunkWrite
-    unblockPendingChunkWrite = null
-    unblock?.()
+    for (let i = 0; i < unblockPendingChunkWrites.length; i++) {
+      const unblock = unblockPendingChunkWrites[i]
+      unblockPendingChunkWrites[i] = null
+      unblock?.()
+    }
 
     for (const proc of chunkProcesses) {
       if (proc && !proc.killed) {

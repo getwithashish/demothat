@@ -30,7 +30,7 @@ function probe(): Promise<EncoderCapabilities> {
     })
     proc.on('error', (error) => {
       log.error('[EncoderCapabilities] Could not run FFmpeg:', error)
-      resolve({ libx265: false, hevcEncoders: [] })
+      resolve({ libx265: false, hevcEncoders: [], libx264: false, h264Encoders: [] })
     })
     proc.on('close', () => {
       const capabilities = parseEncoderCapabilities(stdout)

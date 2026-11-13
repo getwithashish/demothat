@@ -16,6 +16,11 @@ type RenderStartPayload = {
   renderWidth?: number
   renderHeight?: number
   duration?: number
+  chunkIndex?: number
+  startFrame?: number
+  endFrame?: number
+  totalFrames?: number
+  chunkDuration?: number
 }
 
 // These are needed to regenerate bitmaps within the renderer worker context.
@@ -265,9 +270,22 @@ export function RendererPage() {
           exportDuration = calculated
         }
         exportDuration = Math.max(0, exportDuration)
-        const totalFrames = Math.floor(exportDuration * fps)
+        const fullTotalFrames = Math.floor(exportDuration * fps)
+
+        const isChunked = typeof payload.chunkIndex === 'number' && typeof payload.startFrame === 'number'
+        const startFrame = isChunked ? Math.max(0, payload.startFrame!) : 0
+        const endFrame =
+          isChunked && typeof payload.endFrame === 'number'
+            ? Math.min(payload.endFrame, fullTotalFrames)
+            : fullTotalFrames
+        const chunkTotalFrames = Math.max(1, endFrame - startFrame)
+
         log.info(
-          `[RendererPage] Starting seek-driven rendering. Total frames: ${totalFrames}, Export duration: ${exportDuration.toFixed(2)}s`,
+          `[RendererPage] Starting seek-driven rendering. ${
+            isChunked
+              ? `Chunk #${payload.chunkIndex} [frames ${startFrame}..${endFrame}), slice count: ${chunkTotalFrames}`
+              : `Total frames: ${fullTotalFrames}`
+          }, Export duration: ${exportDuration.toFixed(2)}s`,
         )
 
         // --- 5. SETUP SEEK-DRIVEN RENDER LOOP ---
@@ -304,7 +322,7 @@ export function RendererPage() {
         const inFlightWrites: Promise<{ aborted: boolean }>[] = []
         let isAborted = false
 
-        for (let frame = 0; frame < totalFrames; frame++) {
+        for (let frame = startFrame; frame < endFrame; frame++) {
           if (inFlightWrites.length >= MAX_IN_FLIGHT) {
             const earliest = await inFlightWrites.shift()!
             if (earliest.aborted) {
@@ -361,9 +379,11 @@ export function RendererPage() {
             imageData.data.byteOffset,
             imageData.data.byteLength,
           )
-          const progress = ((frame + 1) / totalFrames) * 100
+          const progress = ((frame - startFrame + 1) / chunkTotalFrames) * 100
           inFlightWrites.push(
-            window.electronAPI.sendFrameToMain({ frame: frameBuffer, progress }).catch(() => ({ aborted: true })),
+            window.electronAPI
+              .sendFrameToMain({ frame: frameBuffer, progress, chunkIndex: payload.chunkIndex })
+              .catch(() => ({ aborted: true })),
           )
         }
 
@@ -382,8 +402,10 @@ export function RendererPage() {
         }
 
         // --- 6. FINISH ---
-        log.info('[RendererPage] Render loop finished. Sending "finishRender" signal.')
-        window.electronAPI.finishRender()
+        log.info(
+          `[RendererPage] Render loop finished${isChunked ? ` for chunk #${payload.chunkIndex}` : ''}. Sending "finishRender" signal.`,
+        )
+        window.electronAPI.finishRender(isChunked ? { chunkIndex: payload.chunkIndex } : undefined)
       } catch (error) {
         log.error('[RendererPage] CRITICAL ERROR during render process:', error)
       }

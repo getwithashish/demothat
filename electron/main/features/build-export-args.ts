@@ -6,7 +6,7 @@
 
 import type { ResolutionKey } from '../../../shared/export-resolutions'
 import { selectExportCodec } from '../../../shared/export-codec'
-import { videoEncodeArgs, type ExportQuality } from './export-video-args'
+import { encoderToH264Args, videoEncodeArgs, type ExportQuality } from './export-video-args'
 import { buildAudioTimelineSegments, buildRecordingAudioChains, timelineDuration } from './audio-timeline'
 
 export interface ExportRegion {
@@ -95,6 +95,32 @@ export interface BuildExportArgsOptions {
   clickSoundPath?: string | null
 }
 
+export interface BuildChunkExportArgsOptions {
+  renderWidth: number
+  renderHeight: number
+  targetWidth: number
+  targetHeight: number
+  fps: number
+  chunkDuration: number
+  outputPath: string
+  encoder?: string
+  quality?: ExportQuality
+}
+
+export interface BuildConcatExportArgsOptions {
+  concatListPath: string
+  outputPath: string
+  projectState: ExportProjectState
+  clickSoundPath?: string | null
+}
+
+export interface ExportAudioGraphResult {
+  audioArgs: string[]
+  filterComplex: string | null
+  hasAudio: boolean
+  exportDuration: number
+}
+
 /** Output clip length after cuts and speed regions. */
 /**
  * How long the exported video is.
@@ -163,6 +189,213 @@ function collectMappedClicks(projectState: ExportProjectState): Array<{ start: n
 export function needsBuiltInClickSound(projectState: ExportProjectState): boolean {
   if (projectState.mouseClickSoundPath) return false
   return collectMappedClicks(projectState).length > 0
+}
+
+/**
+ * Pure builder for full multi-track audio arguments and complex filtergraph.
+ * Kept standalone so both monolithic buildExportArgs and parallel buildConcatExportArgs
+ * share the identical graph logic without duplication.
+ */
+export function buildExportAudioGraph(
+  projectState: ExportProjectState,
+  clickSoundPath?: string | null,
+  firstAudioInputIndex = 1,
+): ExportAudioGraphResult {
+  const audioArgs: string[] = []
+  const audioFilterParts: string[] = []
+  const audioLabels: string[] = []
+  const exportDuration = computeExportDuration(projectState)
+
+  let inputIndex = firstAudioInputIndex
+  const masterVolume = Math.max(0, Math.min(1, Number(projectState.volume) || 0))
+
+  const recordingTracks: { index: number; volume: number; muted: boolean }[] = Array.isArray(projectState.audioTracks)
+    ? projectState.audioTracks.map((track) => ({
+        index: Math.max(0, Math.trunc(Number(track.index) || 0)),
+        volume: Math.max(0, Math.min(1, Number(track.volume))),
+        muted: track.muted === true,
+      }))
+    : [{ index: 0, volume: 1, muted: false }]
+  const keptTracks = recordingTracks.filter((track) => !track.muted && track.volume > 0)
+
+  if (projectState.hasAudioTrack && projectState.videoPath && !projectState.isMuted) {
+    const segments = buildAudioTimelineSegments(projectState)
+    const chains: { label: string; filters: string[] }[] = []
+    keptTracks.forEach((track, position) => {
+      const label = position === 0 ? 'original' : `original${position}`
+      const filters = buildRecordingAudioChains({
+        inputIndex,
+        streamIndex: track.index,
+        segments,
+        volume: masterVolume * track.volume,
+        label,
+        segmentPrefix: `${label}_seg`,
+      })
+      if (filters.length > 0) chains.push({ label, filters })
+    })
+
+    if (chains.length > 0) {
+      audioArgs.push('-i', projectState.videoPath)
+      for (const chain of chains) {
+        audioFilterParts.push(...chain.filters)
+        audioLabels.push(`[${chain.label}]`)
+      }
+      inputIndex++
+    }
+  }
+
+  const clips = (projectState.audioClips ?? []).filter(
+    (clip: ExportAudioClip) =>
+      clip.kind !== 'click' &&
+      clip.filePath &&
+      clip.duration > 0 &&
+      clip.volume > 0 &&
+      Number(clip.startTime) < Number(projectState.duration),
+  )
+  clips.forEach((clip: ExportAudioClip, index: number) => {
+    const start = mapSourceTimeToExportTime(Math.max(0, Number(clip.startTime) || 0), projectState)
+    if (start >= exportDuration) return
+    const clipDuration = Math.min(Number(clip.duration) || 0.1, exportDuration - start)
+    if (clipDuration <= 0) return
+    if (clip.loop) audioArgs.push('-stream_loop', '-1')
+    audioArgs.push('-i', clip.filePath)
+    const speed = Math.max(0.5, Math.min(2, Number(clip.speed) || 1))
+    const fadeIn = Math.max(0, Math.min(clipDuration, Number(clip.fadeIn) || 0))
+    const fadeOut = Math.max(0, Math.min(clipDuration, Number(clip.fadeOut) || 0))
+    const sourceStart = Math.max(0, Number(clip.sourceStart) || 0)
+    const sourceAvailable = Math.max(0.1, (Number(clip.sourceDuration) || clipDuration) - sourceStart)
+    const sourceTrimDuration = clip.loop ? clipDuration * speed : Math.min(clipDuration * speed, sourceAvailable)
+    const label = `music${index}`
+    let filter = `[${inputIndex}:a]atrim=start=${sourceStart}:duration=${sourceTrimDuration},asetpts=PTS-STARTPTS,atempo=${speed},volume=${Math.max(0, Math.min(1, Number(clip.volume) || 0))}`
+    if (fadeIn > 0) filter += `,afade=t=in:st=0:d=${fadeIn}`
+    if (fadeOut > 0) filter += `,afade=t=out:st=${Math.max(0, clipDuration - fadeOut)}:d=${fadeOut}`
+    filter += `,adelay=${Math.round(start * 1000)}|${Math.round(start * 1000)}[${label}]`
+    audioFilterParts.push(filter)
+    audioLabels.push(`[${label}]`)
+    inputIndex++
+  })
+
+  const mappedClicks = collectMappedClicks(projectState)
+  if (mappedClicks.length > 0 && clickSoundPath) {
+    audioArgs.push('-i', clickSoundPath)
+    const splitLabels = mappedClicks.map((_click, index: number) => `[clicksrc${index}]`).join('')
+    audioFilterParts.push(`[${inputIndex}:a]asplit=${mappedClicks.length}${splitLabels}`)
+    const volume = Math.max(0, Math.min(1, Number(projectState.mouseClickSoundVolume ?? 0.8)))
+    mappedClicks.forEach((click, index) => {
+      const label = `click${index}`
+      const delay = Math.round(click.start * 1000)
+      audioFilterParts.push(
+        `[clicksrc${index}]atrim=duration=0.25,asetpts=PTS-STARTPTS,volume=${volume * click.clipVolume},adelay=${delay}|${delay}[${label}]`,
+      )
+      audioLabels.push(`[${label}]`)
+    })
+    inputIndex++
+  }
+
+  if (audioLabels.length > 0) {
+    const mixInputs = audioLabels.join('')
+    audioFilterParts.push(
+      `${mixInputs}amix=inputs=${audioLabels.length}:duration=longest:dropout_transition=0:normalize=0,alimiter=limit=0.95,atrim=duration=${exportDuration}[aout]`,
+    )
+    return {
+      audioArgs,
+      filterComplex: audioFilterParts.join(';'),
+      hasAudio: true,
+      exportDuration,
+    }
+  }
+
+  return {
+    audioArgs,
+    filterComplex: null,
+    hasAudio: false,
+    exportDuration,
+  }
+}
+
+/**
+ * Pure builder for a single video-only chunk exported from a worker window.
+ */
+export function buildChunkExportArgs(options: BuildChunkExportArgsOptions): string[] {
+  const { renderWidth, renderHeight, targetWidth, targetHeight, fps, chunkDuration, outputPath, encoder, quality } =
+    options
+  const scaled = renderWidth !== targetWidth || renderHeight !== targetHeight
+  const encodeArgs = encoderToH264Args(encoder, quality)
+
+  const args: string[] = [
+    '-y',
+    '-f',
+    'rawvideo',
+    '-vcodec',
+    'rawvideo',
+    '-pix_fmt',
+    'rgba',
+    '-s',
+    `${renderWidth}x${renderHeight}`,
+    '-r',
+    fps.toString(),
+    '-i',
+    '-',
+    '-map',
+    '0:v:0',
+  ]
+
+  if (scaled) {
+    args.push('-vf', `scale=${targetWidth}:${targetHeight}:flags=lanczos`)
+  }
+
+  args.push(...encodeArgs)
+
+  if (chunkDuration > 0) {
+    args.push('-t', chunkDuration.toString())
+  }
+
+  args.push('-progress', 'pipe:1', '-nostats', outputPath)
+  return args
+}
+
+/**
+ * Pure builder for the final lossless stitch and full multi-track audio mux.
+ */
+export function buildConcatExportArgs(options: BuildConcatExportArgsOptions): string[] {
+  const { concatListPath, outputPath, projectState, clickSoundPath } = options
+  const exportDuration = computeExportDuration(projectState)
+  const audioGraph = buildExportAudioGraph(projectState, clickSoundPath, 1)
+
+  const args: string[] = [
+    '-y',
+    '-f',
+    'concat',
+    '-safe',
+    '0',
+    '-i',
+    concatListPath,
+    ...audioGraph.audioArgs,
+    '-map',
+    '0:v:0',
+    '-c:v',
+    'copy',
+  ]
+
+  if (audioGraph.hasAudio && audioGraph.filterComplex) {
+    args.push(
+      '-filter_complex',
+      audioGraph.filterComplex,
+      '-map',
+      '[aout]',
+      '-c:a',
+      'aac',
+      '-b:a',
+      '192k',
+      '-t',
+      exportDuration.toString(),
+    )
+  } else {
+    args.push('-an', '-t', exportDuration.toString())
+  }
+
+  args.push('-movflags', '+faststart', '-progress', 'pipe:1', '-nostats', outputPath)
+  return args
 }
 
 /**
@@ -247,121 +480,12 @@ export function buildExportArgs(options: BuildExportArgsOptions): string[] {
     '-',
   ]
 
-  const audioFilterParts: string[] = []
-  const audioLabels: string[] = []
   const exportDuration = computeExportDuration(projectState)
 
   if (isMp4) {
-    let inputIndex = 1
-    const masterVolume = Math.max(0, Math.min(1, Number(projectState.volume) || 0))
-    /**
-     * The recording's audio sources, each with its own gain.
-     *
-     * The recording file holds one stream per source, and `[N:a]` addresses only the
-     * first of them — so mapping it once, as this did, silently drops every source
-     * but one. Each kept source gets its own chain, and they are mixed together with
-     * the imported clips below.
-     *
-     * A project saved before the sources were separated has no `audioTracks`, and its
-     * single stream is the whole of the recording's audio. An empty list is a
-     * different thing: it is a recording the editor believes has no audio, and
-     * falling back to stream 0 there would export audio the editor says is not
-     * there.
-     */
-    const recordingTracks: { index: number; volume: number; muted: boolean }[] = Array.isArray(projectState.audioTracks)
-      ? projectState.audioTracks.map((track) => ({
-          index: Math.max(0, Math.trunc(Number(track.index) || 0)),
-          volume: Math.max(0, Math.min(1, Number(track.volume))),
-          muted: track.muted === true,
-        }))
-      : [{ index: 0, volume: 1, muted: false }]
-    // A muted or silent source contributes nothing, and a chain that multiplies by
-    // zero is a decoder pass over the whole recording for no audio at all.
-    const keptTracks = recordingTracks.filter((track) => !track.muted && track.volume > 0)
+    const audioGraph = buildExportAudioGraph(projectState, options.clickSoundPath, 1)
+    ffmpegArgs.push(...audioGraph.audioArgs)
 
-    if (projectState.hasAudioTrack && projectState.videoPath && !projectState.isMuted) {
-      // The audio is cut and warped exactly as the picture is, so the two cannot run
-      // on different clocks once a cut or a speed region is in play.
-      const segments = buildAudioTimelineSegments(projectState)
-      const chains: { label: string; filters: string[] }[] = []
-      keptTracks.forEach((track, position) => {
-        const label = position === 0 ? 'original' : `original${position}`
-        const filters = buildRecordingAudioChains({
-          inputIndex,
-          streamIndex: track.index,
-          segments,
-          volume: masterVolume * track.volume,
-          label,
-          // Unique per source: a graph with two of them would otherwise define
-          // `[seg0]` twice, which FFmpeg rejects.
-          segmentPrefix: `${label}_seg`,
-        })
-        if (filters.length > 0) chains.push({ label, filters })
-      })
-
-      // The recording is only added as an input when something will actually be
-      // mapped from it — otherwise every later input's index would be off by one and
-      // an imported clip would be read out of the recording's file.
-      if (chains.length > 0) {
-        ffmpegArgs.push('-i', projectState.videoPath)
-        for (const chain of chains) {
-          audioFilterParts.push(...chain.filters)
-          audioLabels.push(`[${chain.label}]`)
-        }
-        inputIndex++
-      }
-    }
-
-    const clips = (projectState.audioClips ?? []).filter(
-      (clip: ExportAudioClip) =>
-        clip.kind !== 'click' &&
-        clip.filePath &&
-        clip.duration > 0 &&
-        clip.volume > 0 &&
-        Number(clip.startTime) < Number(projectState.duration),
-    )
-    clips.forEach((clip: ExportAudioClip, index: number) => {
-      const start = mapSourceTimeToExportTime(Math.max(0, Number(clip.startTime) || 0), projectState)
-      if (start >= exportDuration) return
-      const clipDuration = Math.min(Number(clip.duration) || 0.1, exportDuration - start)
-      if (clipDuration <= 0) return
-      if (clip.loop) ffmpegArgs.push('-stream_loop', '-1')
-      ffmpegArgs.push('-i', clip.filePath)
-      const speed = Math.max(0.5, Math.min(2, Number(clip.speed) || 1))
-      const fadeIn = Math.max(0, Math.min(clipDuration, Number(clip.fadeIn) || 0))
-      const fadeOut = Math.max(0, Math.min(clipDuration, Number(clip.fadeOut) || 0))
-      const sourceStart = Math.max(0, Number(clip.sourceStart) || 0)
-      const sourceAvailable = Math.max(0.1, (Number(clip.sourceDuration) || clipDuration) - sourceStart)
-      const sourceTrimDuration = clip.loop ? clipDuration * speed : Math.min(clipDuration * speed, sourceAvailable)
-      const label = `music${index}`
-      let filter = `[${inputIndex}:a]atrim=start=${sourceStart}:duration=${sourceTrimDuration},asetpts=PTS-STARTPTS,atempo=${speed},volume=${Math.max(0, Math.min(1, Number(clip.volume) || 0))}`
-      if (fadeIn > 0) filter += `,afade=t=in:st=0:d=${fadeIn}`
-      if (fadeOut > 0) filter += `,afade=t=out:st=${Math.max(0, clipDuration - fadeOut)}:d=${fadeOut}`
-      filter += `,adelay=${Math.round(start * 1000)}|${Math.round(start * 1000)}[${label}]`
-      audioFilterParts.push(filter)
-      audioLabels.push(`[${label}]`)
-      inputIndex++
-    })
-
-    const mappedClicks = collectMappedClicks(projectState)
-    if (mappedClicks.length > 0 && options.clickSoundPath) {
-      ffmpegArgs.push('-i', options.clickSoundPath)
-      const splitLabels = mappedClicks.map((_click, index: number) => `[clicksrc${index}]`).join('')
-      audioFilterParts.push(`[${inputIndex}:a]asplit=${mappedClicks.length}${splitLabels}`)
-      const volume = Math.max(0, Math.min(1, Number(projectState.mouseClickSoundVolume ?? 0.8)))
-      mappedClicks.forEach((click, index) => {
-        const label = `click${index}`
-        const delay = Math.round(click.start * 1000)
-        audioFilterParts.push(
-          `[clicksrc${index}]atrim=duration=0.25,asetpts=PTS-STARTPTS,volume=${volume * click.clipVolume},adelay=${delay}|${delay}[${label}]`,
-        )
-        audioLabels.push(`[${label}]`)
-      })
-      inputIndex++
-    }
-  }
-
-  if (isMp4) {
     const encodeArgs = intermediate
       ? INTERMEDIATE_VIDEO_ARGS
       : videoEncodeArgs(selectExportCodec(targetHeight), quality)
@@ -370,14 +494,10 @@ export function buildExportArgs(options: BuildExportArgsOptions): string[] {
       // The frame arrived at the capped render size; scale to the exact target.
       ffmpegArgs.push('-vf', `scale=${targetWidth}:${targetHeight}:flags=lanczos`)
     }
-    if (audioLabels.length > 0) {
-      const mixInputs = audioLabels.join('')
-      audioFilterParts.push(
-        `${mixInputs}amix=inputs=${audioLabels.length}:duration=longest:dropout_transition=0:normalize=0,alimiter=limit=0.95,atrim=duration=${exportDuration}[aout]`,
-      )
+    if (audioGraph.hasAudio && audioGraph.filterComplex) {
       ffmpegArgs.push(
         '-filter_complex',
-        audioFilterParts.join(';'),
+        audioGraph.filterComplex,
         '-map',
         '[aout]',
         ...encodeArgs,

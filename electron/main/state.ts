@@ -55,6 +55,7 @@ interface AppState {
   recorderWin: BrowserWindow | null
   editorWin: BrowserWindow | null
   renderWorker: BrowserWindow | null
+  renderWorkers: BrowserWindow[]
   savingWin: BrowserWindow | null
   selectionWin: BrowserWindow | null
 
@@ -107,6 +108,7 @@ export const appState: AppState = {
   recorderWin: null,
   editorWin: null,
   renderWorker: null,
+  renderWorkers: [],
   savingWin: null,
   selectionWin: null,
   tray: null,

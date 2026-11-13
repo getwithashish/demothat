@@ -8,6 +8,7 @@ import { applyRenderCap } from '../../shared/export-render-cap'
 import { drawScene, getClipSourceTime, type VideoClipLayer } from '../lib/renderer'
 import { prepareCursorBitmaps, mapExportTimeToSourceTime } from '../lib/utils'
 import { prepareCursorIcons } from '../lib/cursor-icons'
+import { loadVideo, seekVideo } from '../lib/video-seek'
 import type { VideoClip } from '../types'
 
 type RenderStartPayload = {
@@ -188,18 +189,6 @@ export function RendererPage() {
         const bgImage = await loadBackgroundImage(projectState.frameStyles.background)
 
         // --- 3. LOAD VIDEO SOURCES ---
-        const loadVideo = (videoElement: HTMLVideoElement, source: string, path: string): Promise<void> =>
-          new Promise((resolve, reject) => {
-            videoElement.onloadedmetadata = () => {
-              log.info(`[RendererPage] ${source} metadata loaded.`)
-              resolve()
-            }
-            videoElement.onerror = (e) => reject(new Error(`Failed to load ${source}: ${e}`))
-            videoElement.src = `media://${path}`
-            videoElement.muted = true
-            videoElement.load()
-          })
-
         const loadPromises: Promise<void>[] = [loadVideo(video, 'Main video', projectStateWithCursorBitmaps.videoPath!)]
         const hasWebcam = Boolean(
           projectStateWithCursorBitmaps.webcamVideoPath &&
@@ -216,12 +205,14 @@ export function RendererPage() {
         const clipVideos: { clip: VideoClip; element: HTMLVideoElement }[] = []
         const waitForMetadata = (element: HTMLVideoElement, label: string): Promise<void> =>
           new Promise((resolve) => {
-            if (element.readyState >= 1) {
+            if (element.readyState >= 2) {
               resolve()
               return
             }
             const cleanup = () => {
               clearTimeout(timeout)
+              element.removeEventListener('loadeddata', onLoaded)
+              element.removeEventListener('canplay', onLoaded)
               element.removeEventListener('loadedmetadata', onLoaded)
               element.removeEventListener('error', onError)
             }
@@ -239,8 +230,10 @@ export function RendererPage() {
               log.warn(`[RendererPage] Timed out loading ${label}`)
               resolve()
             }, 8000)
-            element.addEventListener('loadedmetadata', onLoaded)
-            element.addEventListener('error', onError)
+            element.addEventListener('loadeddata', onLoaded, { once: true })
+            element.addEventListener('canplay', onLoaded, { once: true })
+            element.addEventListener('loadedmetadata', onLoaded, { once: true })
+            element.addEventListener('error', onError, { once: true })
           })
 
         for (const clip of projectState.videoClips ?? []) {
@@ -288,33 +281,48 @@ export function RendererPage() {
           }, Export duration: ${exportDuration.toFixed(2)}s`,
         )
 
-        // --- 5. SETUP SEEK-DRIVEN RENDER LOOP ---
-        const seekVideo = (videoElement: HTMLVideoElement, targetTime: number): Promise<void> => {
-          const maxDuration =
-            Number.isFinite(videoElement.duration) && videoElement.duration > 0 ? videoElement.duration : Infinity
-          const clampedTarget = Math.max(0, Math.min(targetTime, maxDuration))
+        // --- 5. PRE-SEEK INITIAL FRAME FOR CHUNKED WORKERS ---
+        // For chunked workers (startFrame > 0), video elements start at 0s. The initial seek to the
+        // chunk start time crosses keyframes and takes longer (350-500ms under parallel load).
+        // Pre-seeking before entering the render loop ensures all video elements are settled
+        // and ready before frame 0 of the chunk is drawn, preventing black screen frames and
+        // cascading seek aborts.
+        if (startFrame > 0) {
+          const initialExportTimestamp = startFrame / fps
+          const initialSourceTimestamp = mapExportTimeToSourceTime(
+            initialExportTimestamp,
+            projectState.duration,
+            projectState.cutRegions,
+            projectState.speedRegions,
+          )
 
-          if (Math.abs(videoElement.currentTime - clampedTarget) < 0.001) {
-            return Promise.resolve()
+          log.info(
+            `[RendererPage] Pre-seeking chunk #${payload.chunkIndex ?? 0} to startFrame ${startFrame} (${initialSourceTimestamp.toFixed(3)}s)...`,
+          )
+
+          const preSeekPromises: Promise<void>[] = [seekVideo(video, initialSourceTimestamp, 5000)]
+          if (hasWebcam && webcamVideo) {
+            preSeekPromises.push(seekVideo(webcamVideo, initialSourceTimestamp, 5000))
           }
-          return new Promise<void>((resolve) => {
-            let timeout: NodeJS.Timeout | null = null
-            const onDone = () => {
-              if (timeout) clearTimeout(timeout)
-              videoElement.removeEventListener('seeked', onDone)
-              videoElement.removeEventListener('error', onDone)
-              resolve()
+          for (const { clip, element } of clipVideos) {
+            const clipSourceTime = initialSourceTimestamp - clip.startTime
+            if (clipSourceTime >= 0 && clipSourceTime < clip.duration) {
+              const clamped = getClipSourceTime(
+                clip,
+                initialSourceTimestamp,
+                clip.sourceDuration || element.duration || 0,
+              )
+              preSeekPromises.push(seekVideo(element, clamped, 5000))
             }
-            timeout = setTimeout(onDone, 300)
-            videoElement.addEventListener('seeked', onDone, { once: true })
-            videoElement.addEventListener('error', onDone, { once: true })
-            const prevTime = videoElement.currentTime
-            videoElement.currentTime = clampedTarget
-            if (videoElement.currentTime === prevTime && !videoElement.seeking) {
-              onDone()
-            }
-          })
+          }
+
+          await Promise.all(preSeekPromises)
+          log.info(
+            `[RendererPage] Pre-seek complete for chunk #${payload.chunkIndex ?? 0}. Video readyState: ${video.readyState}, currentTime: ${video.currentTime.toFixed(3)}s`,
+          )
         }
+
+        // --- 5b. SETUP SEEK-DRIVEN RENDER LOOP ---
 
         // Bounded pipeline for in-flight frame writes. This keeps Chromium's render engine
         // and FFmpeg's encoding process running in parallel without unbounded memory growth.

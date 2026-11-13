@@ -1,3 +1,13 @@
+## [1.21.0-beta.4](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.3...v1.21.0-beta.4) (2026-11-13)
+
+### Features
+
+* **export:** optimize export pipeline throughput and introduce CLA ([163f1d9](https://github.com/getwithashish/DemoThat/commit/163f1d98f83e8c25741f09765fcf1097423fe886))
+
+### Bug Fixes
+
+* **export:** resolve seek stalls, duration mismatch, aborted error handling, and shadow caching ([9e5e0a8](https://github.com/getwithashish/DemoThat/commit/9e5e0a8e5ef80a6de0f48678c6d9af7d88610125))
+
 ## [1.21.0-beta.3](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.2...v1.21.0-beta.3) (2026-11-11)
 
 ### Features

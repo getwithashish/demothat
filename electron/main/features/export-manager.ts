@@ -1,8 +1,8 @@
 // Contains business logic for video export.
 
 import log from 'electron-log/main'
-import { BrowserWindow, IpcMainInvokeEvent, ipcMain } from 'electron'
-import { spawn } from 'node:child_process'
+import { BrowserWindow, IpcMainEvent, IpcMainInvokeEvent, ipcMain } from 'electron'
+import { ChildProcessWithoutNullStreams, spawn } from 'node:child_process'
 import path from 'node:path'
 import os from 'node:os'
 import fs from 'node:fs'
@@ -13,6 +13,8 @@ import { VITE_DEV_SERVER_URL, RENDERER_DIST, PRELOAD_SCRIPT, VITE_PUBLIC } from 
 import { DEFAULT_CLICK_SOUND } from '../../../shared/click-sound'
 import {
   buildExportArgs,
+  buildChunkExportArgs,
+  buildConcatExportArgs,
   computeExportDuration,
   needsBuiltInClickSound,
   type ExportProjectState,
@@ -21,6 +23,7 @@ import {
 } from './build-export-args'
 import { writeSubtitleSidecar } from './subtitle-sidecar'
 import { getEncoderCapabilities } from './encoder-capabilities'
+import { selectBestH264Encoder } from '../lib/encoder-capabilities'
 import { getEntitlement } from './entitlement'
 import { recordExportPerf } from './export-perf'
 import {
@@ -66,6 +69,30 @@ function createBuiltInClickWav(): Buffer {
   return buffer
 }
 
+function createWorkerWindow(): BrowserWindow {
+  const win = new BrowserWindow({
+    show: false,
+    width: 1280,
+    height: 720,
+    webPreferences: {
+      preload: PRELOAD_SCRIPT,
+      offscreen: false,
+      backgroundThrottling: false,
+      webSecurity: false,
+    },
+  })
+  if (VITE_DEV_SERVER_URL) {
+    const renderUrl = `${VITE_DEV_SERVER_URL}#renderer`
+    win.loadURL(renderUrl)
+    log.info(`[ExportManager] Loading render worker URL (Dev): ${renderUrl}`)
+  } else {
+    const renderPath = path.join(RENDERER_DIST, 'index.html')
+    win.loadFile(renderPath, { hash: 'renderer' })
+    log.info(`[ExportManager] Loading render worker file (Prod): ${renderPath}#renderer`)
+  }
+  return win
+}
+
 interface ExportRequest {
   projectState: ExportProjectState
   exportSettings: ExportSettingsInput
@@ -80,6 +107,47 @@ interface ExportRequest {
 /** Result of handing one frame to FFmpeg. `aborted` means "stop rendering". */
 interface FrameWriteResult {
   aborted: boolean
+}
+
+interface ChunkSlice {
+  index: number
+  startFrame: number
+  endFrame: number
+  chunkFrames: number
+  chunkDuration: number
+  chunkPath: string
+}
+
+interface ParallelExportOptions {
+  editorWindow: BrowserWindow
+  projectState: ExportProjectState
+  exportSettings: ExportSettingsInput
+  outputPath: string
+  renderWidth: number
+  renderHeight: number
+  targetWidth: number
+  targetHeight: number
+  exportDuration: number
+  totalFrames: number
+  clickSoundPath: string | null
+  temporaryFiles: string[]
+  perfStartedAt: number
+}
+
+interface SingleExportOptions {
+  editorWindow: BrowserWindow
+  projectState: ExportProjectState
+  exportSettings: ExportSettingsInput
+  outputPath: string
+  renderWidth: number
+  renderHeight: number
+  targetWidth: number
+  targetHeight: number
+  exportDuration: number
+  useCloud: boolean
+  clickSoundPath: string | null
+  temporaryFiles: string[]
+  perfStartedAt: number
 }
 
 export async function startExport(event: IpcMainInvokeEvent, request: ExportRequest) {
@@ -115,9 +183,7 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
     }
   }
 
-  // Whether this export actually upscales the source. The single source of truth
-  // for BOTH the Pro gate and the cloud path: exporting at or below the recorded
-  // resolution is Standard and free, so it is neither Pro-gated nor billable.
+  // Whether this export actually upscales the source.
   const videoDimensions = projectState.videoDimensions
   const upscale =
     videoDimensions && videoDimensions.width > 0 && videoDimensions.height > 0
@@ -132,8 +198,6 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
         })
       : { isUpscale: false, requiredScale: 1 }
 
-  // Upscaling is a Pro feature. This is a SOFT gate (see features/entitlement.ts):
-  // a rebuilt client can remove it, so it is defence in depth, not enforcement.
   if (upscale.isUpscale) {
     const entitlement = await getEntitlement()
     if (!entitlement.pro) {
@@ -146,15 +210,7 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
     }
   }
 
-  // A non-upscale export never goes through the cloud, whatever the client
-  // requested. Only an actual upscale can reserve credits, so a same-resolution
-  // export can never be charged even by a misbehaving or rebuilt client.
   const wantsCloud = Boolean(request.cloud) && upscale.isUpscale
-
-  // A cloud job renders its intermediate at the source video's own resolution
-  // (never above the target), so the AI model has real enlargement to do: an
-  // intermediate that already matches the target is a passthrough plan the
-  // worker runs without loading the model, charged at AI prices for a re-encode.
   const cloudRender =
     videoDimensions && videoDimensions.width > 0 && videoDimensions.height > 0
       ? cloudIntermediateSize(targetWidth, targetHeight, videoDimensions.width, videoDimensions.height)
@@ -162,14 +218,437 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
   const useCloud =
     wantsCloud && cloudRender !== null && (cloudRender.width < targetWidth || cloudRender.height < targetHeight)
 
-  // The renderer draws at the capped size; FFmpeg scales to the exact target.
   const { width: renderWidth, height: renderHeight } =
     useCloud && cloudRender ? cloudRender : applyRenderCap(targetWidth, targetHeight)
   log.info(`[ExportManager] Target ${targetWidth}x${targetHeight}, rendering at ${renderWidth}x${renderHeight}.`)
 
-  // --- Cloud (AI) upscaling: reserve the credits BEFORE rendering anything ----
-  // A refusal (no credits, no consent, backend unreachable) must cost the user no
-  // render time at all.
+  const exportDuration = computeExportDuration(projectState)
+  const totalFrames = Math.floor(exportDuration * exportSettings.fps)
+
+  // Materialise the built-in click sound when click sounds are on and no custom
+  // sound is set, so buildExportArgs can stay pure.
+  const temporaryFiles: string[] = []
+  let clickSoundPath: string | null = projectState.mouseClickSoundPath ?? null
+  if (needsBuiltInClickSound(projectState)) {
+    const bundledClick = path.join(VITE_PUBLIC, DEFAULT_CLICK_SOUND)
+    if (fs.existsSync(bundledClick)) {
+      clickSoundPath = bundledClick
+    } else {
+      const generatedClickPath = path.join(os.tmpdir(), `demothat-click-${Date.now()}.wav`)
+      await fsPromises.writeFile(generatedClickPath, createBuiltInClickWav())
+      temporaryFiles.push(generatedClickPath)
+      clickSoundPath = generatedClickPath
+    }
+  }
+
+  const perfStartedAt = Date.now()
+
+  // Concurrency decision:
+  // Parallel export partitions MP4 exports across 2-4 workers.
+  // Short exports (<4s or <60 frames), single core machines, and cloud exports use single worker.
+  const canParallel =
+    !useCloud && exportSettings.format === 'mp4' && exportDuration >= 4.0 && totalFrames >= 60 && os.cpus().length >= 2
+
+  if (canParallel) {
+    await runParallelExport({
+      editorWindow,
+      projectState,
+      exportSettings,
+      outputPath,
+      renderWidth,
+      renderHeight,
+      targetWidth,
+      targetHeight,
+      exportDuration,
+      totalFrames,
+      clickSoundPath,
+      temporaryFiles,
+      perfStartedAt,
+    })
+  } else {
+    await runSingleExport({
+      editorWindow,
+      projectState,
+      exportSettings,
+      outputPath,
+      renderWidth,
+      renderHeight,
+      targetWidth,
+      targetHeight,
+      exportDuration,
+      useCloud,
+      clickSoundPath,
+      temporaryFiles,
+      perfStartedAt,
+    })
+  }
+}
+
+/**
+ * Executes a multi-process parallel chunk export.
+ */
+async function runParallelExport(options: ParallelExportOptions) {
+  const {
+    editorWindow,
+    projectState,
+    exportSettings,
+    outputPath,
+    renderWidth,
+    renderHeight,
+    targetWidth,
+    targetHeight,
+    exportDuration,
+    totalFrames,
+    clickSoundPath,
+    temporaryFiles,
+    perfStartedAt,
+  } = options
+
+  const cpuCount = os.cpus().length
+  const idealWorkers = Math.min(4, Math.max(2, Math.floor(cpuCount / 2)))
+  const numWorkers = Math.max(2, Math.min(idealWorkers, Math.floor(totalFrames / 30)))
+  log.info(`[ExportManager] Launching parallel export with ${numWorkers} chunk workers (CPU cores: ${cpuCount}).`)
+
+  const capabilities = await getEncoderCapabilities()
+  const bestEncoder = selectBestH264Encoder(capabilities)
+  log.info(`[ExportManager] Parallel chunk encoder selected: ${bestEncoder}`)
+
+  const sessionDir = path.join(os.tmpdir(), `demothat-export-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
+  await fsPromises.mkdir(sessionDir, { recursive: true })
+
+  const chunks: ChunkSlice[] = []
+  for (let i = 0; i < numWorkers; i++) {
+    const startFrame = Math.floor((i * totalFrames) / numWorkers)
+    const endFrame = Math.floor(((i + 1) * totalFrames) / numWorkers)
+    const chunkFrames = endFrame - startFrame
+    const chunkDuration = chunkFrames / exportSettings.fps
+    const chunkPath = path.join(sessionDir, `chunk_${i}.mp4`)
+    chunks.push({ index: i, startFrame, endFrame, chunkFrames, chunkDuration, chunkPath })
+  }
+
+  // Spawn FFmpeg chunk processes
+  const chunkProcesses: ChildProcessWithoutNullStreams[] = []
+  for (const chunk of chunks) {
+    const chunkArgs = buildChunkExportArgs({
+      renderWidth,
+      renderHeight,
+      targetWidth,
+      targetHeight,
+      fps: exportSettings.fps,
+      chunkDuration: chunk.chunkDuration,
+      outputPath: chunk.chunkPath,
+      encoder: bestEncoder,
+      quality: exportSettings.quality,
+    })
+    log.info(`[ExportManager] Spawning chunk proc #${chunk.index} with args:`, chunkArgs.join(' '))
+    const proc = spawn(FFMPEG_PATH, chunkArgs)
+    chunkProcesses.push(proc)
+  }
+
+  // Spawn worker BrowserWindow instances
+  const workerWindows: BrowserWindow[] = []
+  const workerChunkBySenderId = new Map<number, number>()
+  for (const chunk of chunks) {
+    const win = createWorkerWindow()
+    workerWindows.push(win)
+    workerChunkBySenderId.set(win.webContents.id, chunk.index)
+  }
+  appState.renderWorkers = workerWindows
+
+  let exportAborted = false
+  let concatProcess: ChildProcessWithoutNullStreams | null = null
+  let unblockPendingChunkWrite: (() => void) | null = null
+
+  const chunkWriteQueues: Promise<void>[] = Array(numWorkers).fill(Promise.resolve())
+  const chunkFramesWritten: number[] = Array(numWorkers).fill(0)
+  const chunkFinished: boolean[] = Array(numWorkers).fill(false)
+
+  const writeChunkFrame = (chunkIndex: number, frame: Uint8Array): Promise<FrameWriteResult> =>
+    new Promise((resolve) => {
+      const proc = chunkProcesses[chunkIndex]
+      const stdin = proc?.stdin
+      const done = (aborted: boolean) => {
+        unblockPendingChunkWrite = null
+        stdin?.off('drain', onDrain)
+        stdin?.off('error', onError)
+        resolve({ aborted })
+      }
+      const onDrain = () => done(false)
+      const onError = () => done(true)
+
+      if (exportAborted || !stdin?.writable) {
+        done(true)
+        return
+      }
+      try {
+        if (stdin.write(frame)) {
+          done(false)
+          return
+        }
+        stdin.once('drain', onDrain)
+        stdin.once('error', onError)
+        unblockPendingChunkWrite = () => done(true)
+      } catch (err) {
+        log.warn(`[ExportManager] Error writing frame to chunk #${chunkIndex} stdin:`, err)
+        done(true)
+      }
+    })
+
+  let lastProgressEmitTime = 0
+  const emitParallelProgress = (overrideStage?: string, overridePercent?: number) => {
+    if (!editorWindow || editorWindow.isDestroyed()) return
+    const now = Date.now()
+    if (overridePercent === undefined && now - lastProgressEmitTime < 100) return
+    lastProgressEmitTime = now
+
+    const totalWritten = chunkFramesWritten.reduce((a, b) => a + b, 0)
+    const percent =
+      overridePercent !== undefined
+        ? overridePercent
+        : Math.min(95, Math.round((totalWritten / Math.max(1, totalFrames)) * 95))
+    const stage = overrideStage ?? (totalWritten >= totalFrames ? 'Encoding' : 'Rendering (Parallel)')
+
+    editorWindow.webContents.send('export:progress', {
+      progress: percent,
+      stage,
+      framesDone: totalWritten,
+      totalFrames,
+    })
+  }
+
+  const abortParallelExport = (reason: string) => {
+    if (exportAborted) return
+    exportAborted = true
+    log.warn(`[ExportManager] Aborting parallel export: ${reason}`)
+
+    const unblock = unblockPendingChunkWrite
+    unblockPendingChunkWrite = null
+    unblock?.()
+
+    for (const proc of chunkProcesses) {
+      if (proc && !proc.killed) {
+        proc.kill('SIGKILL')
+      }
+    }
+    if (concatProcess && !concatProcess.killed) {
+      concatProcess.kill('SIGKILL')
+    }
+    for (const win of workerWindows) {
+      if (win && !win.isDestroyed()) {
+        win.close()
+      }
+    }
+    appState.renderWorkers = []
+
+    fsPromises.rm(sessionDir, { recursive: true, force: true }).catch(() => {})
+    for (const f of temporaryFiles) {
+      fsPromises.unlink(f).catch(() => {})
+    }
+    if (fs.existsSync(outputPath)) {
+      fsPromises.unlink(outputPath).catch((err) => log.error('Failed to delete cancelled export file:', err))
+    }
+
+    ipcMain.removeHandler('export:frame-data')
+    ipcMain.removeListener('export:render-finished', finishListener)
+    ipcMain.removeListener('export:cancel', cancellationHandler)
+    ipcMain.removeListener('render:ready', renderReadyListener)
+
+    if (editorWindow && !editorWindow.isDestroyed()) {
+      editorWindow.webContents.send('export:complete', { success: false, error: 'Export cancelled.' })
+    }
+  }
+
+  chunkProcesses.forEach((proc, idx) => {
+    proc.stderr?.on('data', (data) => log.info(`[FFmpeg chunk #${idx} stderr]: ${data.toString()}`))
+    proc.stdin?.on('error', (err) => {
+      if ((err as NodeJS.ErrnoException).code === 'EPIPE') {
+        log.info(`[ExportManager] Chunk #${idx} FFmpeg closed stdin after reaching chunk duration.`)
+        return
+      }
+      log.error(`[ExportManager] Chunk #${idx} FFmpeg stdin error:`, err)
+      abortParallelExport(`chunk #${idx} stdin error`)
+    })
+  })
+
+  const frameHandler = async (
+    _event: IpcMainInvokeEvent,
+    { frame, chunkIndex }: { frame: Uint8Array; progress: number; chunkIndex?: number },
+  ): Promise<FrameWriteResult> => {
+    const idx = typeof chunkIndex === 'number' && chunkIndex >= 0 && chunkIndex < numWorkers ? chunkIndex : 0
+    const currentWrite = chunkWriteQueues[idx].then(() => writeChunkFrame(idx, frame))
+    chunkWriteQueues[idx] = currentWrite.then(
+      () => {},
+      () => {},
+    )
+    const result = await currentWrite
+    if (!result.aborted) {
+      chunkFramesWritten[idx] += 1
+    }
+    emitParallelProgress()
+    return result
+  }
+
+  const finishListener = async (_event: IpcMainEvent, data?: { chunkIndex?: number }) => {
+    const idx =
+      typeof data?.chunkIndex === 'number' && data.chunkIndex >= 0 && data.chunkIndex < numWorkers ? data.chunkIndex : 0
+    log.info(`[ExportManager] Chunk #${idx} finished frame render. Waiting for write queue.`)
+    chunkFinished[idx] = true
+    await chunkWriteQueues[idx].catch(() => {})
+    const proc = chunkProcesses[idx]
+    if (proc && !proc.killed && proc.stdin?.writable) {
+      proc.stdin.end()
+    }
+  }
+
+  const cancellationHandler = () => {
+    log.warn('[ExportManager] Received "export:cancel". Terminating parallel export.')
+    abortParallelExport('cancelled by user')
+  }
+
+  const renderReadyListener = (event: IpcMainEvent) => {
+    const chunkIndex = workerChunkBySenderId.get(event.sender.id)
+    if (chunkIndex === undefined) return
+    const worker = workerWindows[chunkIndex]
+    const chunk = chunks[chunkIndex]
+    log.info(
+      `[ExportManager] Worker for chunk #${chunkIndex} ready. Sending render:start slice [${chunk.startFrame}..${chunk.endFrame}).`,
+    )
+    if (worker && !worker.isDestroyed()) {
+      worker.webContents.send('render:start', {
+        projectState,
+        exportSettings,
+        renderWidth,
+        renderHeight,
+        duration: exportDuration,
+        chunkIndex,
+        startFrame: chunk.startFrame,
+        endFrame: chunk.endFrame,
+        totalFrames,
+        chunkDuration: chunk.chunkDuration,
+      })
+    }
+  }
+
+  ipcMain.handle('export:frame-data', frameHandler)
+  ipcMain.on('export:render-finished', finishListener)
+  ipcMain.once('export:cancel', cancellationHandler)
+  ipcMain.on('render:ready', renderReadyListener)
+
+  const chunkPromises = chunkProcesses.map((proc, index) => {
+    return new Promise<void>((resolve, reject) => {
+      proc.on('close', (code) => {
+        log.info(`[ExportManager] Chunk #${index} FFmpeg process exited with code ${code}.`)
+        if (workerWindows[index] && !workerWindows[index].isDestroyed()) {
+          workerWindows[index].close()
+        }
+        if (code === 0) resolve()
+        else reject(new Error(`Chunk #${index} FFmpeg exited with code ${code}`))
+      })
+      proc.on('error', (err) => reject(err))
+    })
+  })
+
+  try {
+    await Promise.all(chunkPromises)
+  } catch (err) {
+    if (!exportAborted) {
+      abortParallelExport(String(err))
+    }
+    return
+  }
+
+  if (exportAborted) return
+
+  // All chunk files have been encoded. Proceed to FFmpeg concat demuxer lossless stitch + audio mux.
+  emitParallelProgress('Stitching & Muxing Audio', 96)
+  log.info('[ExportManager] All chunks encoded. Generating concat manifest...')
+
+  const concatListPath = path.join(sessionDir, 'concat.txt')
+  const concatContent = chunks.map((c) => `file '${c.chunkPath.replace(/\\/g, '/').replace(/'/g, "'\\''")}'`).join('\n')
+  await fsPromises.writeFile(concatListPath, concatContent, 'utf8')
+
+  const concatArgs = buildConcatExportArgs({
+    concatListPath,
+    outputPath,
+    projectState,
+    clickSoundPath,
+  })
+  log.info('[ExportManager] Spawning concat FFmpeg with args:', concatArgs.join(' '))
+  concatProcess = spawn(FFMPEG_PATH, concatArgs)
+
+  concatProcess.stderr.on('data', (data) => log.info(`[FFmpeg concat stderr]: ${data.toString()}`))
+
+  const concatCode = await new Promise<number | null>((resolve) => {
+    concatProcess!.on('close', resolve)
+    concatProcess!.on('error', (err) => {
+      log.error('[ExportManager] Concat FFmpeg failed to spawn:', err)
+      resolve(-1)
+    })
+  })
+
+  // Cleanup session directory and temporary files
+  await fsPromises.rm(sessionDir, { recursive: true, force: true }).catch(() => {})
+  for (const temporaryFile of temporaryFiles) {
+    fsPromises.unlink(temporaryFile).catch((err) => log.warn('Could not remove temporary audio asset:', err))
+  }
+
+  ipcMain.removeHandler('export:frame-data')
+  ipcMain.removeListener('export:render-finished', finishListener)
+  ipcMain.removeListener('export:cancel', cancellationHandler)
+  ipcMain.removeListener('render:ready', renderReadyListener)
+  appState.renderWorkers = []
+
+  if (editorWindow && !editorWindow.isDestroyed()) {
+    if (concatCode === 0) {
+      const elapsedSeconds = Math.max(0.001, (Date.now() - perfStartedAt) / 1000)
+      const totalWritten = chunkFramesWritten.reduce((a, b) => a + b, 0)
+      if (totalWritten > 0) {
+        recordExportPerf({
+          resolution: exportSettings.resolution,
+          codec: selectExportCodec(targetHeight),
+          settingFps: exportSettings.fps,
+          width: targetWidth,
+          height: targetHeight,
+          throughput: totalWritten / elapsedSeconds,
+        })
+      }
+      void writeSubtitleSidecar({
+        outputPath,
+        cues: projectState.subtitleCues ?? [],
+        format: projectState.subtitleFormat ?? 'srt',
+        enabled: projectState.subtitlesEnabled === true,
+      }).finally(() => {
+        editorWindow.webContents.send('export:complete', { success: true, outputPath })
+      })
+    } else {
+      editorWindow.webContents.send('export:complete', {
+        success: false,
+        error: `Stitch process failed with code ${concatCode}`,
+      })
+    }
+  }
+}
+
+/**
+ * Sequential single-process export (used for GIF, Cloud intermediates, and short clips).
+ */
+async function runSingleExport(options: SingleExportOptions) {
+  const {
+    editorWindow,
+    projectState,
+    exportSettings,
+    outputPath,
+    renderWidth,
+    renderHeight,
+    targetWidth,
+    targetHeight,
+    exportDuration,
+    useCloud,
+    clickSoundPath,
+    temporaryFiles,
+    perfStartedAt,
+  } = options
+
   const cloudCancellation: CloudCancellation = { cancelled: false }
   registerCloudCancellation(cloudCancellation)
   let cloudJob: CloudJobCreated | null = null
@@ -183,7 +662,7 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
       renderWidth,
       renderHeight,
       fps: exportSettings.fps,
-      durationSec: computeExportDuration(projectState),
+      durationSec: exportDuration,
     })
     if (!preflight.ok) {
       log.warn(`[ExportManager] Cloud preflight refused: ${preflight.error}`)
@@ -200,54 +679,16 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
     cloudMinChargeCredits = preflight.capabilities.minChargeCredits ?? 0
     intermediatePath = intermediatePathFor(os.tmpdir(), Date.now())
     await fsPromises.mkdir(path.dirname(intermediatePath), { recursive: true })
-    // Recorded now, so a job still running when the app closes can be picked up.
     rememberActiveJob(cloudJob.jobId, outputPath, intermediatePath, targetWidth, targetHeight)
     log.info(
       `[ExportManager] Cloud job ${cloudJob.jobId}: rendering the intermediate at ${renderWidth}x${renderHeight}.`,
     )
   }
 
-  if (appState.renderWorker) {
+  if (appState.renderWorker && !appState.renderWorker.isDestroyed()) {
     appState.renderWorker.close()
   }
-  appState.renderWorker = new BrowserWindow({
-    show: false,
-    width: 1280,
-    height: 720,
-    webPreferences: {
-      preload: PRELOAD_SCRIPT,
-      offscreen: false,
-      backgroundThrottling: false,
-      webSecurity: false,
-    },
-  })
-  if (VITE_DEV_SERVER_URL) {
-    const renderUrl = `${VITE_DEV_SERVER_URL}#renderer`
-    appState.renderWorker.loadURL(renderUrl)
-    log.info(`[ExportManager] Loading render worker URL (Dev): ${renderUrl}`)
-  } else {
-    const renderPath = path.join(RENDERER_DIST, 'index.html')
-    appState.renderWorker.loadFile(renderPath, { hash: 'renderer' })
-    log.info(`[ExportManager] Loading render worker file (Prod): ${renderPath}#renderer`)
-  }
-
-  // Materialise the built-in click sound when click sounds are on and no custom
-  // sound is set, so buildExportArgs can stay pure. The bundled
-  // `default_mouse_click.mp3` is the default; a synthesized soft click is the
-  // fallback only when that asset is missing (it never is in a built app).
-  const temporaryFiles: string[] = []
-  let clickSoundPath: string | null = projectState.mouseClickSoundPath ?? null
-  if (needsBuiltInClickSound(projectState)) {
-    const bundledClick = path.join(VITE_PUBLIC, DEFAULT_CLICK_SOUND)
-    if (fs.existsSync(bundledClick)) {
-      clickSoundPath = bundledClick
-    } else {
-      const generatedClickPath = path.join(os.tmpdir(), `demothat-click-${Date.now()}.wav`)
-      await fsPromises.writeFile(generatedClickPath, createBuiltInClickWav())
-      temporaryFiles.push(generatedClickPath)
-      clickSoundPath = generatedClickPath
-    }
-  }
+  appState.renderWorker = createWorkerWindow()
 
   const ffmpegArgs = buildExportArgs({
     projectState,
@@ -261,35 +702,22 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
     intermediate: useCloud,
   })
 
-  log.info('[ExportManager] Spawning FFmpeg with args:', ffmpegArgs.join(' '))
+  log.info('[ExportManager] Spawning single FFmpeg with args:', ffmpegArgs.join(' '))
   const ffmpeg = spawn(FFMPEG_PATH, ffmpegArgs)
 
   let ffmpegClosed = false
   let exportAborted = false
-  // Set while a frame write waits for `drain` so a cancel or an early FFmpeg
-  // exit can unblock the renderer instead of leaving it hung.
   let unblockPendingWrite: (() => void) | null = null
 
-  // --- Measured throughput -------------------------------------------------------
-  // Recorded when the export completes so the modal can estimate render times.
-  const perfStartedAt = Date.now()
   let framesWritten = 0
-  // Set once the local render is done and the cloud stages take over; it also
-  // marks the intermediate as complete (so a cancel keeps it).
   let cloudContinuation: (() => void) | null = null
 
   ffmpeg.stderr.on('data', (data) => log.info(`[FFmpeg stderr]: ${data.toString()}`))
 
-  // --- Progress -----------------------------------------------------------------
-  // FFmpeg's own position is the authoritative progress: with backpressure the
-  // renderer cannot run ahead of the encoder, and unlike frames-sent it also
-  // covers the encode/flush tail after rendering has finished.
-  const exportDuration = computeExportDuration(projectState)
   let frameProgress = 0
   let encodeProgress = 0
   let renderFinished = false
 
-  /** Cloud stage progress: the stage's own percent mapped onto the overall bar. */
   const emitCloudProgress = (progress: CloudExportProgress) => {
     if (!editorWindow || editorWindow.isDestroyed()) return
     editorWindow.webContents.send('export:progress', {
@@ -300,7 +728,6 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
       reserved: progress.reserved,
       consumed: progress.consumed,
       etaSeconds: progress.etaSeconds ?? null,
-      // The cancel dialog needs the server's minimum charge once GPU work began.
       minChargeCredits: cloudMinChargeCredits,
     })
   }
@@ -314,7 +741,6 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
 
     const percent = Math.min(100, Math.max(frameProgress, encodeProgress))
     if (useCloud) {
-      // The same render, reported against the cloud flow's own bar and label.
       emitCloudProgress({ stage: 'Rendering locally', stagePercent: percent })
       return
     }
@@ -334,7 +760,6 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
     for (const line of lines) {
       const [key, value] = line.trim().split('=')
       if (key === 'out_time_us' || key === 'out_time_ms') {
-        // Both fields carry microseconds in FFmpeg's progress output.
         const microseconds = Number(value)
         if (exportDuration > 0 && Number.isFinite(microseconds) && microseconds >= 0) {
           encodeProgress = Math.max(encodeProgress, (microseconds / 1_000_000 / exportDuration) * 100)
@@ -358,14 +783,7 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
     unblock?.()
   }
 
-  // FFmpeg can die (bad args, disk full, permissions) while frames are still
-  // streaming in; unblock the renderer so it stops instead of piling frames up.
   ffmpeg.stdin?.on('error', (error) => {
-    // EPIPE means FFmpeg closed stdin after reaching `-t` (the export length)
-    // and finished the pass. That is the normal end of a successful export, not
-    // a failure: the renderer's own write error path already stops the frame
-    // loop. Reporting it as an abort made every successful export log
-    // "FFmpeg stdin error: write EPIPE ... Aborting export".
     if ((error as NodeJS.ErrnoException).code === 'EPIPE') {
       log.info('[ExportManager] FFmpeg closed stdin after the export length; render loop will stop.')
       return
@@ -374,11 +792,6 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
     abortExport('stdin error')
   })
 
-  /**
-   * Writes one frame and resolves once FFmpeg has accepted it, waiting for
-   * `drain` when the pipe is full. Resolves aborted=true when the export has
-   * been cancelled or FFmpeg is gone.
-   */
   const writeFrame = (frame: Uint8Array): Promise<FrameWriteResult> =>
     new Promise((resolve) => {
       const stdin = ffmpeg.stdin
@@ -415,7 +828,6 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
     _event: IpcMainInvokeEvent,
     { frame, progress }: { frame: Uint8Array; progress: number },
   ): Promise<FrameWriteResult> => {
-    // Chain writes in FIFO order so pipelined frames from renderer enter FFmpeg sequentially
     const currentWrite = writeQueue.then(() => writeFrame(frame))
     writeQueue = currentWrite.then(
       () => {},
@@ -430,7 +842,6 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
 
   const cancellationHandler = () => {
     log.warn('[ExportManager] Received "export:cancel". Terminating export.')
-    // Stops an in-flight upload/download/poll as well as the render.
     cloudCancellation.cancelled = true
     abortExport('cancelled by user')
     if (ffmpeg && !ffmpeg.killed) {
@@ -439,8 +850,6 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
     if (appState.renderWorker && !appState.renderWorker.isDestroyed()) {
       appState.renderWorker.close()
     }
-    // A finished intermediate is kept (it can be retried or upscaled locally); a
-    // half-written one is not worth anything.
     if (cloudContinuation === null && intermediatePath) {
       fsPromises.unlink(intermediatePath).catch(() => undefined)
     }
@@ -466,8 +875,6 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
 
   ffmpeg.on('close', (code) => {
     ffmpegClosed = true
-    // A zero exit is a completed pass (the EPIPE-abort case above is handled
-    // separately), so do not mark the export aborted on the normal path.
     if (code !== 0) abortExport(`FFmpeg exited with code ${code}`)
     log.info(`[ExportManager] FFmpeg process exited with code ${code}.`)
     if (appState.renderWorker && !appState.renderWorker.isDestroyed()) {
@@ -478,15 +885,10 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
       fsPromises.unlink(temporaryFile).catch((err) => log.warn('Could not remove temporary audio asset:', err))
     }
 
-    // Check if the editor window still exists before sending a message
     if (editorWindow && !editorWindow.isDestroyed()) {
       if (code === null) {
-        // Cancelled by SIGKILL
         editorWindow.webContents.send('export:complete', { success: false, error: 'Export cancelled.' })
       } else if (code === 0 && cloudJob && intermediatePath) {
-        // The render is done. Hand the intermediate to the cloud *after* the
-        // listeners below are cleaned up, so a second export can start while the
-        // upload is still running.
         const job = cloudJob
         const intermediate = intermediatePath
         const minCharge = cloudMinChargeCredits
@@ -505,7 +907,6 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
               editorWindow.webContents.send('export:complete', {
                 success: true,
                 outputPath,
-                // The server's numbers, for the cancel/done toast.
                 charge: outcome.charge,
                 refund: outcome.refund,
               })
@@ -518,10 +919,8 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
               charge: outcome.charge,
               refund: outcome.refund,
               cost: outcome.cost,
-              // Kept so retry / Standard fallback need no second render.
               intermediatePath: outcome.intermediatePath,
               canRetryCloud: outcome.canRetryCloud,
-              // Everything a retry needs to create a fresh job.
               cloudRetry: {
                 targetWidth,
                 targetHeight,
@@ -532,7 +931,6 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
           })
         }
       } else if (code === 0) {
-        // Remember how fast this configuration actually ran (render + encode).
         if (framesWritten > 0) {
           const elapsedSeconds = Math.max(0.001, (Date.now() - perfStartedAt) / 1000)
           recordExportPerf({
@@ -544,10 +942,6 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
             throughput: framesWritten / elapsedSeconds,
           })
         }
-        // The captions go beside the video, not into it. The notification waits for
-        // the file so the user is not told the export is done before the sidecar is
-        // there — and a failure here must not fail the export: the video is written,
-        // and it is what the user asked for.
         void writeSubtitleSidecar({
           outputPath,
           cues: projectState.subtitleCues ?? [],
@@ -563,13 +957,10 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
       log.warn('[ExportManager] Editor window was destroyed. Could not send export:complete message.')
     }
 
-    // Clean up all listeners
     ipcMain.removeHandler('export:frame-data')
     ipcMain.removeListener('export:render-finished', finishListener)
     ipcMain.removeListener('export:cancel', cancellationHandler)
 
-    // The cloud stages start only now, so the export slot is free again and a
-    // cancel during the upload does not fight the render's cleanup.
     if (cloudContinuation) cloudContinuation()
     else clearCloudCancellation(cloudCancellation)
   })

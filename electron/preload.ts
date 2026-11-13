@@ -89,6 +89,11 @@ type RenderStartPayload = {
   renderWidth?: number
   renderHeight?: number
   duration?: number
+  chunkIndex?: number
+  startFrame?: number
+  endFrame?: number
+  totalFrames?: number
+  chunkDuration?: number
 }
 
 type WindowSource = {
@@ -632,10 +637,13 @@ export const electronAPI = {
   rendererReady: () => {
     ipcRenderer.send('render:ready')
   },
-  sendFrameToMain: (payload: { frame: Uint8Array; progress: number }): Promise<{ aborted: boolean }> =>
-    ipcRenderer.invoke('export:frame-data', payload),
-  finishRender: () => {
-    ipcRenderer.send('export:render-finished')
+  sendFrameToMain: (payload: {
+    frame: Uint8Array
+    progress: number
+    chunkIndex?: number
+  }): Promise<{ aborted: boolean }> => ipcRenderer.invoke('export:frame-data', payload),
+  finishRender: (payload?: { chunkIndex?: number }) => {
+    ipcRenderer.send('export:render-finished', payload)
   },
 
   // --- Presets & Settings ---

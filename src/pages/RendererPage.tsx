@@ -288,7 +288,10 @@ export function RendererPage() {
         // and ready before frame 0 of the chunk is drawn, preventing black screen frames and
         // cascading seek aborts.
         if (startFrame > 0) {
-          const initialExportTimestamp = startFrame / fps
+          // Mid-frame sampling ((startFrame + 0.5) / fps) centers the seek in the frame's
+          // temporal interval [frame/fps..(frame+1)/fps). This prevents boundary truncation
+          // and decoder rounding from landing on the prior frame, eliminating duplicate frames.
+          const initialExportTimestamp = (startFrame + 0.5) / fps
           const initialSourceTimestamp = mapExportTimeToSourceTime(
             initialExportTimestamp,
             projectState.duration,
@@ -340,26 +343,41 @@ export function RendererPage() {
             }
           }
 
-          const exportTimestamp = frame / fps
-          const sourceTimestamp = mapExportTimeToSourceTime(
-            exportTimestamp,
+          // The frame's nominal presentation timestamp aligns exactly with the timeline,
+          // audio clips, click events, camera telemetry, and zoom regions: (frame / fps).
+          const nominalExportTimestamp = frame / fps
+          const nominalSourceTimestamp = mapExportTimeToSourceTime(
+            nominalExportTimestamp,
             projectState.duration,
             projectState.cutRegions,
             projectState.speedRegions,
           )
 
-          // Create seek promises for all video elements
-          const mainSeek = seekVideo(video, sourceTimestamp)
-          const webcamSeek = hasWebcam && webcamVideo ? seekVideo(webcamVideo, sourceTimestamp) : Promise.resolve()
+          // Video decoding seek target: sample at mid-interval ((frame + 0.5) / fps).
+          // Left-boundary sampling is vulnerable to floating-point representation error where
+          // (frame / fps) < frame_start_pts in the decoder's integer timebase, causing Chromium
+          // to decode and present the previous frame repeatedly (causing duplicate frames, stutter, and lag).
+          // Mid-interval sampling lands securely within the frame's presentation window.
+          const seekExportTimestamp = (frame + 0.5) / fps
+          const seekSourceTimestamp = mapExportTimeToSourceTime(
+            seekExportTimestamp,
+            projectState.duration,
+            projectState.cutRegions,
+            projectState.speedRegions,
+          )
+
+          // Create seek promises for all video elements using mid-interval seek time
+          const mainSeek = seekVideo(video, seekSourceTimestamp)
+          const webcamSeek = hasWebcam && webcamVideo ? seekVideo(webcamVideo, seekSourceTimestamp) : Promise.resolve()
 
           // Imported clips only contribute frames while the playhead is inside
           // their range; each one is seeked to its own source time.
           const activeClipLayers: VideoClipLayer[] = []
           const clipSeeks: Promise<void>[] = []
           for (const { clip, element } of clipVideos) {
-            const clipSourceTime = sourceTimestamp - clip.startTime
+            const clipSourceTime = nominalSourceTimestamp - clip.startTime
             if (clipSourceTime < 0 || clipSourceTime >= clip.duration) continue
-            const clamped = getClipSourceTime(clip, sourceTimestamp, clip.sourceDuration || element.duration || 0)
+            const clamped = getClipSourceTime(clip, seekSourceTimestamp, clip.sourceDuration || element.duration || 0)
             clipSeeks.push(seekVideo(element, clamped))
             activeClipLayers.push({ clip, element })
           }
@@ -367,13 +385,14 @@ export function RendererPage() {
           // Wait for all seeks to complete
           await Promise.all([mainSeek, webcamSeek, ...clipSeeks])
 
-          // Now that videos are at the correct time, draw the scene
+          // Draw the scene using the precise nominalSourceTimestamp for exact frame-accurate
+          // sync with cursor positions, ripple animations, camera motion, and audio track.
           await drawScene(
             ctx,
             projectStateWithCursorBitmaps,
             video,
             webcamVideo,
-            sourceTimestamp, // Use the precise source timestamp for drawing
+            nominalSourceTimestamp,
             outputWidth,
             outputHeight,
             bgImage,

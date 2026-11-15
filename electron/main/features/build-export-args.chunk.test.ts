@@ -130,8 +130,8 @@ describe('buildConcatExportArgs', () => {
 
     // No audio flag
     expect(args).toContain('-an')
-    expect(args).toContain('-avoid_negative_ts')
-    expect(args).toContain('make_zero')
+    // Avoid avoid_negative_ts make_zero which shifts copied video stream forward by AAC priming offset
+    expect(args).not.toContain('-avoid_negative_ts')
     expect(args).toContain('-movflags')
     expect(args).toContain('+faststart')
     expect(args[args.length - 1]).toBe('/final/output.mp4')
@@ -191,8 +191,8 @@ describe('buildConcatExportArgs', () => {
     // Audio duration aligned to exact video frames (360 / 30 = 12)
     expect(args).toContain('-t')
     expect(args).toContain('12')
-    expect(args).toContain('-avoid_negative_ts')
-    expect(args).toContain('make_zero')
+    // Avoid avoid_negative_ts make_zero to prevent video stream delay
+    expect(args).not.toContain('-avoid_negative_ts')
   })
 
   it('aligns audio duration to exact totalFrames / fps when exportDuration has fractional frames', () => {

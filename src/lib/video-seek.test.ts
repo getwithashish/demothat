@@ -192,23 +192,23 @@ describe('video-seek loading and seek engine', () => {
   })
 
   describe('chunk pre-seek calculation', () => {
-    it('computes correct initial source timestamp for chunk starting at frame 192 (6.4s at 30fps)', () => {
+    it('computes correct initial source timestamp for chunk starting at frame 192 (mid-frame 6.417s at 30fps)', () => {
       const fps = 30
       const startFrame = 192
-      const initialExportTime = startFrame / fps // 6.4s
+      const initialExportTime = (startFrame + 0.5) / fps // ~6.4167s
 
       const duration = 8.0
       const cutRegions = {}
       const speedRegions = {}
 
       const sourceTimestamp = mapExportTimeToSourceTime(initialExportTime, duration, cutRegions, speedRegions)
-      expect(sourceTimestamp).toBeCloseTo(6.4, 3)
+      expect(sourceTimestamp).toBeCloseTo(6.417, 3)
     })
 
     it('accounts for cut regions when calculating pre-seek timestamp for chunked worker', () => {
       const fps = 30
       const startFrame = 60 // 2.0s in exported timeline
-      const initialExportTime = startFrame / fps
+      const initialExportTime = (startFrame + 0.5) / fps // 2.0167s
 
       // A 1.0s cut region from 0.5s to 1.5s
       const cut1: CutRegion = {
@@ -221,8 +221,33 @@ describe('video-seek loading and seek engine', () => {
       const cutRegions: Record<string, CutRegion> = { cut1 }
 
       const sourceTimestamp = mapExportTimeToSourceTime(initialExportTime, 10.0, cutRegions, {})
-      // Because 1.0s was cut prior to 2.0s export time, source timestamp is shifted by +1.0s to 3.0s
-      expect(sourceTimestamp).toBeCloseTo(3.0, 3)
+      // Because 1.0s was cut prior to 2.0s export time, source timestamp is shifted by +1.0s to 3.017s
+      expect(sourceTimestamp).toBeCloseTo(3.017, 3)
+    })
+
+    it('ensures mid-frame export timestamps strictly advance without duplicate frame boundaries', () => {
+      const fps = 30
+      const totalFrames = 10
+      const timestamps = Array.from({ length: totalFrames }, (_, i) => (i + 0.5) / fps)
+
+      for (let i = 1; i < timestamps.length; i++) {
+        const delta = timestamps[i] - timestamps[i - 1]
+        expect(delta).toBeCloseTo(1 / fps, 5)
+        expect(timestamps[i]).toBeGreaterThan(timestamps[i - 1])
+      }
+    })
+
+    it('aligns nominal drawing timestamps to frame boundaries while decoder seeks at mid-interval', () => {
+      const fps = 30
+      const frame = 30 // 1.0s in exported timeline
+      const nominalTime = frame / fps
+      const seekTime = (frame + 0.5) / fps
+
+      expect(nominalTime).toBe(1.0)
+      expect(seekTime).toBeCloseTo(1.0167, 4)
+      // Verify nominal time matches exact audio / click time while seek time stays within interval [1.0..1.0333)
+      expect(seekTime).toBeGreaterThan(nominalTime)
+      expect(seekTime).toBeLessThan(nominalTime + 1 / fps)
     })
   })
 })

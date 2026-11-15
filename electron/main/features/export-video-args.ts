@@ -62,7 +62,20 @@ export function qualityToX264Args(quality: ExportQuality | string | undefined | 
 
 export function fastX264Args(quality: ExportQuality | string | undefined | null): string[] {
   const resolved = FAST_X264_SETTINGS[quality as ExportQuality] ?? FAST_X264_SETTINGS.medium
-  return ['-c:v', 'libx264', '-preset', resolved.preset, '-crf', String(resolved.crf), '-pix_fmt', 'yuv420p']
+  return [
+    '-c:v',
+    'libx264',
+    '-preset',
+    resolved.preset,
+    '-crf',
+    String(resolved.crf),
+    '-bf',
+    '0',
+    '-flags',
+    '+cgop',
+    '-pix_fmt',
+    'yuv420p',
+  ]
 }
 
 /**
@@ -77,19 +90,43 @@ export function encoderToH264Args(
   switch (encoder) {
     case 'h264_nvenc': {
       const s = NVENC_SETTINGS[q]
-      return ['-c:v', 'h264_nvenc', '-preset', s.preset, '-cq', String(s.cq), '-pix_fmt', 'yuv420p']
+      return [
+        '-c:v',
+        'h264_nvenc',
+        '-preset',
+        s.preset,
+        '-cq',
+        String(s.cq),
+        '-bf',
+        '0',
+        '-flags',
+        '+cgop',
+        '-pix_fmt',
+        'yuv420p',
+      ]
     }
     case 'h264_videotoolbox': {
       const s = VIDEOTOOLBOX_SETTINGS[q]
-      return ['-c:v', 'h264_videotoolbox', '-q:v', String(s.q), '-pix_fmt', 'yuv420p']
+      return ['-c:v', 'h264_videotoolbox', '-q:v', String(s.q), '-bf', '0', '-pix_fmt', 'yuv420p']
     }
     case 'h264_qsv': {
       const s = QSV_SETTINGS[q]
-      return ['-c:v', 'h264_qsv', '-global_quality', String(s.globalQuality), '-preset', s.preset, '-pix_fmt', 'nv12']
+      return [
+        '-c:v',
+        'h264_qsv',
+        '-global_quality',
+        String(s.globalQuality),
+        '-preset',
+        s.preset,
+        '-bf',
+        '0',
+        '-pix_fmt',
+        'nv12',
+      ]
     }
     case 'h264_vaapi': {
       const s = VAAPI_SETTINGS[q]
-      return ['-c:v', 'h264_vaapi', '-qp', String(s.qp)]
+      return ['-c:v', 'h264_vaapi', '-qp', String(s.qp), '-bf', '0']
     }
     case 'libx264':
     default:

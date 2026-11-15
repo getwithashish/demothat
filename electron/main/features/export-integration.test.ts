@@ -4,7 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { buildExportArgs } from './build-export-args'
+import { buildExportArgs, buildChunkExportArgs, buildConcatExportArgs } from './build-export-args'
 
 // These tests drive the REAL bundled FFmpeg end to end: raw RGBA frames in,
 // MP4 out. They are skipped when the binary has not been downloaded
@@ -209,5 +209,66 @@ suite('export pipeline against the bundled ffmpeg', () => {
     const info = await probe(outputPath)
     expect(info).toContain('1920x1080')
     expect(info).toContain('Audio: aac')
+  }, 120_000)
+
+  it('encodes chunks in parallel and stitches them seamlessly with monotonic timestamps', async () => {
+    const fps = 30
+    const chunkFrames = 15
+    const totalFrames = chunkFrames * 2
+    const chunk0Path = path.join(tmpDir, 'chunk-0.mp4')
+    const chunk1Path = path.join(tmpDir, 'chunk-1.mp4')
+    const outputPath = path.join(tmpDir, 'stitched.mp4')
+    const concatListPath = path.join(tmpDir, 'concat.txt')
+
+    const chunk0Args = buildChunkExportArgs({
+      renderWidth: 640,
+      renderHeight: 360,
+      targetWidth: 640,
+      targetHeight: 360,
+      fps,
+      outputPath: chunk0Path,
+    })
+    const chunk1Args = buildChunkExportArgs({
+      renderWidth: 640,
+      renderHeight: 360,
+      targetWidth: 640,
+      targetHeight: 360,
+      fps,
+      outputPath: chunk1Path,
+    })
+
+    const frames0 = Array.from({ length: chunkFrames }, (_, i) => makeFrame(640, 360, 20 + i * 5))
+    const frames1 = Array.from({ length: chunkFrames }, (_, i) => makeFrame(640, 360, 100 + i * 5))
+
+    const [res0, res1] = await Promise.all([runFfmpeg(chunk0Args, frames0), runFfmpeg(chunk1Args, frames1)])
+    expect(res0.code, res0.stderr).toBe(0)
+    expect(res1.code, res1.stderr).toBe(0)
+
+    const concatContent = `file '${chunk0Path.replace(/'/g, "'\\''")}'\nfile '${chunk1Path.replace(/'/g, "'\\''")}'\n`
+    await fs.promises.writeFile(concatListPath, concatContent, 'utf8')
+
+    const concatArgs = buildConcatExportArgs({
+      concatListPath,
+      outputPath,
+      projectState: { aspectRatio: '16:9', duration: totalFrames / fps },
+      totalFrames,
+      fps,
+    })
+
+    const concatRes = await runFfmpeg(concatArgs, [])
+    expect(concatRes.code, concatRes.stderr).toBe(0)
+
+    const stat = await fs.promises.stat(outputPath)
+    expect(stat.size).toBeGreaterThan(0)
+
+    // Verify it decodes cleanly with 0 errors
+    const decoded = await runFfmpeg(['-v', 'error', '-i', outputPath, '-f', 'null', '-'], [])
+    expect(decoded.code, decoded.stderr).toBe(0)
+    expect(decoded.stderr.trim()).toBe('')
+
+    // Verify stream info
+    const info = await probe(outputPath)
+    expect(info).toContain('640x360')
+    expect(info).toContain('30 fps')
   }, 120_000)
 })

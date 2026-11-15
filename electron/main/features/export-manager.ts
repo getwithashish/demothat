@@ -305,8 +305,8 @@ async function runParallelExport(options: ParallelExportOptions) {
   } = options
 
   const cpuCount = os.cpus().length
-  const idealWorkers = Math.min(4, Math.max(2, Math.floor(cpuCount / 2)))
-  const numWorkers = Math.max(2, Math.min(idealWorkers, Math.floor(totalFrames / 30)))
+  const idealWorkers = Math.min(3, Math.max(2, Math.floor(cpuCount / 3)))
+  const numWorkers = Math.max(2, Math.min(idealWorkers, Math.floor(totalFrames / 45)))
   log.info(`[ExportManager] Launching parallel export with ${numWorkers} chunk workers (CPU cores: ${cpuCount}).`)
 
   const capabilities = await getEncoderCapabilities()
@@ -574,6 +574,8 @@ async function runParallelExport(options: ParallelExportOptions) {
     outputPath,
     projectState,
     clickSoundPath,
+    totalFrames,
+    fps: exportSettings.fps,
   })
   log.info('[ExportManager] Spawning concat FFmpeg with args:', concatArgs.join(' '))
   concatProcess = spawn(FFMPEG_PATH, concatArgs)

@@ -1,3 +1,9 @@
+## [1.21.0-beta.7](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.6...v1.21.0-beta.7) (2026-11-15)
+
+### Bug Fixes
+
+* **export:** resolve stuttering, timing drift, and performance overhead ([b21f2c5](https://github.com/getwithashish/DemoThat/commit/b21f2c5601d1eed69223116d4dc75a52ca2c3dcf))
+
 ## [1.21.0-beta.6](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.5...v1.21.0-beta.6) (2026-11-13)
 
 ### Bug Fixes

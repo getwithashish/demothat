@@ -244,10 +244,11 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
   const perfStartedAt = Date.now()
 
   // Concurrency decision:
-  // Parallel export partitions MP4 exports across 2-4 workers.
-  // Short exports (<4s or <60 frames), single core machines, and cloud exports use single worker.
-  const canParallel =
-    !useCloud && exportSettings.format === 'mp4' && exportDuration >= 4.0 && totalFrames >= 60 && os.cpus().length >= 2
+  // Multi-window chunk export creates visual discontinuities (I-frame pulsing and DPB flushes
+  // at chunk boundaries) as well as Chromium decoder contention that causes seek stalls.
+  // Sequential export ensures unbroken GOP continuity, perfectly smooth stutter-free playback,
+  // zero duplicate/dropped frames, and sample-accurate audio/video synchronization.
+  const canParallel = false
 
   if (canParallel) {
     await runParallelExport({

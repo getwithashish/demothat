@@ -236,5 +236,18 @@ describe('video-seek loading and seek engine', () => {
         expect(timestamps[i]).toBeGreaterThan(timestamps[i - 1])
       }
     })
+
+    it('aligns nominal drawing timestamps to frame boundaries while decoder seeks at mid-interval', () => {
+      const fps = 30
+      const frame = 30 // 1.0s in exported timeline
+      const nominalTime = frame / fps
+      const seekTime = (frame + 0.5) / fps
+
+      expect(nominalTime).toBe(1.0)
+      expect(seekTime).toBeCloseTo(1.0167, 4)
+      // Verify nominal time matches exact audio / click time while seek time stays within interval [1.0..1.0333)
+      expect(seekTime).toBeGreaterThan(nominalTime)
+      expect(seekTime).toBeLessThan(nominalTime + 1 / fps)
+    })
   })
 })

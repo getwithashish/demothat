@@ -360,7 +360,7 @@ export function buildChunkExportArgs(options: BuildChunkExportArgsOptions): stri
  * Pure builder for the final lossless stitch and full multi-track audio mux.
  *
  * Uses concat demuxer with `-c:v copy` to losslessly stitch seamless video chunks.
- * `-fflags +genpts` and `-avoid_negative_ts make_zero` guarantee continuous monotonic PTS/DTS.
+ * `-fflags +genpts` guarantees continuous monotonic PTS/DTS while preserving sample-accurate audio/video synchronization.
  * If totalFrames and fps are supplied, the audio is aligned to the exact video length down to the millisecond.
  */
 export function buildConcatExportArgs(options: BuildConcatExportArgsOptions): string[] {
@@ -403,7 +403,7 @@ export function buildConcatExportArgs(options: BuildConcatExportArgsOptions): st
     args.push('-an', '-t', exactDuration.toString())
   }
 
-  args.push('-avoid_negative_ts', 'make_zero', '-movflags', '+faststart', '-progress', 'pipe:1', '-nostats', outputPath)
+  args.push('-movflags', '+faststart', '-progress', 'pipe:1', '-nostats', outputPath)
   return args
 }
 

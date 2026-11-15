@@ -263,7 +263,10 @@ export function RendererPage() {
           exportDuration = calculated
         }
         exportDuration = Math.max(0, exportDuration)
-        const fullTotalFrames = Math.floor(exportDuration * fps)
+        const fullTotalFrames =
+          typeof payload.totalFrames === 'number' && payload.totalFrames > 0
+            ? payload.totalFrames
+            : Math.floor(exportDuration * fps)
 
         const isChunked = typeof payload.chunkIndex === 'number' && typeof payload.startFrame === 'number'
         const startFrame = isChunked ? Math.max(0, payload.startFrame!) : 0

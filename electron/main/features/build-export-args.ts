@@ -4,6 +4,7 @@
 // Kept free of Electron imports (only Node's path helpers) so the argv can be
 // unit tested and extended (see Phase 3: 8K render cap, HEVC).
 
+import path from 'path'
 import type { ResolutionKey } from '../../../shared/export-resolutions'
 import { selectExportCodec } from '../../../shared/export-codec'
 import { encoderToH264Args, videoEncodeArgs, type ExportQuality } from './export-video-args'
@@ -105,6 +106,68 @@ export interface BuildChunkExportArgsOptions {
   outputPath: string
   encoder?: string
   quality?: ExportQuality
+}
+
+export interface ChunkSlice {
+  index: number
+  startFrame: number
+  endFrame: number
+  chunkFrames: number
+  chunkDuration: number
+  chunkPath: string
+}
+
+export interface ParallelExportDecisionOptions {
+  useCloud: boolean
+  format: string
+  exportDuration: number
+  totalFrames: number
+  cpuCount: number
+}
+
+/**
+ * Determines whether an export can run with parallel chunked workers.
+ *
+ * Parallel export partitions MP4 exports across 2-4 worker processes.
+ * Short exports (<4s or <60 frames), single core machines, and cloud exports use a single worker.
+ */
+export function canUseParallelExport(options: ParallelExportDecisionOptions): boolean {
+  return (
+    !options.useCloud &&
+    options.format === 'mp4' &&
+    options.exportDuration >= 4.0 &&
+    options.totalFrames >= 60 &&
+    options.cpuCount >= 2
+  )
+}
+
+/**
+ * Computes the optimal number of worker processes based on available CPU cores and frame count.
+ */
+export function computeChunkWorkerCount(cpuCount: number, totalFrames: number): number {
+  const idealWorkers = Math.min(4, Math.max(2, Math.floor(cpuCount / 2.5)))
+  return Math.max(2, Math.min(idealWorkers, Math.floor(totalFrames / 45)))
+}
+
+/**
+ * Partitions totalFrames into clean, non-overlapping contiguous slices across workers.
+ */
+export function planChunkSlices(
+  totalFrames: number,
+  numWorkers: number,
+  fps: number,
+  sessionDir: string,
+): ChunkSlice[] {
+  const chunks: ChunkSlice[] = []
+  for (let i = 0; i < numWorkers; i++) {
+    const startFrame = Math.floor((i * totalFrames) / numWorkers)
+    const endFrame = Math.floor(((i + 1) * totalFrames) / numWorkers)
+    const chunkFrames = endFrame - startFrame
+    const chunkDuration = chunkFrames / fps
+    const chunkPath = path.join(sessionDir, `chunk_${i}.mp4`)
+    chunks.push({ index: i, startFrame, endFrame, chunkFrames, chunkDuration, chunkPath })
+  }
+  return chunks
 }
 
 export interface BuildConcatExportArgsOptions {

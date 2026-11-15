@@ -29,6 +29,7 @@ describe('buildChunkExportArgs', () => {
     expect(args).toContain('rawvideo')
     expect(args).toContain('-s')
     expect(args).toContain('1920x1080')
+    expect(args).toContain('-framerate')
     expect(args).toContain('-r')
     expect(args).toContain('60')
     expect(args).toContain('-i')

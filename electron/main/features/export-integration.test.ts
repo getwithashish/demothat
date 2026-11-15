@@ -271,4 +271,62 @@ suite('export pipeline against the bundled ffmpeg', () => {
     expect(info).toContain('640x360')
     expect(info).toContain('30 fps')
   }, 120_000)
+
+  it('encodes chunks at 60 fps with exact 1:1 playback speed, monotonic PTS, and full duration', async () => {
+    const fps = 60
+    const totalFrames = 120 // exactly 2.0 seconds at 60 fps
+    const chunkFrames = 60
+    const chunk0Path = path.join(tmpDir, 'chunk60_0.mp4')
+    const chunk1Path = path.join(tmpDir, 'chunk60_1.mp4')
+    const outputPath = path.join(tmpDir, 'stitched60.mp4')
+    const concatListPath = path.join(tmpDir, 'concat60.txt')
+
+    const chunk0Args = buildChunkExportArgs({
+      renderWidth: 640,
+      renderHeight: 360,
+      targetWidth: 640,
+      targetHeight: 360,
+      fps,
+      outputPath: chunk0Path,
+    })
+    const chunk1Args = buildChunkExportArgs({
+      renderWidth: 640,
+      renderHeight: 360,
+      targetWidth: 640,
+      targetHeight: 360,
+      fps,
+      outputPath: chunk1Path,
+    })
+
+    const frames0 = Array.from({ length: chunkFrames }, (_, i) => makeFrame(640, 360, 20 + i * 2))
+    const frames1 = Array.from({ length: chunkFrames }, (_, i) => makeFrame(640, 360, 100 + i * 2))
+
+    const [res0, res1] = await Promise.all([runFfmpeg(chunk0Args, frames0), runFfmpeg(chunk1Args, frames1)])
+    expect(res0.code, res0.stderr).toBe(0)
+    expect(res1.code, res1.stderr).toBe(0)
+
+    const concatContent = `file '${chunk0Path.replace(/'/g, "'\\''")}'\nfile '${chunk1Path.replace(/'/g, "'\\''")}'\n`
+    await fs.promises.writeFile(concatListPath, concatContent, 'utf8')
+
+    const concatArgs = buildConcatExportArgs({
+      concatListPath,
+      outputPath,
+      projectState: { aspectRatio: '16:9', duration: totalFrames / fps },
+      totalFrames,
+      fps,
+    })
+
+    const concatRes = await runFfmpeg(concatArgs, [])
+    expect(concatRes.code, concatRes.stderr).toBe(0)
+
+    // Verify it decodes cleanly with 0 errors
+    const decoded = await runFfmpeg(['-v', 'error', '-i', outputPath, '-f', 'null', '-'], [])
+    expect(decoded.code, decoded.stderr).toBe(0)
+    expect(decoded.stderr.trim()).toBe('')
+
+    // Verify stream info has exact 60 fps and 2.0s duration
+    const info = await probe(outputPath)
+    expect(info).toContain('60 fps')
+    expect(info).toContain('00:00:02.00')
+  }, 120_000)
 })

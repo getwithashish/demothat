@@ -146,7 +146,7 @@ export const DEFAULTS = {
       DEFAULT_COLOR_RGBA: 'rgba(0, 0, 0, 0.4)',
     },
     CLICK_RIPPLE: {
-      ENABLED: { defaultValue: false },
+      ENABLED: { defaultValue: true },
       SIZE: { min: 10, max: 80, step: 1, defaultValue: 30 },
       DURATION: { min: 0.1, max: 2.0, step: 0.05, defaultValue: 0.5 },
       COLOR: { defaultValue: 'rgba(255, 255, 255, 0.8)' },

@@ -233,6 +233,45 @@ const drawBackground = (
   }
 }
 
+function parseRgbaColor(colorStr: string): [number, number, number, number] {
+  if (!colorStr) return [255, 255, 255, 0.8]
+  const rgbaMatch = /rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/.exec(colorStr)
+  if (rgbaMatch) {
+    const r = Number(rgbaMatch[1])
+    const g = Number(rgbaMatch[2])
+    const b = Number(rgbaMatch[3])
+    const a = rgbaMatch[4] !== undefined ? Number(rgbaMatch[4]) : 1
+    return [r, g, b, a]
+  }
+  if (colorStr.startsWith('#')) {
+    const hex = colorStr.slice(1)
+    if (hex.length === 3) {
+      const r = parseInt(hex[0] + hex[0], 16)
+      const g = parseInt(hex[1] + hex[1], 16)
+      const b = parseInt(hex[2] + hex[2], 16)
+      return [r, g, b, 1]
+    } else if (hex.length === 4) {
+      const r = parseInt(hex[0] + hex[0], 16)
+      const g = parseInt(hex[1] + hex[1], 16)
+      const b = parseInt(hex[2] + hex[2], 16)
+      const a = parseInt(hex[3] + hex[3], 16) / 255
+      return [r, g, b, a]
+    } else if (hex.length === 6) {
+      const r = parseInt(hex.slice(0, 2), 16)
+      const g = parseInt(hex.slice(2, 4), 16)
+      const b = parseInt(hex.slice(4, 6), 16)
+      return [r, g, b, 1]
+    } else if (hex.length === 8) {
+      const r = parseInt(hex.slice(0, 2), 16)
+      const g = parseInt(hex.slice(2, 4), 16)
+      const b = parseInt(hex.slice(4, 6), 16)
+      const a = parseInt(hex.slice(6, 8), 16) / 255
+      return [r, g, b, a]
+    }
+  }
+  return [255, 255, 255, 0.8]
+}
+
 /**
  * Draws the video frame (shadow, border, zoom/pan transform), click ripples and the cursor.
  * Everything here is drawn flat in output-canvas coordinates; perspective tilt is applied by the caller.
@@ -306,8 +345,14 @@ const drawFrameLayer = (
 
   // --- 4. Draw Click Animations & Cursor Setup ---
   const lastEventIndex = findLastMetadataIndex(state.metadata, currentTime)
+  const activeGeometry =
+    state.recordingGeometry && state.recordingGeometry.width > 0 && state.recordingGeometry.height > 0
+      ? state.recordingGeometry
+      : state.videoDimensions && state.videoDimensions.width > 0 && state.videoDimensions.height > 0
+        ? { x: 0, y: 0, width: state.videoDimensions.width, height: state.videoDimensions.height }
+        : { x: 0, y: 0, width: frameContentWidth, height: frameContentHeight }
 
-  if (state.cursorStyles.clickRippleEffect && state.recordingGeometry && lastEventIndex > -1) {
+  if (state.cursorStyles.clickRippleEffect && lastEventIndex > -1) {
     const { clickRippleDuration, clickRippleSize, clickRippleColor } = state.cursorStyles
     const rippleEasing = EASING_MAP.Balanced // Ripple uses a standard ease-out
 
@@ -322,30 +367,32 @@ const drawFrameLayer = (
       }
     }
 
+    const [r, g, b, baseAlpha] = parseRgbaColor(clickRippleColor)
+
     for (const click of recentRippleClicks) {
-      const progress = (currentTime - click.timestamp) / clickRippleDuration
+      const progress = Math.min(1, Math.max(0, (currentTime - click.timestamp) / clickRippleDuration))
       const easedProgress = rippleEasing(progress)
-      const currentRadius = easedProgress * clickRippleSize
-      const currentOpacity = 1 - easedProgress
+      const currentRadius = Math.max(1, easedProgress * clickRippleSize)
+      const currentOpacity = Math.max(0, 1 - easedProgress)
 
       // Scale cursor position from original recording geometry to the current frame's content size
-      const cursorX = (click.x / state.recordingGeometry.width) * frameContentWidth
-      const cursorY = (click.y / state.recordingGeometry.height) * frameContentHeight
+      const cursorX = (click.x / activeGeometry.width) * frameContentWidth
+      const cursorY = (click.y / activeGeometry.height) * frameContentHeight
 
-      const colorResult = /rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/.exec(clickRippleColor)
-      if (colorResult) {
-        const [r, g, b, baseAlpha] = colorResult.slice(1).map(Number)
-        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${baseAlpha * currentOpacity})`
-      }
-
+      ctx.save()
       ctx.beginPath()
       ctx.arc(cursorX, cursorY, currentRadius, 0, 2 * Math.PI)
+      ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${baseAlpha * currentOpacity * 0.35})`
       ctx.fill()
+      ctx.lineWidth = Math.max(1.5, clickRippleSize * 0.08)
+      ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${Math.min(1, baseAlpha * 1.2) * currentOpacity})`
+      ctx.stroke()
+      ctx.restore()
     }
   }
 
   // --- 5. Draw Cursor ---
-  if (state.cursorStyles.showCursor && lastEventIndex > -1 && state.recordingGeometry) {
+  if (state.cursorStyles.showCursor && lastEventIndex > -1) {
     // Smoothing turns the recorded samples into a continuous glide (see
     // lib/cursor-path.ts); with it off this is the raw last sample, as before.
     const pathOptions = {
@@ -365,8 +412,8 @@ const drawFrameLayer = (
           : state.cursorBitmapsToRender.get(sample.cursorImageKey!)
 
       if (cursorData && cursorData.imageBitmap && cursorData.width > 0) {
-        const cursorX = (sample.x / state.recordingGeometry.width) * frameContentWidth
-        const cursorY = (sample.y / state.recordingGeometry.height) * frameContentHeight
+        const cursorX = (sample.x / activeGeometry.width) * frameContentWidth
+        const cursorY = (sample.y / activeGeometry.height) * frameContentHeight
         const baseDrawX = Math.round(cursorX - cursorData.xhot)
         const baseDrawY = Math.round(cursorY - cursorData.yhot)
 
@@ -646,7 +693,13 @@ export const drawScene = async (
   const activeLayoutRange = (state.compositionLayouts || [])
     .filter((range) => currentTime >= range.startTime && currentTime < range.startTime + range.duration)
     .sort((a, b) => b.startTime - a.startTime)[0]
-  if (isWebcamVisible && webcamVideoElement && webcamVideoElement.videoWidth > 0 && state.recordingGeometry) {
+  const activeGeometry =
+    state.recordingGeometry && state.recordingGeometry.width > 0 && state.recordingGeometry.height > 0
+      ? state.recordingGeometry
+      : state.videoDimensions && state.videoDimensions.width > 0 && state.videoDimensions.height > 0
+        ? { x: 0, y: 0, width: state.videoDimensions.width, height: state.videoDimensions.height }
+        : null
+  if (isWebcamVisible && webcamVideoElement && webcamVideoElement.videoWidth > 0 && activeGeometry) {
     let finalWebcamScale = 1
     if (webcamStyles.scaleOnZoom) {
       const activeZoomRegion = Object.values(state.zoomRegions).find(
@@ -700,8 +753,8 @@ export const drawScene = async (
         )
         if (futureCursorIndex > -1) {
           const futureCursorEvent = state.metadata[futureCursorIndex]
-          const cursorCanvasX = (futureCursorEvent.x / state.recordingGeometry!.width) * frameContentWidth + frameX
-          const cursorCanvasY = (futureCursorEvent.y / state.recordingGeometry!.height) * frameContentHeight + frameY
+          const cursorCanvasX = (futureCursorEvent.x / activeGeometry.width) * frameContentWidth + frameX
+          const cursorCanvasY = (futureCursorEvent.y / activeGeometry.height) * frameContentHeight + frameY
           if (isPointInRect({ x: cursorCanvasX, y: cursorCanvasY }, originalRect)) {
             const [adj1, adj2] = ADJACENT_POSITIONS[originalPos]
             const adj1Rect = getWebcamRectForPosition(

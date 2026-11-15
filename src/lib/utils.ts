@@ -234,8 +234,12 @@ export const mapExportTimeToSourceTime = (
   cutRegions: Record<string, CutRegion>,
   speedRegions: Record<string, SpeedRegion>,
 ): number => {
-  const allCuts = Object.values(cutRegions)
-  const allSpeeds = Object.values(speedRegions)
+  const allCuts = Object.values(cutRegions || {})
+  const allSpeeds = Object.values(speedRegions || {})
+
+  if (allCuts.length === 0 && allSpeeds.length === 0) {
+    return Math.min(Math.max(0, exportTime), duration > 0 ? duration : exportTime)
+  }
 
   // Create a sorted list of "events" (start/end of any region)
   const events = new Set([0, duration])

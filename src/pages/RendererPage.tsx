@@ -181,8 +181,13 @@ export function RendererPage() {
         const iconScale = (await window.electronAPI.getSetting<number>('recorder.cursorScale')) || 1
         const iconTheme = await window.electronAPI.loadCursorTheme('default')
         const finalCursorIcons = await prepareCursorIcons(iconTheme, iconScale)
+        const effectiveCursorStyles = {
+          ...useEditorStore.getState().cursorStyles,
+          ...(projectState.cursorStyles || {}),
+        }
         const projectStateWithCursorBitmaps = {
           ...projectState,
+          cursorStyles: effectiveCursorStyles,
           cursorBitmapsToRender: finalCursorBitmaps,
           cursorIconsToRender: finalCursorIcons,
         }
@@ -263,6 +268,11 @@ export function RendererPage() {
           exportDuration = calculated
         }
         exportDuration = Math.max(0, exportDuration)
+        const effectiveSourceDuration = Math.max(
+          Number(projectState.duration) || 0,
+          Number(video.duration) || 0,
+          exportDuration,
+        )
         const fullTotalFrames =
           typeof payload.totalFrames === 'number' && payload.totalFrames > 0
             ? payload.totalFrames
@@ -281,7 +291,7 @@ export function RendererPage() {
             isChunked
               ? `Chunk #${payload.chunkIndex} [frames ${startFrame}..${endFrame}), slice count: ${chunkTotalFrames}`
               : `Total frames: ${fullTotalFrames}`
-          }, Export duration: ${exportDuration.toFixed(2)}s`,
+          }, Export duration: ${exportDuration.toFixed(2)}s, Source duration: ${effectiveSourceDuration.toFixed(2)}s`,
         )
 
         // --- 5. PRE-SEEK INITIAL FRAME FOR CHUNKED WORKERS ---
@@ -297,7 +307,7 @@ export function RendererPage() {
           const initialExportTimestamp = (startFrame + 0.5) / fps
           const initialSourceTimestamp = mapExportTimeToSourceTime(
             initialExportTimestamp,
-            projectState.duration,
+            effectiveSourceDuration,
             projectState.cutRegions,
             projectState.speedRegions,
           )
@@ -351,7 +361,7 @@ export function RendererPage() {
           const nominalExportTimestamp = frame / fps
           const nominalSourceTimestamp = mapExportTimeToSourceTime(
             nominalExportTimestamp,
-            projectState.duration,
+            effectiveSourceDuration,
             projectState.cutRegions,
             projectState.speedRegions,
           )
@@ -364,7 +374,7 @@ export function RendererPage() {
           const seekExportTimestamp = (frame + 0.5) / fps
           const seekSourceTimestamp = mapExportTimeToSourceTime(
             seekExportTimestamp,
-            projectState.duration,
+            effectiveSourceDuration,
             projectState.cutRegions,
             projectState.speedRegions,
           )

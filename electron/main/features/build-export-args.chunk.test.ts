@@ -194,4 +194,43 @@ describe('buildConcatExportArgs', () => {
     expect(args).toContain('-avoid_negative_ts')
     expect(args).toContain('make_zero')
   })
+
+  it('aligns audio duration to exact totalFrames / fps when exportDuration has fractional frames', () => {
+    const state: ExportProjectState = {
+      aspectRatio: '16:9',
+      duration: 10.05, // 10.05s
+      hasAudioTrack: false,
+      isMuted: true,
+    }
+    // At 60 fps, 600 frames = 10.0s exactly
+    const args = buildConcatExportArgs({
+      concatListPath: '/tmp/concat.txt',
+      outputPath: '/final/aligned.mp4',
+      projectState: state,
+      totalFrames: 600,
+      fps: 60,
+    })
+
+    const tIndex = args.indexOf('-t')
+    expect(tIndex).toBeGreaterThan(-1)
+    expect(args[tIndex + 1]).toBe('10')
+  })
+
+  it('falls back to computeExportDuration when totalFrames or fps is missing', () => {
+    const state: ExportProjectState = {
+      aspectRatio: '16:9',
+      duration: 10.5,
+      hasAudioTrack: false,
+      isMuted: true,
+    }
+    const args = buildConcatExportArgs({
+      concatListPath: '/tmp/concat.txt',
+      outputPath: '/final/fallback.mp4',
+      projectState: state,
+    })
+
+    const tIndex = args.indexOf('-t')
+    expect(tIndex).toBeGreaterThan(-1)
+    expect(args[tIndex + 1]).toBe('10.5')
+  })
 })

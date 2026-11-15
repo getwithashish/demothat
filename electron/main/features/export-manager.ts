@@ -17,6 +17,9 @@ import {
   buildConcatExportArgs,
   computeExportDuration,
   needsBuiltInClickSound,
+  canUseParallelExport,
+  computeChunkWorkerCount,
+  planChunkSlices,
   type ExportProjectState,
   type ExportSettingsInput,
   buildCloudFallbackArgs,
@@ -109,15 +112,6 @@ interface FrameWriteResult {
   aborted: boolean
 }
 
-interface ChunkSlice {
-  index: number
-  startFrame: number
-  endFrame: number
-  chunkFrames: number
-  chunkDuration: number
-  chunkPath: string
-}
-
 interface ParallelExportOptions {
   editorWindow: BrowserWindow
   projectState: ExportProjectState
@@ -144,6 +138,7 @@ interface SingleExportOptions {
   targetWidth: number
   targetHeight: number
   exportDuration: number
+  totalFrames: number
   useCloud: boolean
   clickSoundPath: string | null
   temporaryFiles: string[]
@@ -244,11 +239,15 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
   const perfStartedAt = Date.now()
 
   // Concurrency decision:
-  // Multi-window chunk export creates visual discontinuities (I-frame pulsing and DPB flushes
-  // at chunk boundaries) as well as Chromium decoder contention that causes seek stalls.
-  // Sequential export ensures unbroken GOP continuity, perfectly smooth stutter-free playback,
-  // zero duplicate/dropped frames, and sample-accurate audio/video synchronization.
-  const canParallel = false
+  // Parallel chunked export partitions MP4 exports across 2-4 worker processes.
+  // Short exports (<4s or <60 frames), single core machines, and cloud exports use a single worker.
+  const canParallel = canUseParallelExport({
+    useCloud,
+    format: exportSettings.format,
+    exportDuration,
+    totalFrames,
+    cpuCount: os.cpus().length,
+  })
 
   if (canParallel) {
     await runParallelExport({
@@ -277,6 +276,7 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
       targetWidth,
       targetHeight,
       exportDuration,
+      totalFrames,
       useCloud,
       clickSoundPath,
       temporaryFiles,
@@ -306,8 +306,7 @@ async function runParallelExport(options: ParallelExportOptions) {
   } = options
 
   const cpuCount = os.cpus().length
-  const idealWorkers = Math.min(3, Math.max(2, Math.floor(cpuCount / 3)))
-  const numWorkers = Math.max(2, Math.min(idealWorkers, Math.floor(totalFrames / 45)))
+  const numWorkers = computeChunkWorkerCount(cpuCount, totalFrames)
   log.info(`[ExportManager] Launching parallel export with ${numWorkers} chunk workers (CPU cores: ${cpuCount}).`)
 
   const capabilities = await getEncoderCapabilities()
@@ -317,15 +316,7 @@ async function runParallelExport(options: ParallelExportOptions) {
   const sessionDir = path.join(os.tmpdir(), `demothat-export-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
   await fsPromises.mkdir(sessionDir, { recursive: true })
 
-  const chunks: ChunkSlice[] = []
-  for (let i = 0; i < numWorkers; i++) {
-    const startFrame = Math.floor((i * totalFrames) / numWorkers)
-    const endFrame = Math.floor(((i + 1) * totalFrames) / numWorkers)
-    const chunkFrames = endFrame - startFrame
-    const chunkDuration = chunkFrames / exportSettings.fps
-    const chunkPath = path.join(sessionDir, `chunk_${i}.mp4`)
-    chunks.push({ index: i, startFrame, endFrame, chunkFrames, chunkDuration, chunkPath })
-  }
+  const chunks = planChunkSlices(totalFrames, numWorkers, exportSettings.fps, sessionDir)
 
   // Spawn FFmpeg chunk processes
   const chunkProcesses: ChildProcessWithoutNullStreams[] = []
@@ -648,6 +639,7 @@ async function runSingleExport(options: SingleExportOptions) {
     targetWidth,
     targetHeight,
     exportDuration,
+    totalFrames,
     useCloud,
     clickSoundPath,
     temporaryFiles,
@@ -979,6 +971,7 @@ async function runSingleExport(options: SingleExportOptions) {
         renderWidth,
         renderHeight,
         duration: exportDuration,
+        totalFrames,
       })
     }
   })

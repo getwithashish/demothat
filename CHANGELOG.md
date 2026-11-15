@@ -1,3 +1,10 @@
+## [1.21.0-beta.8](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.7...v1.21.0-beta.8) (2026-11-15)
+
+### Bug Fixes
+
+* **export:** resolve stuttering, chunk seam lag, and audio sync drift ([6f2accb](https://github.com/getwithashish/DemoThat/commit/6f2accb41375cafd5be31bf1ee19ba23a82aef7a))
+* **export:** sample frames at interval midpoint to prevent seek stutter and duplicates ([a339c79](https://github.com/getwithashish/DemoThat/commit/a339c79cfd99e96d16687b4840e08b5266d2d718))
+
 ## [1.21.0-beta.7](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.6...v1.21.0-beta.7) (2026-11-15)
 
 ### Bug Fixes

@@ -1,3 +1,9 @@
+## [1.21.0-beta.10](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.9...v1.21.0-beta.10) (2026-11-15)
+
+### Bug Fixes
+
+* **export:** ensure 1:1 playback speed and render click ripples in export ([5074c13](https://github.com/getwithashish/DemoThat/commit/5074c13b25f7af5b401beff9733f74c9c803bdcd))
+
 ## [1.21.0-beta.9](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.8...v1.21.0-beta.9) (2026-11-15)
 
 ### Features

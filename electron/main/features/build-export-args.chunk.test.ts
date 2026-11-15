@@ -26,15 +26,18 @@ describe('buildChunkExportArgs', () => {
     expect(args).toContain('-map')
     expect(args).toContain('0:v:0')
 
-    // Encoder settings (defaults to fast software preset)
+    // Encoder settings (defaults to fast software preset with zero B-frames and closed GOPs)
     expect(args).toContain('-c:v')
     expect(args).toContain('libx264')
     expect(args).toContain('-preset')
     expect(args).toContain('faster')
+    expect(args).toContain('-bf')
+    expect(args).toContain('0')
+    expect(args).toContain('-flags')
+    expect(args).toContain('+cgop')
 
-    // Chunk duration limit
-    expect(args).toContain('-t')
-    expect(args).toContain('5.5')
+    // Chunk duration limit -t is deliberately omitted to prevent premature EPIPE frame drops
+    expect(args).not.toContain('-t')
 
     // Output path
     expect(args[args.length - 1]).toBe('/tmp/chunk_0.mp4')
@@ -70,6 +73,10 @@ describe('buildChunkExportArgs', () => {
     expect(nvencArgs).toContain('h264_nvenc')
     expect(nvencArgs).toContain('-cq')
     expect(nvencArgs).toContain('18')
+    expect(nvencArgs).toContain('-bf')
+    expect(nvencArgs).toContain('0')
+    expect(nvencArgs).toContain('-flags')
+    expect(nvencArgs).toContain('+cgop')
 
     const vtArgs = buildChunkExportArgs({
       renderWidth: 1920,
@@ -85,6 +92,8 @@ describe('buildChunkExportArgs', () => {
     expect(vtArgs).toContain('h264_videotoolbox')
     expect(vtArgs).toContain('-q:v')
     expect(vtArgs).toContain('65')
+    expect(vtArgs).toContain('-bf')
+    expect(vtArgs).toContain('0')
   })
 })
 
@@ -104,6 +113,8 @@ describe('buildConcatExportArgs', () => {
     })
 
     expect(args[0]).toBe('-y')
+    expect(args).toContain('-fflags')
+    expect(args).toContain('+genpts')
     expect(args).toContain('-f')
     expect(args).toContain('concat')
     expect(args).toContain('-safe')
@@ -119,6 +130,8 @@ describe('buildConcatExportArgs', () => {
 
     // No audio flag
     expect(args).toContain('-an')
+    expect(args).toContain('-avoid_negative_ts')
+    expect(args).toContain('make_zero')
     expect(args).toContain('-movflags')
     expect(args).toContain('+faststart')
     expect(args[args.length - 1]).toBe('/final/output.mp4')
@@ -152,6 +165,8 @@ describe('buildConcatExportArgs', () => {
       concatListPath: '/tmp/concat.txt',
       outputPath: '/final/with_audio.mp4',
       projectState: stateWithAudio,
+      totalFrames: 360,
+      fps: 30,
     })
 
     // Concat input is input 0
@@ -173,5 +188,10 @@ describe('buildConcatExportArgs', () => {
     expect(args).toContain('aac')
     expect(args).toContain('-b:a')
     expect(args).toContain('192k')
+    // Audio duration aligned to exact video frames (360 / 30 = 12)
+    expect(args).toContain('-t')
+    expect(args).toContain('12')
+    expect(args).toContain('-avoid_negative_ts')
+    expect(args).toContain('make_zero')
   })
 })

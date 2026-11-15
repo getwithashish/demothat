@@ -64,8 +64,21 @@ describe('qualityToX264Args', () => {
 })
 
 describe('fastX264Args', () => {
-  it('maps to faster presets for parallel chunk encoding', () => {
-    expect(fastX264Args('low')).toEqual(['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '28', '-pix_fmt', 'yuv420p'])
+  it('maps to faster presets with zero B-frames and closed GOPs for parallel chunk encoding', () => {
+    expect(fastX264Args('low')).toEqual([
+      '-c:v',
+      'libx264',
+      '-preset',
+      'veryfast',
+      '-crf',
+      '28',
+      '-bf',
+      '0',
+      '-flags',
+      '+cgop',
+      '-pix_fmt',
+      'yuv420p',
+    ])
     expect(fastX264Args('medium')).toEqual([
       '-c:v',
       'libx264',
@@ -73,32 +86,73 @@ describe('fastX264Args', () => {
       'faster',
       '-crf',
       '23',
+      '-bf',
+      '0',
+      '-flags',
+      '+cgop',
       '-pix_fmt',
       'yuv420p',
     ])
-    expect(fastX264Args('high')).toEqual(['-c:v', 'libx264', '-preset', 'fast', '-crf', '19', '-pix_fmt', 'yuv420p'])
+    expect(fastX264Args('high')).toEqual([
+      '-c:v',
+      'libx264',
+      '-preset',
+      'fast',
+      '-crf',
+      '19',
+      '-bf',
+      '0',
+      '-flags',
+      '+cgop',
+      '-pix_fmt',
+      'yuv420p',
+    ])
   })
 })
 
 describe('encoderToH264Args', () => {
-  it('builds NVENC args with preset and cq', () => {
+  it('builds NVENC args with preset, cq, zero B-frames and closed GOP', () => {
     const args = encoderToH264Args('h264_nvenc', 'medium')
-    expect(args).toEqual(['-c:v', 'h264_nvenc', '-preset', 'p4', '-cq', '23', '-pix_fmt', 'yuv420p'])
+    expect(args).toEqual([
+      '-c:v',
+      'h264_nvenc',
+      '-preset',
+      'p4',
+      '-cq',
+      '23',
+      '-bf',
+      '0',
+      '-flags',
+      '+cgop',
+      '-pix_fmt',
+      'yuv420p',
+    ])
   })
 
-  it('builds VideoToolbox args with q:v', () => {
+  it('builds VideoToolbox args with q:v and zero B-frames', () => {
     const args = encoderToH264Args('h264_videotoolbox', 'high')
-    expect(args).toEqual(['-c:v', 'h264_videotoolbox', '-q:v', '80', '-pix_fmt', 'yuv420p'])
+    expect(args).toEqual(['-c:v', 'h264_videotoolbox', '-q:v', '80', '-bf', '0', '-pix_fmt', 'yuv420p'])
   })
 
-  it('builds QSV args with global_quality and preset', () => {
+  it('builds QSV args with global_quality, preset, and zero B-frames', () => {
     const args = encoderToH264Args('h264_qsv', 'medium')
-    expect(args).toEqual(['-c:v', 'h264_qsv', '-global_quality', '23', '-preset', 'faster', '-pix_fmt', 'nv12'])
+    expect(args).toEqual([
+      '-c:v',
+      'h264_qsv',
+      '-global_quality',
+      '23',
+      '-preset',
+      'faster',
+      '-bf',
+      '0',
+      '-pix_fmt',
+      'nv12',
+    ])
   })
 
-  it('builds VAAPI args with qp', () => {
+  it('builds VAAPI args with qp and zero B-frames', () => {
     const args = encoderToH264Args('h264_vaapi', 'low')
-    expect(args).toEqual(['-c:v', 'h264_vaapi', '-qp', '28'])
+    expect(args).toEqual(['-c:v', 'h264_vaapi', '-qp', '28', '-bf', '0'])
   })
 
   it('falls back to fast libx264 for software encoder', () => {

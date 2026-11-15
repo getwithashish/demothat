@@ -101,7 +101,7 @@ export interface BuildChunkExportArgsOptions {
   targetWidth: number
   targetHeight: number
   fps: number
-  chunkDuration: number
+  chunkDuration?: number
   outputPath: string
   encoder?: string
   quality?: ExportQuality
@@ -112,6 +112,8 @@ export interface BuildConcatExportArgsOptions {
   outputPath: string
   projectState: ExportProjectState
   clickSoundPath?: string | null
+  totalFrames?: number
+  fps?: number
 }
 
 export interface ExportAudioGraphResult {
@@ -315,10 +317,14 @@ export function buildExportAudioGraph(
 
 /**
  * Pure builder for a single video-only chunk exported from a worker window.
+ *
+ * Encodes raw video frames from stdin to an MP4 video-only chunk. Note: `-t` is
+ * deliberately omitted because the worker renderer sends the exact frame slice
+ * and closes stdin (`proc.stdin.end()`); passing `-t` risks floating-point
+ * truncation, premature EPIPE, and dropped tail frames at chunk boundaries.
  */
 export function buildChunkExportArgs(options: BuildChunkExportArgsOptions): string[] {
-  const { renderWidth, renderHeight, targetWidth, targetHeight, fps, chunkDuration, outputPath, encoder, quality } =
-    options
+  const { renderWidth, renderHeight, targetWidth, targetHeight, fps, outputPath, encoder, quality } = options
   const scaled = renderWidth !== targetWidth || renderHeight !== targetHeight
   const encodeArgs = encoderToH264Args(encoder, quality)
 
@@ -346,24 +352,27 @@ export function buildChunkExportArgs(options: BuildChunkExportArgsOptions): stri
 
   args.push(...encodeArgs)
 
-  if (chunkDuration > 0) {
-    args.push('-t', chunkDuration.toString())
-  }
-
   args.push('-progress', 'pipe:1', '-nostats', outputPath)
   return args
 }
 
 /**
  * Pure builder for the final lossless stitch and full multi-track audio mux.
+ *
+ * Uses concat demuxer with `-c:v copy` to losslessly stitch seamless video chunks.
+ * `-fflags +genpts` and `-avoid_negative_ts make_zero` guarantee continuous monotonic PTS/DTS.
+ * If totalFrames and fps are supplied, the audio is aligned to the exact video length down to the millisecond.
  */
 export function buildConcatExportArgs(options: BuildConcatExportArgsOptions): string[] {
-  const { concatListPath, outputPath, projectState, clickSoundPath } = options
+  const { concatListPath, outputPath, projectState, clickSoundPath, totalFrames, fps } = options
   const exportDuration = computeExportDuration(projectState)
+  const exactDuration = totalFrames && fps && fps > 0 ? totalFrames / fps : exportDuration
   const audioGraph = buildExportAudioGraph(projectState, clickSoundPath, 1)
 
   const args: string[] = [
     '-y',
+    '-fflags',
+    '+genpts',
     '-f',
     'concat',
     '-safe',
@@ -388,13 +397,13 @@ export function buildConcatExportArgs(options: BuildConcatExportArgsOptions): st
       '-b:a',
       '192k',
       '-t',
-      exportDuration.toString(),
+      exactDuration.toString(),
     )
   } else {
-    args.push('-an', '-t', exportDuration.toString())
+    args.push('-an', '-t', exactDuration.toString())
   }
 
-  args.push('-movflags', '+faststart', '-progress', 'pipe:1', '-nostats', outputPath)
+  args.push('-avoid_negative_ts', 'make_zero', '-movflags', '+faststart', '-progress', 'pipe:1', '-nostats', outputPath)
   return args
 }
 

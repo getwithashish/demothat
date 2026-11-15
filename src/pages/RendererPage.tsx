@@ -288,7 +288,10 @@ export function RendererPage() {
         // and ready before frame 0 of the chunk is drawn, preventing black screen frames and
         // cascading seek aborts.
         if (startFrame > 0) {
-          const initialExportTimestamp = startFrame / fps
+          // Mid-frame sampling ((startFrame + 0.5) / fps) centers the seek in the frame's
+          // temporal interval [frame/fps..(frame+1)/fps). This prevents boundary truncation
+          // and decoder rounding from landing on the prior frame, eliminating duplicate frames.
+          const initialExportTimestamp = (startFrame + 0.5) / fps
           const initialSourceTimestamp = mapExportTimeToSourceTime(
             initialExportTimestamp,
             projectState.duration,
@@ -340,7 +343,11 @@ export function RendererPage() {
             }
           }
 
-          const exportTimestamp = frame / fps
+          // Sample frame at mid-interval ((frame + 0.5) / fps) rather than left boundary (frame / fps).
+          // Left-boundary sampling is vulnerable to floating-point representation error where
+          // (frame / fps) < frame_start_pts in the decoder's integer timebase, causing Chromium
+          // to decode and present the previous frame repeatedly (causing duplicate frames, stutter, and lag).
+          const exportTimestamp = (frame + 0.5) / fps
           const sourceTimestamp = mapExportTimeToSourceTime(
             exportTimestamp,
             projectState.duration,

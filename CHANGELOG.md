@@ -1,3 +1,9 @@
+## [1.21.0-beta.6](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.5...v1.21.0-beta.6) (2026-11-13)
+
+### Bug Fixes
+
+* **export:** resolve parallel export chunk seek stall and black screen ([13742fd](https://github.com/getwithashish/DemoThat/commit/13742fd89839371dfa45dfaa405ff24ca34df0bf))
+
 ## [1.21.0-beta.5](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.4...v1.21.0-beta.5) (2026-11-13)
 
 ### Features

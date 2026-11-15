@@ -1,3 +1,9 @@
+## [1.21.0-beta.9](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.8...v1.21.0-beta.9) (2026-11-15)
+
+### Features
+
+* **export:** re-enable fast parallel chunk export with seamless stitching ([79abddf](https://github.com/getwithashish/DemoThat/commit/79abddf31f5ed9394e6acb4a978eaf04e2e4983b))
+
 ## [1.21.0-beta.8](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.7...v1.21.0-beta.8) (2026-11-15)
 
 ### Bug Fixes

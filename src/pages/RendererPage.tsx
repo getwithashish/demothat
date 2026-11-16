@@ -353,7 +353,7 @@ export function RendererPage() {
 
         // Bounded pipeline for in-flight frame writes. This keeps Chromium's render engine
         // and FFmpeg's encoding process running in parallel without unbounded memory growth.
-        const MAX_IN_FLIGHT = 3
+        const MAX_IN_FLIGHT = 6
         const inFlightWrites: Promise<{ aborted: boolean }>[] = []
         let isAborted = false
 

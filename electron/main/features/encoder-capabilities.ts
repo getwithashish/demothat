@@ -19,6 +19,25 @@ export function getEncoderCapabilities(): Promise<EncoderCapabilities> {
   return cached
 }
 
+function isEncoderUsable(ffmpegPath: string, encoder: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const proc = spawn(ffmpegPath, [
+      '-y',
+      '-f',
+      'lavfi',
+      '-i',
+      'nullsrc=s=64x64:d=0.04',
+      '-c:v',
+      encoder,
+      '-f',
+      'null',
+      '-',
+    ])
+    proc.on('error', () => resolve(false))
+    proc.on('close', (code) => resolve(code === 0))
+  })
+}
+
 function probe(): Promise<EncoderCapabilities> {
   return new Promise((resolve) => {
     log.info('[EncoderCapabilities] Probing the bundled FFmpeg for encoders.')
@@ -32,9 +51,27 @@ function probe(): Promise<EncoderCapabilities> {
       log.error('[EncoderCapabilities] Could not run FFmpeg:', error)
       resolve({ libx265: false, hevcEncoders: [], libx264: false, h264Encoders: [] })
     })
-    proc.on('close', () => {
+    proc.on('close', async () => {
       const capabilities = parseEncoderCapabilities(stdout)
-      log.info('[EncoderCapabilities] Detected:', capabilities)
+      // Hardware encoders may be compiled into FFmpeg but fail at runtime if GPU drivers are missing.
+      // Filter out non-functional hardware encoders so exports fall back to robust libx264 immediately.
+      const verifiedH264Encoders: string[] = []
+      for (const enc of capabilities.h264Encoders) {
+        if (enc === 'libx264') {
+          verifiedH264Encoders.push(enc)
+          continue
+        }
+        const usable = await isEncoderUsable(FFMPEG_PATH, enc)
+        if (usable) {
+          verifiedH264Encoders.push(enc)
+        } else {
+          log.info(
+            `[EncoderCapabilities] Hardware encoder ${enc} listed by FFmpeg but failed initialization. Omitting.`,
+          )
+        }
+      }
+      capabilities.h264Encoders = verifiedH264Encoders
+      log.info('[EncoderCapabilities] Detected and verified:', capabilities)
       resolve(capabilities)
     })
   })

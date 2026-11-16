@@ -52,6 +52,8 @@ export async function generateFastIntraProxy(options: FastIntraProxyOptions): Pr
   return new Promise((resolve) => {
     const args = [
       '-y',
+      '-threads',
+      '0',
       '-i',
       sourcePath,
       '-c:v',
@@ -60,9 +62,13 @@ export async function generateFastIntraProxy(options: FastIntraProxyOptions): Pr
       '1',
       '-preset',
       'ultrafast',
+      '-tune',
+      'fastdecode',
       '-crf',
       '18',
       '-an',
+      '-sn',
+      '-dn',
       outputPath,
     ]
 

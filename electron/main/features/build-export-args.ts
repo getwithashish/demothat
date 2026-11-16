@@ -154,6 +154,7 @@ export interface BuildChunkExportArgsOptions {
   outputPath: string
   encoder?: string
   quality?: ExportQuality
+  threads?: number
 }
 
 export interface ChunkSlice {
@@ -191,9 +192,24 @@ export function canUseParallelExport(options: ParallelExportDecisionOptions): bo
 
 /**
  * Computes the optimal number of worker processes based on available CPU cores and frame count.
+ * Scales dynamically to leverage multi-core systems:
+ * - 12+ cores: up to 8 workers
+ * - 8-11 cores: up to 6 workers
+ * - 6-7 cores: up to 4 workers
+ * - 4-5 cores: up to 3 workers
+ * - <4 cores: 2 workers
  */
 export function computeChunkWorkerCount(cpuCount: number, totalFrames: number): number {
-  const idealWorkers = Math.min(4, Math.max(2, Math.floor(cpuCount / 2.5)))
+  let idealWorkers = 2
+  if (cpuCount >= 12) {
+    idealWorkers = 8
+  } else if (cpuCount >= 8) {
+    idealWorkers = 6
+  } else if (cpuCount >= 6) {
+    idealWorkers = 4
+  } else if (cpuCount >= 4) {
+    idealWorkers = 3
+  }
   return Math.max(2, Math.min(idealWorkers, Math.floor(totalFrames / 45)))
 }
 
@@ -435,9 +451,9 @@ export function buildExportAudioGraph(
  * truncation, premature EPIPE, and dropped tail frames at chunk boundaries.
  */
 export function buildChunkExportArgs(options: BuildChunkExportArgsOptions): string[] {
-  const { renderWidth, renderHeight, targetWidth, targetHeight, fps, outputPath, encoder, quality } = options
+  const { renderWidth, renderHeight, targetWidth, targetHeight, fps, outputPath, encoder, quality, threads } = options
   const scaled = renderWidth !== targetWidth || renderHeight !== targetHeight
-  const encodeArgs = encoderToH264Args(encoder, quality)
+  const encodeArgs = encoderToH264Args(encoder, quality, threads)
 
   const args: string[] = [
     '-y',

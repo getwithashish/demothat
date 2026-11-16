@@ -318,34 +318,30 @@ export async function runParallelExport(options: ParallelExportOptions) {
   await fsPromises.mkdir(sessionDir, { recursive: true })
 
   // High-performance intra proxy: pre-transcode long-GOP sources to all-intra (keyint=1)
-  // so Chromium workers seek in <7ms instead of 40-200ms per frame.
-  const intraMainVideoPath = projectState.videoPath
-    ? await generateFastIntraProxy({
-        sourcePath: projectState.videoPath,
-        sessionDir,
-        label: 'screen',
-      })
-    : projectState.videoPath
-
+  // in parallel in the background while worker BrowserWindow instances and chunk processes initialize.
   const hasWebcam = Boolean(projectState.webcamVideoPath && typeof projectState.webcamVideoPath === 'string')
-  const intraWebcamVideoPath = hasWebcam
-    ? await generateFastIntraProxy({
-        sourcePath: projectState.webcamVideoPath!,
-        sessionDir,
-        label: 'webcam',
-      })
-    : projectState.webcamVideoPath
-
-  const workerProjectState: ExportProjectState = {
-    ...projectState,
-    videoPath: intraMainVideoPath,
-    webcamVideoPath: intraWebcamVideoPath,
-  }
+  const intraProxyPromise = Promise.all([
+    projectState.videoPath
+      ? generateFastIntraProxy({
+          sourcePath: projectState.videoPath,
+          sessionDir,
+          label: 'screen',
+        })
+      : Promise.resolve(projectState.videoPath),
+    hasWebcam
+      ? generateFastIntraProxy({
+          sourcePath: projectState.webcamVideoPath!,
+          sessionDir,
+          label: 'webcam',
+        })
+      : Promise.resolve(projectState.webcamVideoPath),
+  ])
 
   const chunks = planChunkSlices(totalFrames, numWorkers, exportSettings.fps, sessionDir)
 
-  // Spawn FFmpeg chunk processes
+  // Spawn FFmpeg chunk processes with dedicated thread budget per worker to avoid CPU cache thrashing
   const chunkProcesses: ChildProcessWithoutNullStreams[] = []
+  const workerThreads = Math.max(1, Math.min(4, Math.floor(cpuCount / numWorkers)))
   for (const chunk of chunks) {
     const chunkArgs = buildChunkExportArgs({
       renderWidth,
@@ -357,6 +353,7 @@ export async function runParallelExport(options: ParallelExportOptions) {
       outputPath: chunk.chunkPath,
       encoder: bestEncoder,
       quality: exportSettings.quality,
+      threads: workerThreads,
     })
     log.info(`[ExportManager] Spawning chunk proc #${chunk.index} with args:`, chunkArgs.join(' '))
     const proc = spawn(FFMPEG_PATH, chunkArgs)
@@ -558,7 +555,7 @@ export async function runParallelExport(options: ParallelExportOptions) {
     abortParallelExport('cancelled by user')
   }
 
-  const renderReadyListener = (event: IpcMainEvent) => {
+  const renderReadyListener = async (event: IpcMainEvent) => {
     const senderId = event.sender.id
     if (dispatchedSenderIds.has(senderId)) {
       log.warn(`[ExportManager] Duplicate render:ready received from sender ${senderId}; ignoring.`)
@@ -567,6 +564,17 @@ export async function runParallelExport(options: ParallelExportOptions) {
     const chunkIndex = workerChunkBySenderId.get(senderId)
     if (chunkIndex === undefined) return
     dispatchedSenderIds.add(senderId)
+
+    // Wait for the intra proxy (if it's still running, otherwise returns immediately)
+    const [intraMainVideoPath, intraWebcamVideoPath] = await intraProxyPromise
+    if (exportAborted) return
+
+    const workerProjectState: ExportProjectState = {
+      ...projectState,
+      videoPath: intraMainVideoPath,
+      webcamVideoPath: intraWebcamVideoPath,
+    }
+
     const worker = workerWindows[chunkIndex]
     const chunk = chunks[chunkIndex]
     log.info(

@@ -43,7 +43,7 @@ describe('buildChunkExportArgs', () => {
     expect(args).toContain('-c:v')
     expect(args).toContain('libx264')
     expect(args).toContain('-preset')
-    expect(args).toContain('faster')
+    expect(args).toContain('veryfast')
     expect(args).toContain('-bf')
     expect(args).toContain('0')
     expect(args).toContain('-flags')
@@ -286,16 +286,16 @@ describe('canUseParallelExport', () => {
 describe('computeChunkWorkerCount', () => {
   it('scales worker count based on CPU core count and total frames', () => {
     // 2-4 cores
-    expect(computeChunkWorkerCount(2, 330)).toBe(2)
-    expect(computeChunkWorkerCount(4, 330)).toBe(2)
+    expect(computeChunkWorkerCount(2, 600)).toBe(2)
+    expect(computeChunkWorkerCount(4, 600)).toBe(3)
 
     // 6-8 cores
-    expect(computeChunkWorkerCount(6, 330)).toBe(2)
-    expect(computeChunkWorkerCount(8, 330)).toBe(3)
+    expect(computeChunkWorkerCount(6, 600)).toBe(4)
+    expect(computeChunkWorkerCount(8, 600)).toBe(6)
 
-    // 10+ cores
-    expect(computeChunkWorkerCount(10, 330)).toBe(4)
-    expect(computeChunkWorkerCount(16, 330)).toBe(4)
+    // 12+ cores
+    expect(computeChunkWorkerCount(12, 600)).toBe(8)
+    expect(computeChunkWorkerCount(16, 600)).toBe(8)
   })
 
   it('respects minimum frame density per worker (45 frames / worker)', () => {
@@ -304,6 +304,8 @@ describe('computeChunkWorkerCount', () => {
     expect(computeChunkWorkerCount(16, 90)).toBe(2)
     expect(computeChunkWorkerCount(16, 135)).toBe(3)
     expect(computeChunkWorkerCount(16, 180)).toBe(4)
+    expect(computeChunkWorkerCount(16, 270)).toBe(6)
+    expect(computeChunkWorkerCount(16, 360)).toBe(8)
   })
 })
 

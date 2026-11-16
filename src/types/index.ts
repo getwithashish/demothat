@@ -3,6 +3,7 @@ import type { CreditStatus, DeviceView } from '../../shared/license'
 import type { TranscriptDocument } from '../../shared/transcript'
 import type { SubtitleCue, SubtitleFormat } from '../../shared/subtitles'
 import type { AudioTrack } from '../../shared/audio-tracks'
+import type { VirtualStudioStatus, TrayQuickAction } from '../../shared/virtual-camera-types'
 
 export type BackgroundType = 'color' | 'gradient' | 'image' | 'wallpaper'
 export type AspectRatio = '16:9' | '9:16' | '4:3' | '3:4' | '1:1'
@@ -644,6 +645,42 @@ export interface PurchaseActions {
   dismissCreditsAdded: () => void
 }
 
+export interface VirtualStudioState {
+  isVirtualStudioActive: boolean
+  enableCamera: boolean
+  enableMic: boolean
+  activeSource: 'webcam' | 'canvas'
+  isMicMuted: boolean
+  isMiniHudVisible: boolean
+  isLocalAudioMonitoringEnabled: boolean
+  localMonitoringVolume: number
+  selectedCameraId: string | null
+  selectedMicId: string | null
+  cameraDriverInstalled: boolean
+  micDriverInstalled: boolean
+  isDriverInstalling: boolean
+  studioError: string | null
+}
+
+export interface VirtualStudioActions {
+  setVirtualStudioActive: (active: boolean) => void
+  setEnableCamera: (enable: boolean) => void
+  setEnableMic: (enable: boolean) => void
+  setActiveSource: (source: 'webcam' | 'canvas') => void
+  toggleMicMute: () => void
+  setMicMuted: (muted: boolean) => void
+  setMiniHudVisible: (visible: boolean) => void
+  toggleMiniHud: () => void
+  setLocalAudioMonitoringEnabled: (enabled: boolean) => void
+  setLocalMonitoringVolume: (volume: number) => void
+  setSelectedCameraId: (id: string | null) => void
+  setSelectedMicId: (id: string | null) => void
+  setVirtualStudioStatus: (status: Partial<VirtualStudioStatus>) => void
+  setDriverInstalling: (installing: boolean) => void
+  setStudioError: (error: string | null) => void
+  handleTrayAction: (action: TrayQuickAction) => void
+}
+
 export type RenderableState = Pick<
   EditorState,
   | 'platform'
@@ -680,7 +717,8 @@ export type EditorState = ProjectState &
   UIState &
   AudioState &
   LicenseState &
-  PurchaseState
+  PurchaseState &
+  VirtualStudioState
 
 // Combined actions type for the editor store
 export type EditorActions = ProjectActions &
@@ -692,7 +730,8 @@ export type EditorActions = ProjectActions &
   UIActions &
   AudioActions &
   LicenseActions &
-  PurchaseActions & {
+  PurchaseActions &
+  VirtualStudioActions & {
     // Global reset action
     reset: () => void
   }

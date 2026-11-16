@@ -19,6 +19,7 @@ import type { VisualEffectRegion } from '../../types'
 import { usePreviewAudioMixer } from '../../hooks/usePreviewAudioMixer'
 import { mapSourceTimeToExportTime } from '../../lib/utils'
 import { mediaUrl } from '../../../shared/media-url'
+import { virtualStudioStreamer } from '../../features/virtual-studio'
 
 export const Preview = memo(
   ({
@@ -406,6 +407,20 @@ export const Preview = memo(
         cancelAnimationFrame(frame)
       }
     }, [canvasDimensions, isPreviewFullScreen, videoUrl])
+
+    // Attach active preview canvas and video element to Virtual Studio streamer
+    useEffect(() => {
+      if (canvasRef.current) {
+        virtualStudioStreamer.attachCanvas(canvasRef.current)
+      }
+      if (videoRef.current) {
+        virtualStudioStreamer.attachVideoElement(videoRef.current)
+      }
+      return () => {
+        virtualStudioStreamer.detachCanvas()
+        virtualStudioStreamer.detachVideoElement()
+      }
+    }, [videoRef, videoUrl])
 
     const hasSizedRef = useRef(false)
 

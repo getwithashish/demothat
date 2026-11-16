@@ -15,6 +15,7 @@ import * as projectHandlers from './handlers/project'
 import * as settingsHandlers from './handlers/settings'
 import * as shellHandlers from './handlers/shell'
 import * as aiHandlers from './handlers/ai'
+import * as virtualStudioHandlers from './handlers/virtual-studio'
 
 export function registerIpcHandlers() {
   // Renderer diagnostics → main log. The packaged app has no devtools console,
@@ -173,4 +174,7 @@ export function registerIpcHandlers() {
 
   // AI Assistant (Ed)
   aiHandlers.registerAiHandlers()
+
+  // Virtual Camera & Microphone Studio
+  virtualStudioHandlers.registerVirtualStudioHandlers()
 }

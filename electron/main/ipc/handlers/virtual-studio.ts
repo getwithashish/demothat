@@ -1,0 +1,42 @@
+import { ipcMain } from 'electron'
+import type {
+  VirtualStudioConfig,
+  VirtualFramePayload,
+  TrayQuickAction,
+  VirtualStudioStatus,
+} from '../../../../shared/virtual-camera-types'
+import { virtualStudioManager } from '../../features/virtual-studio/virtual-studio-manager'
+
+export function registerVirtualStudioHandlers(): void {
+  ipcMain.handle('virtual-studio:get-status', async () => {
+    return virtualStudioManager.getStatus()
+  })
+
+  ipcMain.handle('virtual-studio:install-driver', async () => {
+    return virtualStudioManager.installDriver()
+  })
+
+  ipcMain.handle('virtual-studio:start', async (_event, config: VirtualStudioConfig) => {
+    return virtualStudioManager.start(config)
+  })
+
+  ipcMain.handle('virtual-studio:stop', async () => {
+    return virtualStudioManager.stop()
+  })
+
+  ipcMain.handle('virtual-studio:push-frame', async (_event, payload: VirtualFramePayload) => {
+    return virtualStudioManager.pushFrame(payload)
+  })
+
+  ipcMain.handle('virtual-studio:push-audio', async (_event, buffer: Uint8Array | ArrayBuffer) => {
+    return virtualStudioManager.pushAudio(buffer)
+  })
+
+  ipcMain.handle('virtual-studio:trigger-action', async (_event, action: TrayQuickAction) => {
+    return virtualStudioManager.triggerAction(action)
+  })
+
+  ipcMain.on('virtual-studio:update-status', (_event, patch: Partial<VirtualStudioStatus>) => {
+    virtualStudioManager.updateStatus(patch)
+  })
+}

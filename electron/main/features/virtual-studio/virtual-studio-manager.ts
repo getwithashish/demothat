@@ -7,6 +7,7 @@ import type {
   TrayQuickAction,
   VirtualStudioActionResult,
 } from '../../../../shared/virtual-camera-types'
+import { DEFAULT_VIRTUAL_STUDIO_RESOLUTION } from '../../../../shared/virtual-camera-types'
 import { checkVirtualDrivers, installVirtualDrivers } from './driver-setup'
 import { virtualCameraSink, VirtualCameraSink } from './virtual-camera-sink'
 import { virtualAudioSink, VirtualAudioSink } from './virtual-audio-sink'
@@ -94,9 +95,9 @@ export class VirtualStudioManager {
       // 2. Start Camera Sink if enabled
       if (config.enableCamera) {
         const camRes = await this.cameraSink.start({
-          width: config.outputResolution.width || 1280,
-          height: config.outputResolution.height || 720,
-          fps: config.outputResolution.fps || 30,
+          width: config.outputResolution?.width || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.width,
+          height: config.outputResolution?.height || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.height,
+          fps: config.outputResolution?.fps || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.fps,
         })
         if (!camRes.success) {
           log.warn('[VirtualStudioManager] Camera sink start warning:', camRes.error)
@@ -234,9 +235,9 @@ export class VirtualStudioManager {
         if (patch.isCameraActive) {
           log.info('[VirtualStudioManager] Dynamically starting camera sink while streaming')
           await this.cameraSink.start({
-            width: this.config?.outputResolution.width || 1280,
-            height: this.config?.outputResolution.height || 720,
-            fps: this.config?.outputResolution.fps || 30,
+            width: this.config?.outputResolution?.width || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.width,
+            height: this.config?.outputResolution?.height || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.height,
+            fps: this.config?.outputResolution?.fps || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.fps,
           })
         } else {
           log.info('[VirtualStudioManager] Dynamically stopping camera sink while streaming')

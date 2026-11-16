@@ -1,9 +1,11 @@
-import type {
-  VirtualStudioConfig,
-  VirtualStudioStatus,
-  VirtualFramePayload,
-  TrayQuickAction,
-  VirtualStudioActionResult,
+import {
+  DEFAULT_VIRTUAL_STUDIO_RESOLUTION,
+  DEFAULT_VIRTUAL_STUDIO_FALLBACK_COLOR,
+  type VirtualStudioConfig,
+  type VirtualStudioStatus,
+  type VirtualFramePayload,
+  type TrayQuickAction,
+  type VirtualStudioActionResult,
 } from '../../../../shared/virtual-camera-types'
 import { useEditorStore } from '../../../store/editorStore'
 
@@ -110,8 +112,11 @@ export class VirtualStudioStreamer {
   private selectedMicId: string | null = null
   private enableCamera = true
   private enableMic = true
-  private outputResolution = { width: 1280, height: 720, fps: 30 }
+  private outputResolution: { width: number; height: number; fps: number } = {
+    ...DEFAULT_VIRTUAL_STUDIO_RESOLUTION,
+  }
   private lastThumbnailTime = 0
+  private isPushingFrame = false
 
   // Dependency Injections
   private audioContext: AudioContext | null = null
@@ -650,35 +655,56 @@ export class VirtualStudioStreamer {
   public captureTick(): void {
     if (!this.active || !this.scratchCanvas || !this.scratchCtx) return
 
+    // Drop frame if previous IPC push is still in-flight, preventing IPC queue buildup
+    if (this.isPushingFrame) {
+      return
+    }
+
     const { width, height } = this.outputResolution
 
-    if (this.activeSource === 'canvas' && this.sourceCanvas) {
-      // Canvas Preview Mode
-      this.scratchCtx.drawImage(this.sourceCanvas, 0, 0, width, height)
-    } else if (this.activeSource === 'webcam' && this.webcamVideo && this.webcamVideo.videoWidth > 0) {
-      // Physical Webcam Mode with aspect ratio cover/centering
-      const vw = this.webcamVideo.videoWidth
-      const vh = this.webcamVideo.videoHeight
-      const scale = Math.max(width / vw, height / vh)
-      const dw = vw * scale
-      const dh = vh * scale
-      const dx = (width - dw) / 2
-      const dy = (height - dh) / 2
-      this.scratchCtx.drawImage(this.webcamVideo, dx, dy, dw, dh)
+    if (this.activeSource === 'canvas') {
+      if (this.sourceCanvas) {
+        // Canvas Preview Mode
+        this.scratchCtx.drawImage(this.sourceCanvas, 0, 0, width, height)
+      } else {
+        this.scratchCtx.fillStyle = DEFAULT_VIRTUAL_STUDIO_FALLBACK_COLOR
+        this.scratchCtx.fillRect(0, 0, width, height)
+      }
     } else {
-      // Blank frame fallback
-      this.scratchCtx.clearRect(0, 0, width, height)
+      // Physical Webcam Mode with Last-Frame Hold Fallback
+      if (this.webcamVideo && this.webcamVideo.videoWidth > 0) {
+        const vw = this.webcamVideo.videoWidth
+        const vh = this.webcamVideo.videoHeight
+        const scale = Math.max(width / vw, height / vh)
+        const dw = vw * scale
+        const dh = vh * scale
+        const dx = (width - dw) / 2
+        const dy = (height - dh) / 2
+        this.scratchCtx.drawImage(this.webcamVideo, dx, dy, dw, dh)
+      } else if (this.sourceCanvas) {
+        // Last-Frame Hold Fallback: Hold editor canvas preview if physical webcam is absent/unavailable
+        this.scratchCtx.drawImage(this.sourceCanvas, 0, 0, width, height)
+      } else {
+        // Dark background fallback
+        this.scratchCtx.fillStyle = DEFAULT_VIRTUAL_STUDIO_FALLBACK_COLOR
+        this.scratchCtx.fillRect(0, 0, width, height)
+      }
     }
 
     // Extract frame pixels
     const imgData = this.scratchCtx.getImageData(0, 0, width, height)
-    void this.ipcBridge.pushFrame({
-      data: new Uint8Array(imgData.data.buffer, imgData.data.byteOffset, imgData.data.byteLength),
-      width,
-      height,
-      format: 'rgba',
-      timestamp: performance.now(),
-    })
+    this.isPushingFrame = true
+    void this.ipcBridge
+      .pushFrame({
+        data: new Uint8Array(imgData.data.buffer, imgData.data.byteOffset, imgData.data.byteLength),
+        width,
+        height,
+        format: 'rgba',
+        timestamp: performance.now(),
+      })
+      .finally(() => {
+        this.isPushingFrame = false
+      })
 
     // Broadcast live thumbnail frame to IPC for the standalone desktop Mini-HUD window
     const now = performance.now()

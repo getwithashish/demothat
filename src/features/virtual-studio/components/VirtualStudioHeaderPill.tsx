@@ -19,6 +19,7 @@ import { Button } from '../../../components/ui/button'
 import { Switch } from '../../../components/ui/switch'
 import { Slider } from '../../../components/ui/slider'
 import { cn } from '../../../lib/utils'
+import { DEFAULT_VIRTUAL_STUDIO_RESOLUTION } from '../../../../shared/virtual-camera-types'
 
 interface MediaDeviceInfoItem {
   deviceId: string
@@ -203,7 +204,7 @@ export const VirtualStudioHeaderPill: React.FC = () => {
         const res = await window.electronAPI.virtualStudio.start({
           enableCamera,
           enableMic,
-          outputResolution: { width: 1920, height: 1080, fps: 30 },
+          outputResolution: DEFAULT_VIRTUAL_STUDIO_RESOLUTION,
           enableLocalAudioMonitoring: isLocalAudioMonitoringEnabled,
           localMonitoringVolume,
           selectedWebcamId: selectedCameraId ?? undefined,

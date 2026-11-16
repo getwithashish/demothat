@@ -61,7 +61,15 @@ describe('VirtualStudioStreamer', () => {
     clearRect: ReturnType<typeof vi.fn>
     getImageData: ReturnType<typeof vi.fn>
   }
-  let mockVideo: HTMLVideoElement
+  let mockVideo: {
+    videoWidth: number
+    videoHeight: number
+    play: ReturnType<typeof vi.fn>
+    pause: ReturnType<typeof vi.fn>
+    srcObject: unknown
+    muted: boolean
+    playsInline: boolean
+  }
 
   beforeEach(() => {
     vi.useFakeTimers()
@@ -129,14 +137,14 @@ describe('VirtualStudioStreamer', () => {
       srcObject: null,
       muted: false,
       playsInline: false,
-    } as unknown as HTMLVideoElement
+    }
 
     const deps: StreamerDependencies = {
       audioContext: mockContext as unknown as AudioContext,
       mediaDevices: mockMediaDevices as unknown as MediaDevices,
       ipcBridge: mockIpc,
       createCanvas: () => mockCanvas,
-      createVideo: () => mockVideo,
+      createVideo: () => mockVideo as unknown as HTMLVideoElement,
     }
 
     streamer = new VirtualStudioStreamer(deps)
@@ -285,6 +293,62 @@ describe('VirtualStudioStreamer', () => {
       expect(mockIpc.pushFrame).toHaveBeenCalled()
     })
 
+    it('holds editor canvas frame as fallback when activeSource is webcam but physical webcam is unavailable', async () => {
+      // Simulate webcam with no video stream (e.g. videoWidth = 0)
+      mockVideo.videoWidth = 0
+      mockVideo.videoHeight = 0
+      await streamer.start()
+
+      const testCanvas = { width: 1280, height: 720 } as HTMLCanvasElement
+      streamer.attachCanvas(testCanvas)
+
+      streamer.setPlaying(false) // activeSource = webcam
+      streamer.captureTick()
+
+      // Should hold the last editor canvas preview frame!
+      expect(mockCtx.drawImage).toHaveBeenCalledWith(testCanvas, 0, 0, 1280, 720)
+      expect(mockIpc.pushFrame).toHaveBeenCalled()
+    })
+
+    it('fills with fallback color when both webcam and source canvas are unavailable', async () => {
+      mockVideo.videoWidth = 0
+      mockVideo.videoHeight = 0
+      await streamer.start()
+      streamer.detachCanvas()
+
+      streamer.setPlaying(false) // activeSource = webcam
+      streamer.captureTick()
+
+      expect(mockCtx.fillRect).toHaveBeenCalledWith(0, 0, 1280, 720)
+      expect(mockIpc.pushFrame).toHaveBeenCalled()
+    })
+
+    it('drops frame tick if previous pushFrame is still in-flight to prevent queue buildup', async () => {
+      let resolvePush: (value: { success: boolean }) => void = () => {}
+      mockIpc.pushFrame = vi.fn().mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            resolvePush = resolve
+          }),
+      )
+
+      await streamer.start()
+      streamer.captureTick()
+      expect(mockIpc.pushFrame).toHaveBeenCalledTimes(1)
+
+      // Subsequent tick while first push is still unresolved
+      streamer.captureTick()
+      expect(mockIpc.pushFrame).toHaveBeenCalledTimes(1) // Dropped!
+
+      // Resolve the first push
+      resolvePush({ success: true })
+      await Promise.resolve()
+
+      // Now next tick is allowed
+      streamer.captureTick()
+      expect(mockIpc.pushFrame).toHaveBeenCalledTimes(2)
+    })
+
     it('notifies registered preview listeners with the outgoing scratch canvas', async () => {
       await streamer.start()
       const previewListener = vi.fn()
@@ -354,9 +418,9 @@ describe('VirtualStudioStreamer', () => {
       const res = await streamer.start({ enableCamera: true, enableMic: false })
       expect(res.success).toBe(true)
 
-      // When webcam capture fails, captureTick should fall back to blank frame without crashing
+      // When webcam capture fails, captureTick should fall back to solid background without crashing
       streamer.captureTick()
-      expect(mockCtx.clearRect).toHaveBeenCalled()
+      expect(mockCtx.fillRect).toHaveBeenCalled()
       expect(mockIpc.pushFrame).toHaveBeenCalled()
     })
 

@@ -1,7 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import log from 'electron-log/main'
 import { getFFmpegPath } from '../../lib/utils'
-import type { VirtualFramePayload } from '../../../../shared/virtual-camera-types'
+import { DEFAULT_VIRTUAL_STUDIO_RESOLUTION, type VirtualFramePayload } from '../../../../shared/virtual-camera-types'
 import { checkLinuxCameraDriver } from './driver-setup'
 
 export interface CameraSinkOptions {
@@ -44,9 +44,9 @@ export class VirtualCameraSink {
 
     // Standardize default resolution to 1280x720 @ 30fps for optimal WebRTC / Google Meet compatibility
     const standardizedOptions: CameraSinkOptions = {
-      width: options.width || 1280,
-      height: options.height || 720,
-      fps: options.fps || 30,
+      width: options.width || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.width,
+      height: options.height || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.height,
+      fps: options.fps || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.fps,
       devicePath: options.devicePath,
     }
 
@@ -101,6 +101,8 @@ export class VirtualCameraSink {
         'v4l2',
         '-pix_fmt',
         'yuv420p',
+        '-flush_packets',
+        '1',
         device,
       ]
 
@@ -182,9 +184,16 @@ export class VirtualCameraSink {
     }
 
     try {
-      const buffer = Buffer.isBuffer(payload.data)
-        ? payload.data
-        : Buffer.from(payload.data instanceof ArrayBuffer ? payload.data : payload.data.buffer)
+      let buffer: Buffer
+      if (Buffer.isBuffer(payload.data)) {
+        buffer = payload.data
+      } else if (payload.data instanceof ArrayBuffer) {
+        buffer = Buffer.from(payload.data)
+      } else if (ArrayBuffer.isView(payload.data)) {
+        buffer = Buffer.from(payload.data.buffer, payload.data.byteOffset, payload.data.byteLength)
+      } else {
+        buffer = Buffer.from(payload.data)
+      }
 
       if (this.ffmpegProcess && this.ffmpegProcess.stdin.writable) {
         const flushed = this.ffmpegProcess.stdin.write(buffer)

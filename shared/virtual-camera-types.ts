@@ -25,6 +25,14 @@ export interface VirtualStudioConfig {
   localMonitoringVolume: number
 }
 
+export const DEFAULT_VIRTUAL_STUDIO_RESOLUTION = {
+  width: 1280,
+  height: 720,
+  fps: 30,
+} as const
+
+export const DEFAULT_VIRTUAL_STUDIO_FALLBACK_COLOR = '#17181b'
+
 export interface VirtualFramePayload {
   data: Uint8Array | ArrayBuffer | Uint8ClampedArray
   width: number

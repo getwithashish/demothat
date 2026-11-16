@@ -112,7 +112,7 @@ interface FrameWriteResult {
   aborted: boolean
 }
 
-interface ParallelExportOptions {
+export interface ParallelExportOptions {
   editorWindow: BrowserWindow
   projectState: ExportProjectState
   exportSettings: ExportSettingsInput
@@ -288,7 +288,7 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
 /**
  * Executes a multi-process parallel chunk export.
  */
-async function runParallelExport(options: ParallelExportOptions) {
+export async function runParallelExport(options: ParallelExportOptions) {
   const {
     editorWindow,
     projectState,
@@ -340,6 +340,7 @@ async function runParallelExport(options: ParallelExportOptions) {
   // Spawn worker BrowserWindow instances
   const workerWindows: BrowserWindow[] = []
   const workerChunkBySenderId = new Map<number, number>()
+  const dispatchedSenderIds = new Set<number>()
   for (const chunk of chunks) {
     const win = createWorkerWindow()
     workerWindows.push(win)
@@ -469,15 +470,47 @@ async function runParallelExport(options: ParallelExportOptions) {
     { frame, chunkIndex }: { frame: Uint8Array; progress: number; chunkIndex?: number },
   ): Promise<FrameWriteResult> => {
     const idx = typeof chunkIndex === 'number' && chunkIndex >= 0 && chunkIndex < numWorkers ? chunkIndex : 0
-    const currentWrite = chunkWriteQueues[idx].then(() => writeChunkFrame(idx, frame))
+    const chunk = chunks[idx]
+    const proc = chunkProcesses[idx]
+
+    if (chunk && chunkFramesWritten[idx] >= chunk.chunkFrames) {
+      log.warn(
+        `[ExportManager] Chunk #${idx} frame quota reached (${chunkFramesWritten[idx]} >= ${chunk.chunkFrames}). Dropping excess frame.`,
+      )
+      if (proc && !proc.killed && proc.stdin?.writable) {
+        proc.stdin.end()
+      }
+      return { aborted: true }
+    }
+
+    const currentWrite = chunkWriteQueues[idx].then(async () => {
+      if (chunk && chunkFramesWritten[idx] >= chunk.chunkFrames) {
+        log.warn(
+          `[ExportManager] Chunk #${idx} frame quota reached in write queue (${chunkFramesWritten[idx]} >= ${chunk.chunkFrames}). Dropping excess frame.`,
+        )
+        if (proc && !proc.killed && proc.stdin?.writable) {
+          proc.stdin.end()
+        }
+        return { aborted: true }
+      }
+      const writeResult = await writeChunkFrame(idx, frame)
+      if (!writeResult.aborted) {
+        chunkFramesWritten[idx] += 1
+        if (chunk && chunkFramesWritten[idx] >= chunk.chunkFrames) {
+          log.info(`[ExportManager] Chunk #${idx} reached quota of ${chunk.chunkFrames} frames. Ending stdin cleanly.`)
+          if (proc && !proc.killed && proc.stdin?.writable) {
+            proc.stdin.end()
+          }
+        }
+      }
+      return writeResult
+    })
+
     chunkWriteQueues[idx] = currentWrite.then(
       () => {},
       () => {},
     )
     const result = await currentWrite
-    if (!result.aborted) {
-      chunkFramesWritten[idx] += 1
-    }
     emitParallelProgress()
     return result
   }
@@ -500,12 +533,18 @@ async function runParallelExport(options: ParallelExportOptions) {
   }
 
   const renderReadyListener = (event: IpcMainEvent) => {
-    const chunkIndex = workerChunkBySenderId.get(event.sender.id)
+    const senderId = event.sender.id
+    if (dispatchedSenderIds.has(senderId)) {
+      log.warn(`[ExportManager] Duplicate render:ready received from sender ${senderId}; ignoring.`)
+      return
+    }
+    const chunkIndex = workerChunkBySenderId.get(senderId)
     if (chunkIndex === undefined) return
+    dispatchedSenderIds.add(senderId)
     const worker = workerWindows[chunkIndex]
     const chunk = chunks[chunkIndex]
     log.info(
-      `[ExportManager] Worker for chunk #${chunkIndex} ready. Sending render:start slice [${chunk.startFrame}..${chunk.endFrame}).`,
+      `[ExportManager] Worker for chunk #${chunkIndex} (sender ${senderId}) ready. Sending render:start slice [${chunk.startFrame}..${chunk.endFrame}).`,
     )
     if (worker && !worker.isDestroyed()) {
       worker.webContents.send('render:start', {

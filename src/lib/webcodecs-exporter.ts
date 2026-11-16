@@ -10,11 +10,17 @@ export interface WebCodecsExporterOptions {
   bitrate?: number
 }
 
+export type WebCodecsHardwareAcceleration = 'prefer-hardware' | 'no-preference'
+
 const H264_CANDIDATE_CODECS = [
   'avc1.64002A', // High Profile, Level 4.2
   'avc1.4D002A', // Main Profile, Level 4.2
+  'avc1.42002A', // Baseline Profile, Level 4.2
+  'avc1.42E02A', // Constrained Baseline, Level 4.2
   'avc1.42001E', // Baseline Profile, Level 3.0
 ]
+
+const HW_ACCEL_CANDIDATES: WebCodecsHardwareAcceleration[] = ['prefer-hardware', 'no-preference']
 
 /**
  * Calculates a sensible target bitrate based on resolution and export quality setting.
@@ -55,19 +61,24 @@ export async function isWebCodecsSupported(width = 1920, height = 1080): Promise
     return false
   }
 
-  for (const codec of H264_CANDIDATE_CODECS) {
-    try {
-      const config = {
-        codec,
-        width,
-        height,
-        bitrate: 5_000_000,
-        framerate: 30,
+  for (const hwAccel of HW_ACCEL_CANDIDATES) {
+    for (const codec of H264_CANDIDATE_CODECS) {
+      try {
+        const config = {
+          codec,
+          width,
+          height,
+          bitrate: 5_000_000,
+          bitrateMode: 'variable' as const,
+          framerate: 30,
+          hardwareAcceleration: hwAccel,
+          avc: { format: 'avc' as const },
+        }
+        const support = await encoderClass.isConfigSupported(config)
+        if (support && support.supported) return true
+      } catch {
+        // Ignore and test next candidate
       }
-      const support = await encoderClass.isConfigSupported(config)
-      if (support && support.supported) return true
-    } catch {
-      // Ignore and test next candidate
     }
   }
   return false
@@ -75,7 +86,7 @@ export async function isWebCodecsSupported(width = 1920, height = 1080): Promise
 
 /**
  * High-performance, zero-copy WebCodecs H.264 chunk exporter.
- * Encodes canvas VideoFrames directly on the GPU and muxes them into an MP4 chunk.
+ * Encodes canvas VideoFrames directly on the GPU (or via software fallback) and muxes them into an MP4 chunk.
  */
 export class WebCodecsChunkExporter {
   private muxer: Muxer<ArrayBufferTarget> | null = null
@@ -86,6 +97,16 @@ export class WebCodecsChunkExporter {
   private frameCount = 0
   private encoderError: Error | null = null
   private initialized = false
+  private selectedCodec: string | null = null
+  private selectedHwAccel: WebCodecsHardwareAcceleration = 'no-preference'
+
+  public get codec(): string | null {
+    return this.selectedCodec
+  }
+
+  public get hardwareAcceleration(): WebCodecsHardwareAcceleration {
+    return this.selectedHwAccel
+  }
 
   constructor(options: WebCodecsExporterOptions) {
     this.width = options.width
@@ -96,28 +117,54 @@ export class WebCodecsChunkExporter {
   public async init(quality?: ExportQuality | string, bitrateOverride?: number): Promise<void> {
     if (this.initialized) return
 
+    const encoderClass =
+      typeof VideoEncoder !== 'undefined'
+        ? VideoEncoder
+        : typeof window !== 'undefined'
+          ? (window as unknown as { VideoEncoder?: typeof VideoEncoder }).VideoEncoder
+          : undefined
+
+    if (!encoderClass) {
+      throw new Error('VideoEncoder is not available in this environment.')
+    }
+
+    const targetBitrate = bitrateOverride ?? calculateBitrate(this.width, this.height, this.fps, quality)
+
     let selectedCodec: string | null = null
-    for (const codec of H264_CANDIDATE_CODECS) {
-      try {
-        const support = await VideoEncoder.isConfigSupported({
-          codec,
-          width: this.width,
-          height: this.height,
-          bitrate: bitrateOverride ?? calculateBitrate(this.width, this.height, this.fps, quality),
-          framerate: this.fps,
-        })
-        if (support.supported) {
-          selectedCodec = codec
-          break
+    let selectedHwAccel: WebCodecsHardwareAcceleration = 'no-preference'
+
+    // Probe hardware acceleration first across candidate profiles, then software fallback (no-preference)
+    for (const hwAccel of HW_ACCEL_CANDIDATES) {
+      for (const codec of H264_CANDIDATE_CODECS) {
+        try {
+          const support = await encoderClass.isConfigSupported({
+            codec,
+            width: this.width,
+            height: this.height,
+            bitrate: targetBitrate,
+            bitrateMode: 'variable' as const,
+            framerate: this.fps,
+            hardwareAcceleration: hwAccel,
+            avc: { format: 'avc' as const },
+          })
+          if (support.supported) {
+            selectedCodec = codec
+            selectedHwAccel = hwAccel
+            break
+          }
+        } catch {
+          // Continue probing
         }
-      } catch {
-        // Continue probing
       }
+      if (selectedCodec) break
     }
 
     if (!selectedCodec) {
       throw new Error(`WebCodecs H.264 encoder is not supported for ${this.width}x${this.height}`)
     }
+
+    this.selectedCodec = selectedCodec
+    this.selectedHwAccel = selectedHwAccel
 
     this.muxer = new Muxer({
       target: new ArrayBufferTarget(),
@@ -129,7 +176,7 @@ export class WebCodecsChunkExporter {
       fastStart: 'in-memory',
     })
 
-    this.encoder = new VideoEncoder({
+    this.encoder = new encoderClass({
       output: (chunk, meta) => {
         if (this.muxer) {
           this.muxer.addVideoChunk(chunk, meta)
@@ -141,9 +188,8 @@ export class WebCodecsChunkExporter {
       },
     })
 
-    const targetBitrate = bitrateOverride ?? calculateBitrate(this.width, this.height, this.fps, quality)
     log.info(
-      `[WebCodecsExporter] Initialized with codec ${selectedCodec}, ${this.width}x${this.height} @ ${this.fps}fps, bitrate: ${(targetBitrate / 1_000_000).toFixed(1)} Mbps`,
+      `[WebCodecsExporter] Initialized with codec ${selectedCodec} (${selectedHwAccel}), ${this.width}x${this.height} @ ${this.fps}fps, bitrate: ${(targetBitrate / 1_000_000).toFixed(1)} Mbps`,
     )
 
     this.encoder.configure({
@@ -151,10 +197,20 @@ export class WebCodecsChunkExporter {
       width: this.width,
       height: this.height,
       bitrate: targetBitrate,
+      bitrateMode: 'variable',
       framerate: this.fps,
-      hardwareAcceleration: 'prefer-hardware',
+      hardwareAcceleration: selectedHwAccel,
       avc: { format: 'avc' },
     })
+
+    // Yield a tick so any async initialization/creation failure surfaces immediately
+    await new Promise<void>((resolve) => setTimeout(resolve, 20))
+    if (this.encoderError) {
+      throw this.encoderError
+    }
+    if (this.encoder.state === 'closed') {
+      throw new Error(`WebCodecs VideoEncoder closed immediately after configure with codec ${selectedCodec}`)
+    }
 
     this.initialized = true
   }
@@ -173,6 +229,9 @@ export class WebCodecsChunkExporter {
     if (this.encoderError) {
       throw this.encoderError
     }
+    if (this.encoder.state === 'closed') {
+      throw new Error('WebCodecs VideoEncoder has unexpectedly closed.')
+    }
 
     const isKeyFrame = forceKeyFrame || this.frameCount === 0 || this.frameCount % (this.fps * 2) === 0
     const videoFrame = new VideoFrame(canvas, { timestamp: Math.round(timestampMicros) })
@@ -184,9 +243,25 @@ export class WebCodecsChunkExporter {
       videoFrame.close()
     }
 
-    // Apply backpressure throttling to prevent GPU queue memory growth
+    // Apply backpressure throttling to prevent GPU queue memory growth.
+    // If the queue exceeds 12 frames, wait for dequeue event or timeout safely.
     if (this.encoder.encodeQueueSize > 12) {
-      await new Promise<void>((resolve) => setTimeout(resolve, 4))
+      await new Promise<void>((resolve) => {
+        const timeout = setTimeout(resolve, 50)
+        if (typeof this.encoder?.addEventListener === 'function') {
+          this.encoder.addEventListener(
+            'dequeue',
+            () => {
+              clearTimeout(timeout)
+              resolve()
+            },
+            { once: true },
+          )
+        }
+      })
+    }
+    if (this.encoderError) {
+      throw this.encoderError
     }
   }
 
@@ -200,9 +275,16 @@ export class WebCodecsChunkExporter {
     if (this.encoderError) {
       throw this.encoderError
     }
+    if (this.encoder.state === 'closed') {
+      throw new Error('WebCodecs VideoEncoder has unexpectedly closed before finish.')
+    }
 
     log.info(`[WebCodecsExporter] Flushing encoder after ${this.frameCount} frames...`)
     await this.encoder.flush()
+    if (this.encoderError) {
+      throw this.encoderError
+    }
+
     this.muxer.finalize()
 
     const buffer = this.muxer.target.buffer

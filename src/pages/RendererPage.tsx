@@ -381,94 +381,100 @@ export function RendererPage() {
         let isAborted = false
 
         for (let frame = startFrame; frame < endFrame; frame++) {
-          if (!webCodecsExporter && inFlightWrites.length >= MAX_IN_FLIGHT) {
-            const earliest = await inFlightWrites.shift()!
-            if (earliest.aborted) {
-              log.info('[RendererPage] Export aborted by the main process; stopping render loop.')
-              isAborted = true
-              break
+          try {
+            if (!webCodecsExporter && inFlightWrites.length >= MAX_IN_FLIGHT) {
+              const earliest = await inFlightWrites.shift()!
+              if (earliest.aborted) {
+                log.info('[RendererPage] Export aborted by the main process; stopping render loop.')
+                isAborted = true
+                break
+              }
             }
-          }
 
-          // The frame's nominal presentation timestamp aligns exactly with the timeline,
-          // audio clips, click events, camera telemetry, and zoom regions: (frame / fps).
-          const nominalExportTimestamp = frame / fps
-          const nominalSourceTimestamp = mapExportTimeToSourceTime(
-            nominalExportTimestamp,
-            effectiveSourceDuration,
-            projectState.cutRegions,
-            projectState.speedRegions,
-          )
-
-          // Video decoding seek target: sample at mid-interval ((frame + 0.5) / fps).
-          // Left-boundary sampling is vulnerable to floating-point representation error where
-          // (frame / fps) < frame_start_pts in the decoder's integer timebase, causing Chromium
-          // to decode and present the previous frame repeatedly (causing duplicate frames, stutter, and lag).
-          // Mid-interval sampling lands securely within the frame's presentation window.
-          const seekExportTimestamp = (frame + 0.5) / fps
-          const seekSourceTimestamp = mapExportTimeToSourceTime(
-            seekExportTimestamp,
-            effectiveSourceDuration,
-            projectState.cutRegions,
-            projectState.speedRegions,
-          )
-
-          // Create seek promises for all video elements using mid-interval seek time
-          const mainSeek = seekVideo(video, seekSourceTimestamp)
-          const webcamSeek = hasWebcam && webcamVideo ? seekVideo(webcamVideo, seekSourceTimestamp) : Promise.resolve()
-
-          // Imported clips only contribute frames while the playhead is inside
-          // their range; each one is seeked to its own source time.
-          const activeClipLayers: VideoClipLayer[] = []
-          const clipSeeks: Promise<void>[] = []
-          for (const { clip, element } of clipVideos) {
-            const clipSourceTime = nominalSourceTimestamp - clip.startTime
-            if (clipSourceTime < 0 || clipSourceTime >= clip.duration) continue
-            const clamped = getClipSourceTime(clip, seekSourceTimestamp, clip.sourceDuration || element.duration || 0)
-            clipSeeks.push(seekVideo(element, clamped))
-            activeClipLayers.push({ clip, element })
-          }
-
-          // Wait for all seeks to complete
-          await Promise.all([mainSeek, webcamSeek, ...clipSeeks])
-
-          // Draw the scene using the precise nominalSourceTimestamp for exact frame-accurate
-          // sync with cursor positions, ripple animations, camera motion, and audio track.
-          await drawScene(
-            ctx,
-            projectStateWithCursorBitmaps,
-            video,
-            webcamVideo,
-            nominalSourceTimestamp,
-            outputWidth,
-            outputHeight,
-            bgImage,
-            activeClipLayers,
-          )
-
-          if (webCodecsExporter) {
-            const frameTimestampMicros = ((frame - startFrame) * 1_000_000) / fps
-            await webCodecsExporter.addFrame(canvas, frameTimestampMicros)
-            const progress = ((frame - startFrame + 1) / chunkTotalFrames) * 100
-            window.electronAPI.sendChunkProgress({
-              chunkIndex: payload.chunkIndex,
-              progress,
-              framesDone: frame - startFrame + 1,
-            })
-          } else {
-            // Send the rendered frame to the main process. Direct view on buffer avoids re-allocation.
-            const imageData = ctx.getImageData(0, 0, outputWidth, outputHeight)
-            const frameBuffer = new Uint8Array(
-              imageData.data.buffer,
-              imageData.data.byteOffset,
-              imageData.data.byteLength,
+            // The frame's nominal presentation timestamp aligns exactly with the timeline,
+            // audio clips, click events, camera telemetry, and zoom regions: (frame / fps).
+            const nominalExportTimestamp = frame / fps
+            const nominalSourceTimestamp = mapExportTimeToSourceTime(
+              nominalExportTimestamp,
+              effectiveSourceDuration,
+              projectState.cutRegions,
+              projectState.speedRegions,
             )
-            const progress = ((frame - startFrame + 1) / chunkTotalFrames) * 100
-            inFlightWrites.push(
-              window.electronAPI
-                .sendFrameToMain({ frame: frameBuffer, progress, chunkIndex: payload.chunkIndex })
-                .catch(() => ({ aborted: true })),
+
+            // Video decoding seek target: sample at mid-interval ((frame + 0.5) / fps).
+            // Left-boundary sampling is vulnerable to floating-point representation error where
+            // (frame / fps) < frame_start_pts in the decoder's integer timebase, causing Chromium
+            // to decode and present the previous frame repeatedly (causing duplicate frames, stutter, and lag).
+            // Mid-interval sampling lands securely within the frame's presentation window.
+            const seekExportTimestamp = (frame + 0.5) / fps
+            const seekSourceTimestamp = mapExportTimeToSourceTime(
+              seekExportTimestamp,
+              effectiveSourceDuration,
+              projectState.cutRegions,
+              projectState.speedRegions,
             )
+
+            // Create seek promises for all video elements using mid-interval seek time
+            const mainSeek = seekVideo(video, seekSourceTimestamp)
+            const webcamSeek =
+              hasWebcam && webcamVideo ? seekVideo(webcamVideo, seekSourceTimestamp) : Promise.resolve()
+
+            // Imported clips only contribute frames while the playhead is inside
+            // their range; each one is seeked to its own source time.
+            const activeClipLayers: VideoClipLayer[] = []
+            const clipSeeks: Promise<void>[] = []
+            for (const { clip, element } of clipVideos) {
+              const clipSourceTime = nominalSourceTimestamp - clip.startTime
+              if (clipSourceTime < 0 || clipSourceTime >= clip.duration) continue
+              const clamped = getClipSourceTime(clip, seekSourceTimestamp, clip.sourceDuration || element.duration || 0)
+              clipSeeks.push(seekVideo(element, clamped))
+              activeClipLayers.push({ clip, element })
+            }
+
+            // Wait for all seeks to complete
+            await Promise.all([mainSeek, webcamSeek, ...clipSeeks])
+
+            // Draw the scene using the precise nominalSourceTimestamp for exact frame-accurate
+            // sync with cursor positions, ripple animations, camera motion, and audio track.
+            await drawScene(
+              ctx,
+              projectStateWithCursorBitmaps,
+              video,
+              webcamVideo,
+              nominalSourceTimestamp,
+              outputWidth,
+              outputHeight,
+              bgImage,
+              activeClipLayers,
+            )
+
+            if (webCodecsExporter) {
+              const frameTimestampMicros = ((frame - startFrame) * 1_000_000) / fps
+              await webCodecsExporter.addFrame(canvas, frameTimestampMicros)
+              const progress = ((frame - startFrame + 1) / chunkTotalFrames) * 100
+              window.electronAPI.sendChunkProgress({
+                chunkIndex: payload.chunkIndex,
+                progress,
+                framesDone: frame - startFrame + 1,
+              })
+            } else {
+              // Send the rendered frame to the main process. Direct view on buffer avoids re-allocation.
+              const imageData = ctx.getImageData(0, 0, outputWidth, outputHeight)
+              const frameBuffer = new Uint8Array(
+                imageData.data.buffer,
+                imageData.data.byteOffset,
+                imageData.data.byteLength,
+              )
+              const progress = ((frame - startFrame + 1) / chunkTotalFrames) * 100
+              inFlightWrites.push(
+                window.electronAPI
+                  .sendFrameToMain({ frame: frameBuffer, progress, chunkIndex: payload.chunkIndex })
+                  .catch(() => ({ aborted: true })),
+              )
+            }
+          } catch (frameError) {
+            log.error(`[RendererPage] Error rendering frame ${frame} (chunk #${payload.chunkIndex ?? 0}):`, frameError)
+            throw frameError
           }
         }
 
@@ -477,10 +483,13 @@ export function RendererPage() {
             `[RendererPage] WebCodecs render loop finished for chunk #${payload.chunkIndex ?? 0}. Finalizing container...`,
           )
           const chunkData = await webCodecsExporter.finish()
-          await window.electronAPI.saveChunkFile({
+          const saveResult = await window.electronAPI.saveChunkFile({
             chunkIndex: payload.chunkIndex ?? 0,
             buffer: chunkData,
           })
+          if (!saveResult.success) {
+            throw new Error(`Failed to save chunk #${payload.chunkIndex ?? 0} file: ${saveResult.error}`)
+          }
           log.info(`[RendererPage] Saved chunk #${payload.chunkIndex ?? 0} MP4 file. Sending finishRender signal.`)
           window.electronAPI.finishRender(isChunked ? { chunkIndex: payload.chunkIndex } : undefined)
           return
@@ -506,7 +515,16 @@ export function RendererPage() {
         )
         window.electronAPI.finishRender(isChunked ? { chunkIndex: payload.chunkIndex } : undefined)
       } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error)
         log.error('[RendererPage] CRITICAL ERROR during render process:', error)
+        try {
+          window.electronAPI.finishRender({
+            chunkIndex: payload.chunkIndex,
+            error: errorMsg,
+          })
+        } catch (ipcErr) {
+          log.error('[RendererPage] Failed to send error finishRender signal:', ipcErr)
+        }
       } finally {
         isRenderingRef.current = false
         hasFinishedRef.current = true

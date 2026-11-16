@@ -335,6 +335,24 @@ describe('parallel export synchronization & frame quota enforcement', () => {
       expect(resolved).toBe(true)
     })
 
+    it('aborts parallel export when worker reports an error during finishRender', () => {
+      let abortedReason: string | null = null
+      const abortParallelExport = (reason: string) => {
+        abortedReason = reason
+      }
+
+      const finishListener = (data?: { chunkIndex?: number; error?: string }) => {
+        const idx = data?.chunkIndex ?? 0
+        if (data?.error) {
+          abortParallelExport(`Chunk #${idx} render error: ${data.error}`)
+          return
+        }
+      }
+
+      finishListener({ chunkIndex: 0, error: 'Encoder creation error' })
+      expect(abortedReason).toBe('Chunk #0 render error: Encoder creation error')
+    })
+
     it('updates progress when worker sends chunk progress', () => {
       const chunkFramesWritten = [0, 0]
       let lastProgress: { totalDone: number } | null = null

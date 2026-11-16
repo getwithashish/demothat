@@ -647,7 +647,7 @@ export const electronAPI = {
     ipcRenderer.invoke('export:save-chunk-file', payload),
   sendChunkProgress: (payload: { chunkIndex?: number; progress: number; framesDone: number }): void =>
     ipcRenderer.send('export:chunk-progress', payload),
-  finishRender: (payload?: { chunkIndex?: number }) => {
+  finishRender: (payload?: { chunkIndex?: number; error?: string }) => {
     ipcRenderer.send('export:render-finished', payload)
   },
 

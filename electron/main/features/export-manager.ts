@@ -473,7 +473,7 @@ export async function runParallelExport(options: ParallelExportOptions) {
     ipcMain.removeListener('render:ready', renderReadyListener)
 
     if (editorWindow && !editorWindow.isDestroyed()) {
-      editorWindow.webContents.send('export:complete', { success: false, error: 'Export cancelled.' })
+      editorWindow.webContents.send('export:complete', { success: false, error: reason || 'Export cancelled.' })
     }
   }
 
@@ -554,9 +554,14 @@ export async function runParallelExport(options: ParallelExportOptions) {
     return result
   }
 
-  const finishListener = async (_event: IpcMainEvent, data?: { chunkIndex?: number }) => {
+  const finishListener = async (_event: IpcMainEvent, data?: { chunkIndex?: number; error?: string }) => {
     const idx =
       typeof data?.chunkIndex === 'number' && data.chunkIndex >= 0 && data.chunkIndex < numWorkers ? data.chunkIndex : 0
+    if (data?.error) {
+      log.error(`[ExportManager] Chunk #${idx} reported render error: ${data.error}`)
+      abortParallelExport(`Chunk #${idx} render error: ${data.error}`)
+      return
+    }
     log.info(`[ExportManager] Chunk #${idx} finished frame render.`)
     chunkFinished[idx] = true
 

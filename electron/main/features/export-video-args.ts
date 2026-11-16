@@ -24,8 +24,8 @@ const QUALITY_SETTINGS: Record<ExportQuality, { crf: number; preset: string }> =
  */
 const FAST_X264_SETTINGS: Record<ExportQuality, { crf: number; preset: string }> = {
   low: { crf: 28, preset: 'veryfast' },
-  medium: { crf: 23, preset: 'faster' },
-  high: { crf: 19, preset: 'fast' },
+  medium: { crf: 23, preset: 'veryfast' },
+  high: { crf: 19, preset: 'faster' },
 }
 
 /**

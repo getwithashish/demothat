@@ -82,6 +82,7 @@ export interface ExportProjectState {
   aspectRatio: string
   duration: number
   videoPath?: string
+  webcamVideoPath?: string | null
   videoDimensions?: { width: number; height: number }
   recordingGeometry?: ExportRecordingGeometry | null
   metadata?: ExportMetaDataItem[]

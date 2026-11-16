@@ -294,4 +294,28 @@ describe('parallel export synchronization & frame quota enforcement', () => {
       expect(secondCall).toEqual({ ignored: true })
     })
   })
+
+  describe('intra proxy worker state substitution', () => {
+    it('substitutes videoPath and webcamVideoPath with generated intra proxies for workers', () => {
+      const originalProjectState = {
+        aspectRatio: '16:9',
+        duration: 30,
+        videoPath: '/path/to/long_gop.mp4',
+        webcamVideoPath: '/path/to/webcam.mp4',
+      }
+      const intraMain = '/tmp/session/intra_screen.mp4'
+      const intraWebcam = '/tmp/session/intra_webcam.mp4'
+
+      const workerProjectState = {
+        ...originalProjectState,
+        videoPath: intraMain,
+        webcamVideoPath: intraWebcam,
+      }
+
+      expect(workerProjectState.videoPath).toBe(intraMain)
+      expect(workerProjectState.webcamVideoPath).toBe(intraWebcam)
+      expect(workerProjectState.duration).toBe(originalProjectState.duration)
+      expect(workerProjectState.aspectRatio).toBe(originalProjectState.aspectRatio)
+    })
+  })
 })

@@ -24,8 +24,8 @@ const QUALITY_SETTINGS: Record<ExportQuality, { crf: number; preset: string }> =
  */
 const FAST_X264_SETTINGS: Record<ExportQuality, { crf: number; preset: string }> = {
   low: { crf: 28, preset: 'veryfast' },
-  medium: { crf: 23, preset: 'faster' },
-  high: { crf: 19, preset: 'fast' },
+  medium: { crf: 23, preset: 'veryfast' },
+  high: { crf: 19, preset: 'faster' },
 }
 
 /**
@@ -60,9 +60,9 @@ export function qualityToX264Args(quality: ExportQuality | string | undefined | 
   return ['-c:v', 'libx264', '-preset', resolved.preset, '-crf', String(resolved.crf), '-pix_fmt', 'yuv420p']
 }
 
-export function fastX264Args(quality: ExportQuality | string | undefined | null): string[] {
+export function fastX264Args(quality: ExportQuality | string | undefined | null, threads?: number): string[] {
   const resolved = FAST_X264_SETTINGS[quality as ExportQuality] ?? FAST_X264_SETTINGS.medium
-  return [
+  const args = [
     '-c:v',
     'libx264',
     '-preset',
@@ -76,6 +76,10 @@ export function fastX264Args(quality: ExportQuality | string | undefined | null)
     '-pix_fmt',
     'yuv420p',
   ]
+  if (typeof threads === 'number' && threads > 0) {
+    args.push('-threads', String(threads))
+  }
+  return args
 }
 
 /**
@@ -84,6 +88,7 @@ export function fastX264Args(quality: ExportQuality | string | undefined | null)
 export function encoderToH264Args(
   encoder: string | undefined | null,
   quality: ExportQuality | string | undefined | null,
+  threads?: number,
 ): string[] {
   const q = (quality as ExportQuality) in FAST_X264_SETTINGS ? (quality as ExportQuality) : 'medium'
 
@@ -130,7 +135,7 @@ export function encoderToH264Args(
     }
     case 'libx264':
     default:
-      return fastX264Args(q)
+      return fastX264Args(q, threads)
   }
 }
 

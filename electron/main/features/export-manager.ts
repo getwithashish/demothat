@@ -39,6 +39,7 @@ import {
 } from './cloud-export'
 import { clearCloudCancellation, registerCloudCancellation } from './cloud-cancel'
 import type { CloudCancellation, CloudJobCreated } from './cloud-client'
+import { generateFastIntraProxy } from './fast-intra-proxy'
 import { isFormatAllowed, selectExportCodec } from '../../../shared/export-codec'
 import { maxCameraScale, maxZoomLevel, detectUpscale } from '../../../shared/export-upscale'
 import { applyRenderCap, cloudIntermediateSize } from '../../../shared/export-render-cap'
@@ -316,10 +317,31 @@ export async function runParallelExport(options: ParallelExportOptions) {
   const sessionDir = path.join(os.tmpdir(), `demothat-export-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
   await fsPromises.mkdir(sessionDir, { recursive: true })
 
+  // High-performance intra proxy: pre-transcode long-GOP sources to all-intra (keyint=1)
+  // in parallel in the background while worker BrowserWindow instances and chunk processes initialize.
+  const hasWebcam = Boolean(projectState.webcamVideoPath && typeof projectState.webcamVideoPath === 'string')
+  const intraProxyPromise = Promise.all([
+    projectState.videoPath
+      ? generateFastIntraProxy({
+          sourcePath: projectState.videoPath,
+          sessionDir,
+          label: 'screen',
+        })
+      : Promise.resolve(projectState.videoPath),
+    hasWebcam
+      ? generateFastIntraProxy({
+          sourcePath: projectState.webcamVideoPath!,
+          sessionDir,
+          label: 'webcam',
+        })
+      : Promise.resolve(projectState.webcamVideoPath),
+  ])
+
   const chunks = planChunkSlices(totalFrames, numWorkers, exportSettings.fps, sessionDir)
 
-  // Spawn FFmpeg chunk processes
+  // Spawn FFmpeg chunk processes with dedicated thread budget per worker to avoid CPU cache thrashing
   const chunkProcesses: ChildProcessWithoutNullStreams[] = []
+  const workerThreads = Math.max(1, Math.min(4, Math.floor(cpuCount / numWorkers)))
   for (const chunk of chunks) {
     const chunkArgs = buildChunkExportArgs({
       renderWidth,
@@ -331,6 +353,7 @@ export async function runParallelExport(options: ParallelExportOptions) {
       outputPath: chunk.chunkPath,
       encoder: bestEncoder,
       quality: exportSettings.quality,
+      threads: workerThreads,
     })
     log.info(`[ExportManager] Spawning chunk proc #${chunk.index} with args:`, chunkArgs.join(' '))
     const proc = spawn(FFMPEG_PATH, chunkArgs)
@@ -532,7 +555,7 @@ export async function runParallelExport(options: ParallelExportOptions) {
     abortParallelExport('cancelled by user')
   }
 
-  const renderReadyListener = (event: IpcMainEvent) => {
+  const renderReadyListener = async (event: IpcMainEvent) => {
     const senderId = event.sender.id
     if (dispatchedSenderIds.has(senderId)) {
       log.warn(`[ExportManager] Duplicate render:ready received from sender ${senderId}; ignoring.`)
@@ -541,6 +564,17 @@ export async function runParallelExport(options: ParallelExportOptions) {
     const chunkIndex = workerChunkBySenderId.get(senderId)
     if (chunkIndex === undefined) return
     dispatchedSenderIds.add(senderId)
+
+    // Wait for the intra proxy (if it's still running, otherwise returns immediately)
+    const [intraMainVideoPath, intraWebcamVideoPath] = await intraProxyPromise
+    if (exportAborted) return
+
+    const workerProjectState: ExportProjectState = {
+      ...projectState,
+      videoPath: intraMainVideoPath,
+      webcamVideoPath: intraWebcamVideoPath,
+    }
+
     const worker = workerWindows[chunkIndex]
     const chunk = chunks[chunkIndex]
     log.info(
@@ -548,7 +582,7 @@ export async function runParallelExport(options: ParallelExportOptions) {
     )
     if (worker && !worker.isDestroyed()) {
       worker.webContents.send('render:start', {
-        projectState,
+        projectState: workerProjectState,
         exportSettings,
         renderWidth,
         renderHeight,
@@ -624,7 +658,9 @@ export async function runParallelExport(options: ParallelExportOptions) {
   // Cleanup session directory and temporary files
   await fsPromises.rm(sessionDir, { recursive: true, force: true }).catch(() => {})
   for (const temporaryFile of temporaryFiles) {
-    fsPromises.unlink(temporaryFile).catch((err) => log.warn('Could not remove temporary audio asset:', err))
+    fsPromises
+      .rm(temporaryFile, { recursive: true, force: true })
+      .catch((err) => log.warn('Could not remove temporary asset:', err))
   }
 
   ipcMain.removeHandler('export:frame-data')
@@ -719,6 +755,36 @@ async function runSingleExport(options: SingleExportOptions) {
     log.info(
       `[ExportManager] Cloud job ${cloudJob.jobId}: rendering the intermediate at ${renderWidth}x${renderHeight}.`,
     )
+  }
+
+  let workerProjectState = projectState
+  if (!useCloud && projectState.videoPath) {
+    const singleSessionDir = path.join(
+      os.tmpdir(),
+      `demothat-single-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    )
+    await fsPromises.mkdir(singleSessionDir, { recursive: true })
+    temporaryFiles.push(singleSessionDir)
+
+    const intraMain = await generateFastIntraProxy({
+      sourcePath: projectState.videoPath,
+      sessionDir: singleSessionDir,
+      label: 'screen',
+    })
+    const hasWebcam = Boolean(projectState.webcamVideoPath && typeof projectState.webcamVideoPath === 'string')
+    const intraWebcam = hasWebcam
+      ? await generateFastIntraProxy({
+          sourcePath: projectState.webcamVideoPath!,
+          sessionDir: singleSessionDir,
+          label: 'webcam',
+        })
+      : projectState.webcamVideoPath
+
+    workerProjectState = {
+      ...projectState,
+      videoPath: intraMain,
+      webcamVideoPath: intraWebcam,
+    }
   }
 
   if (appState.renderWorker && !appState.renderWorker.isDestroyed()) {
@@ -918,7 +984,9 @@ async function runSingleExport(options: SingleExportOptions) {
     }
     appState.renderWorker = null
     for (const temporaryFile of temporaryFiles) {
-      fsPromises.unlink(temporaryFile).catch((err) => log.warn('Could not remove temporary audio asset:', err))
+      fsPromises
+        .rm(temporaryFile, { recursive: true, force: true })
+        .catch((err) => log.warn('Could not remove temporary asset:', err))
     }
 
     if (editorWindow && !editorWindow.isDestroyed()) {
@@ -1005,7 +1073,7 @@ async function runSingleExport(options: SingleExportOptions) {
     log.info('[ExportManager] Worker ready. Sending project state.')
     if (appState.renderWorker && !appState.renderWorker.isDestroyed()) {
       appState.renderWorker.webContents.send('render:start', {
-        projectState,
+        projectState: workerProjectState,
         exportSettings,
         renderWidth,
         renderHeight,

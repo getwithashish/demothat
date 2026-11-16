@@ -37,6 +37,11 @@ setupLogging()
 // See: https://github.com/alectrocute/electron-audio-loopback
 initAudioLoopback({ forceCoreAudioTap: true })
 
+// Prevent Chromium from throttling hidden/background render worker windows during export
+app.commandLine.appendSwitch('disable-renderer-backgrounding')
+app.commandLine.appendSwitch('disable-background-timer-throttling')
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows')
+
 // --- Single instance ---
 // A second launch (for example from a `.dthat` file association) must hand the
 // path to the running instance instead of starting a rival copy.

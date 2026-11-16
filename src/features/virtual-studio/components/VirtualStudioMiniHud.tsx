@@ -9,6 +9,9 @@ import {
   Video,
   Broadcast,
   GripHorizontal,
+  FlipHorizontal,
+  Headphones,
+  HeadphonesOff,
 } from 'tabler-icons-react'
 import { useEditorStore } from '../../../store/editorStore'
 import { ICON_SIZE, ICON_STROKE } from '../../../components/ui/icons'
@@ -25,6 +28,8 @@ export const VirtualStudioMiniHud: React.FC = () => {
     isPlaying,
     enableCamera,
     selectedCameraId,
+    isMirrored,
+    isLocalAudioMonitoringEnabled,
   } = useEditorStore(
     useShallow((state) => ({
       isVirtualStudioActive: state.isVirtualStudioActive,
@@ -34,20 +39,36 @@ export const VirtualStudioMiniHud: React.FC = () => {
       isPlaying: state.isPlaying,
       enableCamera: state.enableCamera,
       selectedCameraId: state.selectedCameraId,
+      isMirrored: state.isMirrored,
+      isLocalAudioMonitoringEnabled: state.isLocalAudioMonitoringEnabled,
     })),
   )
 
-  const { togglePlay, toggleMicMute, setMiniHudVisible, pushToast } = useEditorStore.getState()
+  const { togglePlay, toggleMicMute, setMiniHudVisible, pushToast, toggleMirror, toggleLocalAudioMonitoring } =
+    useEditorStore.getState()
 
   // Video element for live outgoing webcam feed
   const webcamVideoRef = useRef<HTMLVideoElement>(null)
   const [streamError, setStreamError] = useState(false)
+  const [thumbnailDataUrl, setThumbnailDataUrl] = useState<string | null>(null)
 
   // Floating draggable position
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null)
   const isDraggingRef = useRef(false)
   const dragStartOffsetRef = useRef({ x: 0, y: 0 })
   const hudRef = useRef<HTMLDivElement>(null)
+
+  // Subscribe to live outgoing thumbnail preview frames from streamer
+  useEffect(() => {
+    if (window.electronAPI?.virtualStudio?.onPreviewFrame) {
+      const unsub = window.electronAPI.virtualStudio.onPreviewFrame((dataUrl) => {
+        setThumbnailDataUrl(dataUrl)
+      })
+      return () => {
+        unsub?.()
+      }
+    }
+  }, [])
 
   // Handle webcam stream when activeSource === 'webcam'
   useEffect(() => {
@@ -123,6 +144,24 @@ export const VirtualStudioMiniHud: React.FC = () => {
     })
   }, [setMiniHudVisible, pushToast])
 
+  // Mirror toggle handler
+  const handleToggleMirror = useCallback(async () => {
+    if (window.electronAPI?.virtualStudio?.triggerAction) {
+      await window.electronAPI.virtualStudio.triggerAction('toggle-mirror')
+    } else {
+      toggleMirror()
+    }
+  }, [toggleMirror])
+
+  // Local audio monitor toggle handler
+  const handleToggleAudioMonitor = useCallback(async () => {
+    if (window.electronAPI?.virtualStudio?.triggerAction) {
+      await window.electronAPI.virtualStudio.triggerAction('toggle-audio-monitor')
+    } else {
+      toggleLocalAudioMonitoring()
+    }
+  }, [toggleLocalAudioMonitoring])
+
   if (!isVirtualStudioActive || !isMiniHudVisible) {
     return null
   }
@@ -164,33 +203,69 @@ export const VirtualStudioMiniHud: React.FC = () => {
           </span>
         </div>
 
-        {/* Direct Minimize button [-] */}
-        <TooltipProvider delayDuration={200}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleMinimize}
-                className="h-6 w-6 rounded text-muted hover:bg-ctl hover:text-fg"
-                aria-label="Minimize Mini-HUD"
-                title="Minimize Mini-HUD"
-              >
-                <Minus size={14} strokeWidth={ICON_STROKE} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="top">
-              <span className="text-[11px]">Minimize Mini-HUD</span>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+        <div className="flex items-center gap-1">
+          {/* Mirror toggle button */}
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleToggleMirror}
+                  className={cn(
+                    'h-6 w-6 rounded text-muted hover:bg-ctl hover:text-fg',
+                    isMirrored && 'text-accent bg-ctl',
+                  )}
+                  aria-label="Toggle Mirroring"
+                  title={isMirrored ? 'Mirroring ON (Camera & HUD flipped)' : 'Mirroring OFF (Normal)'}
+                >
+                  <FlipHorizontal size={14} strokeWidth={ICON_STROKE} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                <span className="text-[11px]">
+                  {isMirrored ? 'Mirroring ON (Camera & HUD flipped)' : 'Mirroring OFF (Normal)'}
+                </span>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          {/* Direct Minimize button [-] */}
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleMinimize}
+                  className="h-6 w-6 rounded text-muted hover:bg-ctl hover:text-fg"
+                  aria-label="Minimize Mini-HUD"
+                  title="Minimize Mini-HUD"
+                >
+                  <Minus size={14} strokeWidth={ICON_STROKE} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                <span className="text-[11px]">Minimize Mini-HUD</span>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
       </div>
 
       {/* Outgoing feed preview thumbnail */}
       <div className="relative mt-2.5 aspect-video w-full overflow-hidden rounded-ctl border border-line bg-stage">
-        {isWebcamActive ? (
+        {thumbnailDataUrl ? (
+          <img src={thumbnailDataUrl} alt="Outgoing Feed" className="h-full w-full object-cover" />
+        ) : isWebcamActive ? (
           <>
-            <video ref={webcamVideoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
+            <video
+              ref={webcamVideoRef}
+              autoPlay
+              playsInline
+              muted
+              className={cn('h-full w-full object-cover', isMirrored && '-scale-x-100')}
+            />
             {streamError && (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-stage text-muted">
                 <Video size={ICON_SIZE} strokeWidth={ICON_STROKE} />
@@ -260,6 +335,43 @@ export const VirtualStudioMiniHud: React.FC = () => {
             </>
           )}
         </Button>
+
+        {/* Local Audio Monitor toggle */}
+        <TooltipProvider delayDuration={200}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleToggleAudioMonitor}
+                className={cn(
+                  'h-8 px-2.5 gap-1.5 text-xs font-medium transition-colors',
+                  !isLocalAudioMonitoringEnabled &&
+                    'border border-warning/40 bg-warning/15 text-warning hover:bg-warning/25',
+                )}
+                aria-label="Toggle Local Audio Monitoring"
+                title={
+                  isLocalAudioMonitoringEnabled
+                    ? 'Speaker monitoring ON (You hear playback)'
+                    : 'Speaker monitoring OFF (Only meeting attendees hear playback)'
+                }
+              >
+                {isLocalAudioMonitoringEnabled ? (
+                  <Headphones size={14} strokeWidth={ICON_STROKE} />
+                ) : (
+                  <HeadphonesOff size={14} strokeWidth={ICON_STROKE} />
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              <span className="text-[11px]">
+                {isLocalAudioMonitoringEnabled
+                  ? 'Speaker monitoring ON (You hear playback)'
+                  : 'Speaker monitoring OFF (Only meeting attendees hear playback)'}
+              </span>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </div>
     </aside>
   )

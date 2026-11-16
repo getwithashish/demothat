@@ -22,8 +22,25 @@ function render(node: React.ReactElement): HTMLDivElement {
 }
 
 describe('VirtualStudioMiniHud', () => {
+  let previewFrameListener: ((dataUrl: string) => void) | null = null
+
   const mockVirtualStudio = {
     updateStatus: vi.fn(),
+    triggerAction: vi.fn().mockImplementation((action: string) => {
+      if (action === 'toggle-mirror') {
+        useEditorStore.getState().toggleMirror()
+      }
+      if (action === 'toggle-audio-monitor') {
+        useEditorStore.getState().toggleLocalAudioMonitoring()
+      }
+      return Promise.resolve({ success: true, action })
+    }),
+    onPreviewFrame: vi.fn().mockImplementation((callback: (dataUrl: string) => void) => {
+      previewFrameListener = callback
+      return () => {
+        previewFrameListener = null
+      }
+    }),
   }
 
   beforeEach(() => {
@@ -126,5 +143,64 @@ describe('VirtualStudioMiniHud', () => {
     })
 
     expect(useEditorStore.getState().isMicMuted).toBe(true)
+  })
+
+  it('toggles mirror state when mirror button is clicked', async () => {
+    const el = render(<VirtualStudioMiniHud />)
+    const mirrorBtn = el.querySelector('button[aria-label="Toggle Mirroring"]') as HTMLButtonElement
+    expect(mirrorBtn).not.toBeNull()
+
+    await act(async () => {
+      mirrorBtn.click()
+    })
+
+    expect(mockVirtualStudio.triggerAction).toHaveBeenCalledWith('toggle-mirror')
+    expect(useEditorStore.getState().isMirrored).toBe(true)
+  })
+
+  it('toggles audio monitoring state when audio monitor button is clicked', async () => {
+    const el = render(<VirtualStudioMiniHud />)
+    const monitorBtn = el.querySelector('button[aria-label="Toggle Local Audio Monitoring"]') as HTMLButtonElement
+    expect(monitorBtn).not.toBeNull()
+
+    await act(async () => {
+      monitorBtn.click()
+    })
+
+    expect(mockVirtualStudio.triggerAction).toHaveBeenCalledWith('toggle-audio-monitor')
+    expect(useEditorStore.getState().isLocalAudioMonitoringEnabled).toBe(false)
+  })
+
+  it('applies -scale-x-100 to fallback video element when isMirrored is true', () => {
+    act(() => {
+      useEditorStore.setState({
+        activeSource: 'webcam',
+        enableCamera: true,
+        isMirrored: false,
+      })
+    })
+
+    const el = render(<VirtualStudioMiniHud />)
+    const videoBefore = el.querySelector('video')
+    expect(videoBefore?.className).not.toContain('-scale-x-100')
+
+    act(() => {
+      useEditorStore.setState({ isMirrored: true })
+    })
+
+    const videoAfter = el.querySelector('video')
+    expect(videoAfter?.className).toContain('-scale-x-100')
+  })
+
+  it('renders outgoing thumbnail image when preview frame arrives', () => {
+    const el = render(<VirtualStudioMiniHud />)
+
+    act(() => {
+      previewFrameListener?.('data:image/jpeg;base64,mockframedata')
+    })
+
+    const img = el.querySelector('img[alt="Outgoing Feed"]') as HTMLImageElement
+    expect(img).not.toBeNull()
+    expect(img.src).toBe('data:image/jpeg;base64,mockframedata')
   })
 })

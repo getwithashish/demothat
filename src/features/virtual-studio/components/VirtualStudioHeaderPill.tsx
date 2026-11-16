@@ -12,6 +12,7 @@ import {
   Volume3,
   ChevronDown,
   Loader2,
+  FlipHorizontal,
 } from 'tabler-icons-react'
 import { useEditorStore } from '../../../store/editorStore'
 import { ICON_SIZE, ICON_STROKE } from '../../../components/ui/icons'
@@ -41,6 +42,7 @@ export const VirtualStudioHeaderPill: React.FC = () => {
     isMiniHudVisible,
     isLocalAudioMonitoringEnabled,
     localMonitoringVolume,
+    isMirrored,
     selectedCameraId,
     selectedMicId,
     cameraDriverInstalled,
@@ -57,6 +59,7 @@ export const VirtualStudioHeaderPill: React.FC = () => {
       isMiniHudVisible: state.isMiniHudVisible,
       isLocalAudioMonitoringEnabled: state.isLocalAudioMonitoringEnabled,
       localMonitoringVolume: state.localMonitoringVolume,
+      isMirrored: state.isMirrored,
       selectedCameraId: state.selectedCameraId,
       selectedMicId: state.selectedMicId,
       cameraDriverInstalled: state.cameraDriverInstalled,
@@ -73,6 +76,7 @@ export const VirtualStudioHeaderPill: React.FC = () => {
     setMiniHudVisible,
     setLocalAudioMonitoringEnabled,
     setLocalMonitoringVolume,
+    setIsMirrored,
     setSelectedCameraId,
     setSelectedMicId,
     setVirtualStudioStatus,
@@ -445,6 +449,30 @@ export const VirtualStudioHeaderPill: React.FC = () => {
             </div>
           </div>
 
+          {/* Mirror Output toggle switch */}
+          <div className="flex items-center justify-between rounded-ctl border border-line bg-ctl/50 p-2.5">
+            <div className="flex items-center gap-2">
+              <FlipHorizontal
+                size={16}
+                strokeWidth={ICON_STROKE}
+                className={isMirrored ? 'text-accent' : 'text-muted'}
+              />
+              <div>
+                <span className="text-xs font-medium block">Mirror Output</span>
+                <span className="text-[11px] text-muted block">Flip video horizontally for webcam preview</span>
+              </div>
+            </div>
+            <Switch
+              id="vs-mirror-switch"
+              checked={isMirrored}
+              onCheckedChange={(checked) => {
+                setIsMirrored(checked)
+                window.electronAPI?.virtualStudio?.updateStatus({ isMirrored: checked })
+              }}
+              aria-label="Mirror Output"
+            />
+          </div>
+
           {/* Local Audio Monitor Volume */}
           <div className="flex flex-col gap-2 rounded-ctl border border-line bg-ctl/50 p-2.5">
             <div className="flex items-center justify-between">
@@ -456,12 +484,18 @@ export const VirtualStudioHeaderPill: React.FC = () => {
                 )}
                 <div>
                   <span className="text-xs font-medium block">Audio Monitor</span>
-                  <span className="text-[11px] text-muted block">Hear playback in headphones</span>
+                  <span className="text-[11px] text-muted block">
+                    Mute your speakers so only meeting attendees hear demo audio
+                  </span>
                 </div>
               </div>
               <Switch
+                id="vs-audio-monitor-switch"
                 checked={isLocalAudioMonitoringEnabled}
-                onCheckedChange={(checked) => setLocalAudioMonitoringEnabled(checked)}
+                onCheckedChange={(checked) => {
+                  setLocalAudioMonitoringEnabled(checked)
+                  window.electronAPI?.virtualStudio?.updateStatus({ isLocalAudioMonitoringEnabled: checked })
+                }}
                 aria-label="Enable Local Audio Monitoring"
               />
             </div>

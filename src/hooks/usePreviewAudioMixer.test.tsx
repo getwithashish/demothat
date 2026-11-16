@@ -41,6 +41,7 @@ vi.mock('../lib/preview-audio-mixer', () => ({
     setTrack = vi.fn()
     setMaster = vi.fn()
     dispose = vi.fn()
+    getMediaStream = vi.fn().mockReturnValue(null)
     constructor(public options: FakeMixer['options']) {
       mixers.push(this as unknown as FakeMixer)
     }

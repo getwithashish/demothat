@@ -34,6 +34,7 @@ export class VirtualStudioManager {
     isPlaying: false,
     isLocalAudioMonitoringEnabled: true,
     localMonitoringVolume: 1.0,
+    isMirrored: false,
     isMiniHudVisible: true,
     error: null,
   }
@@ -102,6 +103,7 @@ export class VirtualStudioManager {
         micDeviceId: config.selectedMicId ?? null,
         isLocalAudioMonitoringEnabled: config.enableLocalAudioMonitoring,
         localMonitoringVolume: config.localMonitoringVolume,
+        isMirrored: config.isMirrored ?? this.status.isMirrored,
       })
       return { success: true }
     }
@@ -150,6 +152,7 @@ export class VirtualStudioManager {
       this.status.micDeviceId = config.selectedMicId ?? null
       this.status.isLocalAudioMonitoringEnabled = config.enableLocalAudioMonitoring
       this.status.localMonitoringVolume = config.localMonitoringVolume
+      this.status.isMirrored = config.isMirrored ?? this.status.isMirrored ?? false
       this.status.activeSource = 'webcam'
       this.status.isPlaying = false
       this.status.isMicMuted = false
@@ -274,10 +277,6 @@ export class VirtualStudioManager {
 
     this.status = { ...this.status, ...patch }
 
-    if (patch.isMicMuted !== undefined) {
-      this.audioSink.setMuted(patch.isMicMuted)
-    }
-
     // Dynamic start/stop when streaming
     if (this.status.isStreaming) {
       if (patch.isCameraActive !== undefined && patch.isCameraActive !== prevCameraActive) {
@@ -336,7 +335,22 @@ export class VirtualStudioManager {
       case 'toggle-mic-mute': {
         const nextMuted = !this.status.isMicMuted
         this.status.isMicMuted = nextMuted
-        this.audioSink.setMuted(nextMuted)
+        this.tray.updateState(this.status)
+        this.broadcastAction(action)
+        this.broadcastStatus()
+        break
+      }
+      case 'toggle-mirror': {
+        const nextMirrored = !this.status.isMirrored
+        this.status.isMirrored = nextMirrored
+        this.tray.updateState(this.status)
+        this.broadcastAction(action)
+        this.broadcastStatus()
+        break
+      }
+      case 'toggle-audio-monitor': {
+        const nextMonitor = !this.status.isLocalAudioMonitoringEnabled
+        this.status.isLocalAudioMonitoringEnabled = nextMonitor
         this.tray.updateState(this.status)
         this.broadcastAction(action)
         this.broadcastStatus()

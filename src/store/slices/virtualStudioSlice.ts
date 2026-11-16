@@ -12,6 +12,7 @@ export const initialVirtualStudioState: VirtualStudioState = {
   localMonitoringVolume: 1.0,
   selectedCameraId: null,
   selectedMicId: null,
+  isMirrored: false,
   cameraDriverInstalled: false,
   micDriverInstalled: false,
   isDriverInstalling: false,
@@ -68,10 +69,25 @@ export const createVirtualStudioSlice: Slice<VirtualStudioState, VirtualStudioAc
       state.isLocalAudioMonitoringEnabled = enabled
     })
   },
+  toggleLocalAudioMonitoring: () => {
+    set((state) => {
+      state.isLocalAudioMonitoringEnabled = !state.isLocalAudioMonitoringEnabled
+    })
+  },
   setLocalMonitoringVolume: (volume: number) => {
     const clamped = Math.max(0, Math.min(1, volume))
     set((state) => {
       state.localMonitoringVolume = clamped
+    })
+  },
+  setIsMirrored: (mirrored: boolean) => {
+    set((state) => {
+      state.isMirrored = mirrored
+    })
+  },
+  toggleMirror: () => {
+    set((state) => {
+      state.isMirrored = !state.isMirrored
     })
   },
   setSelectedCameraId: (id: string | null) => {
@@ -95,6 +111,9 @@ export const createVirtualStudioSlice: Slice<VirtualStudioState, VirtualStudioAc
       if (status.micDeviceId !== undefined) state.selectedMicId = status.micDeviceId
       if (status.isLocalAudioMonitoringEnabled !== undefined) {
         state.isLocalAudioMonitoringEnabled = status.isLocalAudioMonitoringEnabled
+      }
+      if (status.isMirrored !== undefined) {
+        state.isMirrored = status.isMirrored
       }
       if (
         status.localMonitoringVolume !== undefined &&
@@ -126,6 +145,12 @@ export const createVirtualStudioSlice: Slice<VirtualStudioState, VirtualStudioAc
         break
       case 'toggle-hud':
         get().toggleMiniHud()
+        break
+      case 'toggle-mirror':
+        get().toggleMirror()
+        break
+      case 'toggle-audio-monitor':
+        get().toggleLocalAudioMonitoring()
         break
       case 'stop-studio':
         get().setVirtualStudioActive(false)

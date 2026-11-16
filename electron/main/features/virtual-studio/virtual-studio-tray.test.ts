@@ -79,6 +79,8 @@ describe('VirtualStudioTray', () => {
     tray.updateState({
       isPlaying: true,
       isMicMuted: false,
+      isMirrored: true,
+      isLocalAudioMonitoringEnabled: true,
       isMiniHudVisible: true,
     })
 
@@ -91,7 +93,9 @@ describe('VirtualStudioTray', () => {
     }>
     expect(template[0].label).toContain('Pause Playback')
     expect(template[1].label).toContain('Mute Microphone')
-    expect(template[2].label).toContain('Hide Mini-HUD')
+    expect(template[2].label).toContain('✓ Mirror Output (Flip horizontal)')
+    expect(template[3].label).toContain('✓ Monitor Audio Locally (Speakers ON)')
+    expect(template[4].label).toContain('Hide Mini-HUD')
 
     // Trigger menu click
     template[0].click?.()
@@ -101,9 +105,15 @@ describe('VirtualStudioTray', () => {
     expect(onAction).toHaveBeenCalledWith('toggle-mic-mute')
 
     template[2].click?.()
+    expect(onAction).toHaveBeenCalledWith('toggle-mirror')
+
+    template[3].click?.()
+    expect(onAction).toHaveBeenCalledWith('toggle-audio-monitor')
+
+    template[4].click?.()
     expect(onAction).toHaveBeenCalledWith('toggle-hud')
 
-    template[4].click?.() // Stop Studio item
+    template[6].click?.() // Stop Studio item
     expect(onAction).toHaveBeenCalledWith('stop-studio')
   })
 
@@ -140,12 +150,14 @@ describe('VirtualStudioTray', () => {
       expect(mockTrayInstance.popUpContextMenu).toHaveBeenCalled()
     })
 
-    it('updates labels correctly when paused, mic muted, and mini-HUD hidden', () => {
+    it('updates labels correctly when paused, mic muted, mirrored off, audio monitor off, and mini-HUD hidden', () => {
       tray.init({ onAction })
 
       tray.updateState({
         isPlaying: false,
         isMicMuted: true,
+        isMirrored: false,
+        isLocalAudioMonitoringEnabled: false,
         isMiniHudVisible: false,
       })
 
@@ -160,7 +172,9 @@ describe('VirtualStudioTray', () => {
       }>
       expect(template[0].label).toContain('Resume Playback')
       expect(template[1].label).toContain('Unmute Microphone')
-      expect(template[2].label).toContain('Show Mini-HUD')
+      expect(template[2].label).toBe('Mirror Output (Flip horizontal)')
+      expect(template[3].label).toBe('Monitor Audio Locally (Silent)')
+      expect(template[4].label).toContain('Show Mini-HUD')
     })
 
     it('re-initializes cleanly without recreating Tray instance if already created', () => {

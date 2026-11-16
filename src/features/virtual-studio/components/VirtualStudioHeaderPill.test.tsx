@@ -39,6 +39,7 @@ describe('VirtualStudioHeaderPill', () => {
         isPlaying: s.isPlaying,
         isLocalAudioMonitoringEnabled: s.isLocalAudioMonitoringEnabled,
         localMonitoringVolume: s.localMonitoringVolume,
+        isMirrored: s.isMirrored,
         isMiniHudVisible: s.isMiniHudVisible,
         error: s.studioError,
       })
@@ -174,5 +175,45 @@ describe('VirtualStudioHeaderPill', () => {
 
     expect(useEditorStore.getState().isVirtualStudioActive).toBe(true)
     expect(useEditorStore.getState().isMiniHudVisible).toBe(true)
+  })
+
+  it('toggles mirror output switch in popover', async () => {
+    const el = await renderAsync(<VirtualStudioHeaderPill />)
+    const trigger = el.querySelector('#virtual-studio-pill-trigger') as HTMLButtonElement
+
+    act(() => {
+      trigger.click()
+    })
+
+    const mirrorSwitch = el.querySelector('#vs-mirror-switch') as HTMLButtonElement
+    expect(mirrorSwitch).not.toBeNull()
+
+    await act(async () => {
+      mirrorSwitch.click()
+    })
+
+    expect(useEditorStore.getState().isMirrored).toBe(true)
+    expect(mockVirtualStudio.updateStatus).toHaveBeenCalledWith({ isMirrored: true })
+  })
+
+  it('displays clarified audio monitor label and toggles local audio monitoring switch', async () => {
+    const el = await renderAsync(<VirtualStudioHeaderPill />)
+    const trigger = el.querySelector('#virtual-studio-pill-trigger') as HTMLButtonElement
+
+    act(() => {
+      trigger.click()
+    })
+
+    expect(el.textContent).toContain('Mute your speakers so only meeting attendees hear demo audio')
+
+    const audioSwitch = el.querySelector('#vs-audio-monitor-switch') as HTMLButtonElement
+    expect(audioSwitch).not.toBeNull()
+
+    await act(async () => {
+      audioSwitch.click()
+    })
+
+    expect(useEditorStore.getState().isLocalAudioMonitoringEnabled).toBe(false)
+    expect(mockVirtualStudio.updateStatus).toHaveBeenCalledWith({ isLocalAudioMonitoringEnabled: false })
   })
 })

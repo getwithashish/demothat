@@ -39,6 +39,7 @@ describe('MiniHudPage', () => {
       isPlaying: false,
       isLocalAudioMonitoringEnabled: true,
       localMonitoringVolume: 1.0,
+      isMirrored: false,
       isMiniHudVisible: true,
       error: null,
     }),
@@ -149,6 +150,7 @@ describe('MiniHudPage', () => {
         isPlaying: true,
         isLocalAudioMonitoringEnabled: true,
         localMonitoringVolume: 1.0,
+        isMirrored: false,
         isMiniHudVisible: true,
         error: null,
       })
@@ -157,6 +159,59 @@ describe('MiniHudPage', () => {
     expect(el.textContent).toContain('Canvas')
     expect(el.textContent).toContain('Pause Demo')
     expect(el.textContent).toContain('Muted')
+  })
+
+  it('triggers toggle-mirror action when mirror button is clicked', async () => {
+    const el = await renderAsync(<MiniHudPage />)
+    const mirrorBtn = el.querySelector('button[aria-label="Toggle Mirroring"]') as HTMLButtonElement
+    expect(mirrorBtn).not.toBeNull()
+
+    await act(async () => {
+      mirrorBtn.click()
+    })
+
+    expect(mockVirtualStudio.triggerAction).toHaveBeenCalledWith('toggle-mirror')
+  })
+
+  it('triggers toggle-audio-monitor action when audio monitor button is clicked', async () => {
+    const el = await renderAsync(<MiniHudPage />)
+    const monitorBtn = el.querySelector('button[aria-label="Toggle Local Audio Monitoring"]') as HTMLButtonElement
+    expect(monitorBtn).not.toBeNull()
+
+    await act(async () => {
+      monitorBtn.click()
+    })
+
+    expect(mockVirtualStudio.triggerAction).toHaveBeenCalledWith('toggle-audio-monitor')
+  })
+
+  it('applies -scale-x-100 to fallback video element when isMirrored is true', async () => {
+    const el = await renderAsync(<MiniHudPage />)
+    const videoBefore = el.querySelector('video')
+    expect(videoBefore?.className).not.toContain('-scale-x-100')
+
+    await act(async () => {
+      statusListener?.({
+        cameraDriverInstalled: true,
+        micDriverInstalled: true,
+        isStreaming: true,
+        isCameraActive: true,
+        isMicActive: true,
+        activeSource: 'webcam',
+        webcamDeviceId: null,
+        micDeviceId: null,
+        isMicMuted: false,
+        isPlaying: false,
+        isLocalAudioMonitoringEnabled: true,
+        localMonitoringVolume: 1.0,
+        isMirrored: true,
+        isMiniHudVisible: true,
+        error: null,
+      })
+    })
+
+    const videoAfter = el.querySelector('video')
+    expect(videoAfter?.className).toContain('-scale-x-100')
   })
 
   it('renders outgoing thumbnail image when preview frame arrives', async () => {

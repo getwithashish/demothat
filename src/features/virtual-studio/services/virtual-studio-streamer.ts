@@ -54,6 +54,7 @@ export const defaultIpcBridge: VirtualStudioIPC = {
       isPlaying: false,
       isLocalAudioMonitoringEnabled: true,
       localMonitoringVolume: 1.0,
+      isMirrored: false,
       isMiniHudVisible: true,
       error: null,
     }),
@@ -108,6 +109,7 @@ export class VirtualStudioStreamer {
   private isMicMuted = false
   private isLocalAudioMonitoringEnabled = true
   private localMonitoringVolume = 1.0
+  private isMirrored = false
   private selectedCameraId: string | null = null
   private selectedMicId: string | null = null
   private enableCamera = true
@@ -138,7 +140,10 @@ export class VirtualStudioStreamer {
   private micStream: MediaStream | null = null
   private micSourceNode: MediaStreamAudioSourceNode | AudioNode | null = null
   private micGainNode: GainNode | null = null
-  private videoSourceNode: MediaElementAudioSourceNode | AudioNode | null = null
+  private videoSourceNode: MediaElementAudioSourceNode | MediaStreamAudioSourceNode | AudioNode | null = null
+  private mediaStreamSourceNode: MediaStreamAudioSourceNode | AudioNode | null = null
+  private attachedMediaStream: MediaStream | null = null
+  private videoElement: HTMLMediaElement | null = null
   private videoToVirtualMicGain: GainNode | null = null
   private localMonitoringGain: GainNode | null = null
   private virtualMicMasterNode: GainNode | null = null
@@ -192,6 +197,22 @@ export class VirtualStudioStreamer {
     return this.localMonitoringVolume
   }
 
+  public isMirrorEnabled(): boolean {
+    return this.isMirrored
+  }
+
+  public getMirrored(): boolean {
+    return this.isMirrored
+  }
+
+  public setMirrored(mirrored: boolean): void {
+    if (this.isMirrored === mirrored) return
+    this.isMirrored = mirrored
+    if (this.active) {
+      this.ipcBridge.updateStatus({ isMirrored: mirrored } as Partial<VirtualStudioStatus>)
+    }
+  }
+
   public getPreviewCanvas(): HTMLCanvasElement | null {
     return this.scratchCanvas
   }
@@ -222,6 +243,11 @@ export class VirtualStudioStreamer {
    * Attaches video element for audio extraction into the Dual-Output Audio Graph.
    */
   public attachVideoElement(video: HTMLMediaElement): void {
+    this.videoElement = video
+    if (this.attachedMediaStream) {
+      // Multi-track mixer stream takes precedence over raw video element
+      return
+    }
     if (!this.audioContext) {
       this.initAudioContext()
     }
@@ -240,17 +266,69 @@ export class VirtualStudioStreamer {
   }
 
   /**
+   * Attaches a mixed multi-track MediaStream to the Dual-Output Audio Graph.
+   */
+  public attachMediaStream(stream: MediaStream): void {
+    this.attachedMediaStream = stream
+    if (!this.audioContext) {
+      this.initAudioContext()
+    }
+    if (!this.audioContext) return
+
+    try {
+      if (this.mediaStreamSourceNode) {
+        try {
+          this.mediaStreamSourceNode.disconnect()
+        } catch {
+          // Ignore disconnect errors
+        }
+        this.mediaStreamSourceNode = null
+      }
+      const sourceNode = this.audioContext.createMediaStreamSource(stream)
+      this.mediaStreamSourceNode = sourceNode
+      this.attachAudioSource(sourceNode)
+    } catch (err) {
+      console.warn('[VirtualStudioStreamer] Failed to attach media stream to audio graph:', err)
+    }
+  }
+
+  public detachMediaStream(): void {
+    this.attachedMediaStream = null
+    if (this.mediaStreamSourceNode) {
+      try {
+        this.mediaStreamSourceNode.disconnect()
+      } catch {
+        // Disconnect can throw if already disconnected
+      }
+      this.mediaStreamSourceNode = null
+    }
+    if (this.videoElement) {
+      this.attachVideoElement(this.videoElement)
+    } else {
+      this.detachVideoElement()
+    }
+  }
+
+  /**
    * Attaches an AudioNode or MediaStream to the Dual-Output Audio Graph.
    */
   public attachAudioSource(source: AudioNode): void {
     if (!this.audioContext) {
       this.initAudioContext()
     }
+    if (this.videoSourceNode && this.videoSourceNode !== source) {
+      try {
+        this.videoSourceNode.disconnect()
+      } catch {
+        // Ignore disconnect errors
+      }
+    }
     this.videoSourceNode = source
     this.wireVideoAudioGraph()
   }
 
   public detachVideoElement(): void {
+    this.videoElement = null
     if (this.videoSourceNode) {
       try {
         this.videoSourceNode.disconnect()
@@ -279,6 +357,10 @@ export class VirtualStudioStreamer {
     }
     if (config.localMonitoringVolume !== undefined) {
       this.localMonitoringVolume = Math.max(0, Math.min(1, config.localMonitoringVolume))
+    }
+    const configAny = config as unknown as { isMirrored?: boolean }
+    if (configAny.isMirrored !== undefined) {
+      this.isMirrored = configAny.isMirrored
     }
 
     this.active = true
@@ -532,6 +614,8 @@ export class VirtualStudioStreamer {
     try {
       this.micSourceNode?.disconnect()
       this.micGainNode?.disconnect()
+      this.mediaStreamSourceNode?.disconnect()
+      this.videoSourceNode?.disconnect()
       this.videoToVirtualMicGain?.disconnect()
       this.localMonitoringGain?.disconnect()
       this.virtualMicMasterNode?.disconnect()
@@ -544,8 +628,13 @@ export class VirtualStudioStreamer {
       // Ignore disconnect errors
     }
 
+    this.micStream = null
     this.micSourceNode = null
     this.micGainNode = null
+    this.mediaStreamSourceNode = null
+    this.attachedMediaStream = null
+    this.videoSourceNode = null
+    this.videoElement = null
     this.videoToVirtualMicGain = null
     this.localMonitoringGain = null
     this.virtualMicMasterNode = null
@@ -557,30 +646,41 @@ export class VirtualStudioStreamer {
    * Applies Instant Auto-Return rules to the Dual-Output Audio Graph:
    * - When isPlaying: Video plays to virtual mic AND local speakers; physical mic is muted.
    * - When paused: Video audio is 0; physical mic is unmuted (unless user muted mic).
+   * Uses exponential cross-fade transitions (15ms) via setTargetAtTime to prevent clicks.
    */
   private applyInstantAutoReturn(): void {
     const time = this.audioContext?.currentTime ?? 0
+    const timeConstant = 0.015
+
+    const setParam = (node: GainNode | null, targetVal: number) => {
+      if (!node) return
+      if (typeof node.gain.setTargetAtTime === 'function') {
+        node.gain.setTargetAtTime(targetVal, time, timeConstant)
+      } else {
+        node.gain.setValueAtTime(targetVal, time)
+      }
+    }
 
     if (this.isPlaying) {
       // 1. Video audio to virtual mic is LIVE
-      this.videoToVirtualMicGain?.gain.setValueAtTime(1.0, time)
+      setParam(this.videoToVirtualMicGain, 1.0)
 
       // 2. Video audio to local monitoring speakers is LIVE
       const monitorVol = this.isLocalAudioMonitoringEnabled ? this.localMonitoringVolume : 0.0
-      this.localMonitoringGain?.gain.setValueAtTime(monitorVol, time)
+      setParam(this.localMonitoringGain, monitorVol)
 
       // 3. Physical mic is MUTED during playback
-      this.micGainNode?.gain.setValueAtTime(0.0, time)
+      setParam(this.micGainNode, 0.0)
     } else {
       // 1. Video audio to virtual mic is MUTED
-      this.videoToVirtualMicGain?.gain.setValueAtTime(0.0, time)
+      setParam(this.videoToVirtualMicGain, 0.0)
 
       // 2. Video audio to local monitoring is MUTED
-      this.localMonitoringGain?.gain.setValueAtTime(0.0, time)
+      setParam(this.localMonitoringGain, 0.0)
 
       // 3. Physical mic is UNMUTED (unless manual mic mute is active)
       const micVol = this.isMicMuted ? 0.0 : 1.0
-      this.micGainNode?.gain.setValueAtTime(micVol, time)
+      setParam(this.micGainNode, micVol)
     }
   }
 
@@ -691,6 +791,31 @@ export class VirtualStudioStreamer {
     }
   }
 
+  private drawSourceCanvasAspectFit(width: number, height: number): void {
+    if (!this.scratchCtx) return
+    if (this.sourceCanvas && this.sourceCanvas.width > 0 && this.sourceCanvas.height > 0) {
+      try {
+        const cw = this.sourceCanvas.width
+        const ch = this.sourceCanvas.height
+        const scale = Math.min(width / cw, height / ch)
+        const dw = cw * scale
+        const dh = ch * scale
+        const dx = (width - dw) / 2
+        const dy = (height - dh) / 2
+
+        this.scratchCtx.fillStyle = DEFAULT_VIRTUAL_STUDIO_FALLBACK_COLOR
+        this.scratchCtx.fillRect(0, 0, width, height)
+        this.scratchCtx.drawImage(this.sourceCanvas, dx, dy, dw, dh)
+      } catch {
+        this.scratchCtx.fillStyle = DEFAULT_VIRTUAL_STUDIO_FALLBACK_COLOR
+        this.scratchCtx.fillRect(0, 0, width, height)
+      }
+    } else {
+      this.scratchCtx.fillStyle = DEFAULT_VIRTUAL_STUDIO_FALLBACK_COLOR
+      this.scratchCtx.fillRect(0, 0, width, height)
+    }
+  }
+
   /**
    * Captures a single frame from the active source and delivers to the virtual camera sink.
    */
@@ -705,55 +830,37 @@ export class VirtualStudioStreamer {
     const { width, height } = this.outputResolution
     if (width <= 0 || height <= 0) return
 
-    if (this.activeSource === 'canvas') {
-      if (this.sourceCanvas && this.sourceCanvas.width > 0 && this.sourceCanvas.height > 0) {
-        try {
-          this.scratchCtx.drawImage(this.sourceCanvas, 0, 0, width, height)
-        } catch {
-          this.scratchCtx.fillStyle = DEFAULT_VIRTUAL_STUDIO_FALLBACK_COLOR
-          this.scratchCtx.fillRect(0, 0, width, height)
-        }
+    if (this.isMirrored && typeof this.scratchCtx.save === 'function') {
+      this.scratchCtx.save()
+      this.scratchCtx.translate(width, 0)
+      this.scratchCtx.scale(-1, 1)
+    }
+
+    try {
+      if (this.activeSource === 'canvas') {
+        this.drawSourceCanvasAspectFit(width, height)
       } else {
-        this.scratchCtx.fillStyle = DEFAULT_VIRTUAL_STUDIO_FALLBACK_COLOR
-        this.scratchCtx.fillRect(0, 0, width, height)
-      }
-    } else {
-      // Physical Webcam Mode with Last-Frame Hold Fallback
-      if (this.webcamVideo && this.webcamVideo.videoWidth > 0 && this.webcamVideo.videoHeight > 0) {
-        try {
-          const vw = this.webcamVideo.videoWidth
-          const vh = this.webcamVideo.videoHeight
-          const scale = Math.max(width / vw, height / vh)
-          const dw = vw * scale
-          const dh = vh * scale
-          const dx = (width - dw) / 2
-          const dy = (height - dh) / 2
-          this.scratchCtx.drawImage(this.webcamVideo, dx, dy, dw, dh)
-        } catch {
-          if (this.sourceCanvas && this.sourceCanvas.width > 0 && this.sourceCanvas.height > 0) {
-            try {
-              this.scratchCtx.drawImage(this.sourceCanvas, 0, 0, width, height)
-            } catch {
-              this.scratchCtx.fillStyle = DEFAULT_VIRTUAL_STUDIO_FALLBACK_COLOR
-              this.scratchCtx.fillRect(0, 0, width, height)
-            }
-          } else {
-            this.scratchCtx.fillStyle = DEFAULT_VIRTUAL_STUDIO_FALLBACK_COLOR
-            this.scratchCtx.fillRect(0, 0, width, height)
+        // Physical Webcam Mode with Last-Frame Hold Fallback
+        if (this.webcamVideo && this.webcamVideo.videoWidth > 0 && this.webcamVideo.videoHeight > 0) {
+          try {
+            const vw = this.webcamVideo.videoWidth
+            const vh = this.webcamVideo.videoHeight
+            const scale = Math.max(width / vw, height / vh)
+            const dw = vw * scale
+            const dh = vh * scale
+            const dx = (width - dw) / 2
+            const dy = (height - dh) / 2
+            this.scratchCtx.drawImage(this.webcamVideo, dx, dy, dw, dh)
+          } catch {
+            this.drawSourceCanvasAspectFit(width, height)
           }
+        } else {
+          this.drawSourceCanvasAspectFit(width, height)
         }
-      } else if (this.sourceCanvas && this.sourceCanvas.width > 0 && this.sourceCanvas.height > 0) {
-        // Last-Frame Hold Fallback: Hold editor canvas preview if physical webcam is absent/unavailable
-        try {
-          this.scratchCtx.drawImage(this.sourceCanvas, 0, 0, width, height)
-        } catch {
-          this.scratchCtx.fillStyle = DEFAULT_VIRTUAL_STUDIO_FALLBACK_COLOR
-          this.scratchCtx.fillRect(0, 0, width, height)
-        }
-      } else {
-        // Dark background fallback
-        this.scratchCtx.fillStyle = DEFAULT_VIRTUAL_STUDIO_FALLBACK_COLOR
-        this.scratchCtx.fillRect(0, 0, width, height)
+      }
+    } finally {
+      if (this.isMirrored && typeof this.scratchCtx.restore === 'function') {
+        this.scratchCtx.restore()
       }
     }
 
@@ -830,6 +937,11 @@ export class VirtualStudioStreamer {
       if (state.selectedMicId !== prevState.selectedMicId) {
         void this.setSelectedMic(state.selectedMicId)
       }
+      const stateAny = state as unknown as { isMirrored?: boolean }
+      const prevStateAny = prevState as unknown as { isMirrored?: boolean }
+      if (stateAny.isMirrored !== undefined && stateAny.isMirrored !== prevStateAny.isMirrored) {
+        this.setMirrored(stateAny.isMirrored)
+      }
       if (state.isVirtualStudioActive !== prevState.isVirtualStudioActive) {
         if (state.isVirtualStudioActive) {
           void this.start({
@@ -839,7 +951,8 @@ export class VirtualStudioStreamer {
             selectedMicId: state.selectedMicId ?? undefined,
             enableLocalAudioMonitoring: state.isLocalAudioMonitoringEnabled,
             localMonitoringVolume: state.localMonitoringVolume,
-          })
+            isMirrored: stateAny.isMirrored ?? false,
+          } as Partial<VirtualStudioConfig>)
         } else {
           void this.stop()
         }

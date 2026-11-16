@@ -124,6 +124,7 @@ describe('VirtualStudioManager', () => {
     expect(status.isMicActive).toBe(true)
     expect(status.activeSource).toBe('webcam')
     expect(status.isPlaying).toBe(false)
+    expect(status.isMirrored).toBe(false)
     expect(status.cameraDriverInstalled).toBe(true)
     expect(status.micDriverInstalled).toBe(true)
   })
@@ -226,7 +227,7 @@ describe('VirtualStudioManager', () => {
     expect(status.activeSource).toBe('webcam')
   })
 
-  it('handles tray action: toggle-mic-mute', async () => {
+  it('handles tray action: toggle-mic-mute without muting audioSink (attendee audio preserved)', async () => {
     await manager.start(defaultConfig)
     let status = await manager.getStatus()
     expect(status.isMicMuted).toBe(false)
@@ -235,13 +236,48 @@ describe('VirtualStudioManager', () => {
     await manager.triggerAction('toggle-mic-mute')
     status = await manager.getStatus()
     expect(status.isMicMuted).toBe(true)
-    expect(mockAudioSink.setMuted).toHaveBeenCalledWith(true)
+    // Physical mic mute is strictly Web Audio; audioSink must NOT drop attendee audio
+    expect(mockAudioSink.setMuted).not.toHaveBeenCalled()
 
     // Unmute mic
     await manager.triggerAction('toggle-mic-mute')
     status = await manager.getStatus()
     expect(status.isMicMuted).toBe(false)
-    expect(mockAudioSink.setMuted).toHaveBeenCalledWith(false)
+    expect(mockAudioSink.setMuted).not.toHaveBeenCalled()
+  })
+
+  it('handles tray action: toggle-mirror', async () => {
+    await manager.start(defaultConfig)
+    let status = await manager.getStatus()
+    expect(status.isMirrored).toBe(false)
+
+    await manager.triggerAction('toggle-mirror')
+    status = await manager.getStatus()
+    expect(status.isMirrored).toBe(true)
+    expect(mockTray.updateState).toHaveBeenCalledWith(expect.objectContaining({ isMirrored: true }))
+    expect(mockWindow.webContents.send).toHaveBeenCalledWith('virtual-studio:tray-action', 'toggle-mirror')
+
+    await manager.triggerAction('toggle-mirror')
+    status = await manager.getStatus()
+    expect(status.isMirrored).toBe(false)
+    expect(mockTray.updateState).toHaveBeenCalledWith(expect.objectContaining({ isMirrored: false }))
+  })
+
+  it('handles tray action: toggle-audio-monitor', async () => {
+    await manager.start(defaultConfig)
+    let status = await manager.getStatus()
+    expect(status.isLocalAudioMonitoringEnabled).toBe(true)
+
+    await manager.triggerAction('toggle-audio-monitor')
+    status = await manager.getStatus()
+    expect(status.isLocalAudioMonitoringEnabled).toBe(false)
+    expect(mockTray.updateState).toHaveBeenCalledWith(expect.objectContaining({ isLocalAudioMonitoringEnabled: false }))
+    expect(mockWindow.webContents.send).toHaveBeenCalledWith('virtual-studio:tray-action', 'toggle-audio-monitor')
+
+    await manager.triggerAction('toggle-audio-monitor')
+    status = await manager.getStatus()
+    expect(status.isLocalAudioMonitoringEnabled).toBe(true)
+    expect(mockTray.updateState).toHaveBeenCalledWith(expect.objectContaining({ isLocalAudioMonitoringEnabled: true }))
   })
 
   it('handles tray action: toggle-hud and stop-studio', async () => {
@@ -260,12 +296,18 @@ describe('VirtualStudioManager', () => {
   it('allows updating status patch from renderer and dynamically toggles sinks while streaming', async () => {
     await manager.start(defaultConfig)
 
-    await manager.updateStatus({ isMicMuted: true, isPlaying: true, activeSource: 'canvas' })
+    await manager.updateStatus({
+      isMicMuted: true,
+      isPlaying: true,
+      activeSource: 'canvas',
+      isMirrored: true,
+    })
     const status = await manager.getStatus()
     expect(status.isMicMuted).toBe(true)
     expect(status.isPlaying).toBe(true)
     expect(status.activeSource).toBe('canvas')
-    expect(mockAudioSink.setMuted).toHaveBeenCalledWith(true)
+    expect(status.isMirrored).toBe(true)
+    expect(mockAudioSink.setMuted).not.toHaveBeenCalled()
 
     // Dynamic stop of camera sink while streaming
     await manager.updateStatus({ isCameraActive: false })

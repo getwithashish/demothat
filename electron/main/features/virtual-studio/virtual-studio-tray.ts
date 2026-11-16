@@ -14,6 +14,8 @@ export class VirtualStudioTray {
     isPlaying: false,
     isMicMuted: false,
     isMiniHudVisible: true,
+    isMirrored: false,
+    isLocalAudioMonitoringEnabled: true,
     activeSource: 'webcam',
   }
 
@@ -91,6 +93,8 @@ export class VirtualStudioTray {
 
     const isPlaying = !!this.currentStatus.isPlaying
     const isMicMuted = !!this.currentStatus.isMicMuted
+    const isMirrored = !!this.currentStatus.isMirrored
+    const isLocalAudioMonitoringEnabled = this.currentStatus.isLocalAudioMonitoringEnabled !== false
     const isHudVisible = this.currentStatus.isMiniHudVisible !== false
 
     const contextMenu = Menu.buildFromTemplate([
@@ -101,6 +105,16 @@ export class VirtualStudioTray {
       {
         label: isMicMuted ? '🔊 Unmute Microphone' : '🎙️ Mute Microphone',
         click: () => this.callbacks?.onAction('toggle-mic-mute'),
+      },
+      {
+        label: isMirrored ? '✓ Mirror Output (Flip horizontal)' : 'Mirror Output (Flip horizontal)',
+        click: () => this.callbacks?.onAction('toggle-mirror'),
+      },
+      {
+        label: isLocalAudioMonitoringEnabled
+          ? '✓ Monitor Audio Locally (Speakers ON)'
+          : 'Monitor Audio Locally (Silent)',
+        click: () => this.callbacks?.onAction('toggle-audio-monitor'),
       },
       {
         label: isHudVisible ? '👁️ Hide Mini-HUD' : '👁️ Show Mini-HUD',

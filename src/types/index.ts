@@ -656,6 +656,7 @@ export interface VirtualStudioState {
   localMonitoringVolume: number
   selectedCameraId: string | null
   selectedMicId: string | null
+  isMirrored: boolean
   cameraDriverInstalled: boolean
   micDriverInstalled: boolean
   isDriverInstalling: boolean
@@ -672,7 +673,10 @@ export interface VirtualStudioActions {
   setMiniHudVisible: (visible: boolean) => void
   toggleMiniHud: () => void
   setLocalAudioMonitoringEnabled: (enabled: boolean) => void
+  toggleLocalAudioMonitoring: () => void
   setLocalMonitoringVolume: (volume: number) => void
+  setIsMirrored: (mirrored: boolean) => void
+  toggleMirror: () => void
   setSelectedCameraId: (id: string | null) => void
   setSelectedMicId: (id: string | null) => void
   setVirtualStudioStatus: (status: Partial<VirtualStudioStatus>) => void

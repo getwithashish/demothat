@@ -11,6 +11,7 @@ export interface VirtualStudioStatus {
   isPlaying: boolean
   isLocalAudioMonitoringEnabled: boolean
   localMonitoringVolume: number
+  isMirrored: boolean
   isMiniHudVisible?: boolean
   error?: string | null
 }
@@ -23,6 +24,7 @@ export interface VirtualStudioConfig {
   outputResolution: { width: number; height: number; fps: number }
   enableLocalAudioMonitoring: boolean
   localMonitoringVolume: number
+  isMirrored?: boolean
 }
 
 export const DEFAULT_VIRTUAL_STUDIO_RESOLUTION = {
@@ -47,7 +49,8 @@ export interface VirtualAudioPayload {
   channels?: number
 }
 
-export type TrayQuickAction = 'toggle-playback' | 'toggle-mic-mute' | 'toggle-hud' | 'stop-studio'
+export type TrayQuickAction =
+  'toggle-playback' | 'toggle-mic-mute' | 'toggle-hud' | 'stop-studio' | 'toggle-mirror' | 'toggle-audio-monitor'
 
 export interface VirtualStudioActionResult {
   success: boolean

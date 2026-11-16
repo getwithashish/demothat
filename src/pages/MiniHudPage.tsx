@@ -8,6 +8,9 @@ import {
   Video,
   Broadcast,
   GripHorizontal,
+  FlipHorizontal,
+  Headphones,
+  HeadphonesOff,
 } from 'tabler-icons-react'
 import { ICON_SIZE, ICON_STROKE } from '../components/ui/icons'
 import { Button } from '../components/ui/button'
@@ -23,6 +26,8 @@ export function MiniHudPage() {
     isPlaying: false,
     isCameraActive: true,
     isMicActive: true,
+    isMirrored: false,
+    isLocalAudioMonitoringEnabled: true,
   })
 
   const [thumbnailDataUrl, setThumbnailDataUrl] = useState<string | null>(null)
@@ -130,8 +135,24 @@ export function MiniHudPage() {
     }
   }, [])
 
+  // Mirror toggle action
+  const handleToggleMirror = useCallback(async () => {
+    if (window.electronAPI?.virtualStudio?.triggerAction) {
+      await window.electronAPI.virtualStudio.triggerAction('toggle-mirror')
+    }
+  }, [])
+
+  // Local audio monitor toggle action
+  const handleToggleAudioMonitor = useCallback(async () => {
+    if (window.electronAPI?.virtualStudio?.triggerAction) {
+      await window.electronAPI.virtualStudio.triggerAction('toggle-audio-monitor')
+    }
+  }, [])
+
   const isPlaying = status.isPlaying ?? false
   const isMicMuted = status.isMicMuted ?? false
+  const isMirrored = status.isMirrored ?? false
+  const isLocalAudioMonitoringEnabled = status.isLocalAudioMonitoringEnabled ?? true
 
   return (
     <main className="h-screen w-screen overflow-hidden p-1.5 flex flex-col justify-between bg-transparent select-none">
@@ -153,8 +174,34 @@ export function MiniHudPage() {
             </span>
           </div>
 
-          {/* Minimize button [-] */}
-          <div style={{ WebkitAppRegion: 'no-drag' }}>
+          <div className="flex items-center gap-1" style={{ WebkitAppRegion: 'no-drag' }}>
+            {/* Mirror toggle button */}
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleToggleMirror}
+                    className={cn(
+                      'h-5 w-5 rounded text-muted hover:bg-ctl hover:text-fg',
+                      isMirrored && 'text-accent bg-ctl',
+                    )}
+                    aria-label="Toggle Mirroring"
+                    title={isMirrored ? 'Mirroring ON (Camera & HUD flipped)' : 'Mirroring OFF (Normal)'}
+                  >
+                    <FlipHorizontal size={13} strokeWidth={ICON_STROKE} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  <span className="text-[11px]">
+                    {isMirrored ? 'Mirroring ON (Camera & HUD flipped)' : 'Mirroring OFF (Normal)'}
+                  </span>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
+            {/* Minimize button [-] */}
             <TooltipProvider delayDuration={200}>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -183,7 +230,13 @@ export function MiniHudPage() {
             <img src={thumbnailDataUrl} alt="Outgoing Feed" className="h-full w-full object-cover" />
           ) : isWebcam ? (
             <>
-              <video ref={webcamVideoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
+              <video
+                ref={webcamVideoRef}
+                autoPlay
+                playsInline
+                muted
+                className={cn('h-full w-full object-cover', isMirrored && '-scale-x-100')}
+              />
               {cameraStreamError && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-stage text-muted">
                   <Video size={ICON_SIZE} strokeWidth={ICON_STROKE} />
@@ -258,6 +311,43 @@ export function MiniHudPage() {
               </>
             )}
           </Button>
+
+          {/* Local Audio Monitor toggle */}
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleToggleAudioMonitor}
+                  className={cn(
+                    'h-7 px-2 gap-1 text-[11px] font-medium transition-colors',
+                    !isLocalAudioMonitoringEnabled &&
+                      'border border-warning/40 bg-warning/15 text-warning hover:bg-warning/25',
+                  )}
+                  aria-label="Toggle Local Audio Monitoring"
+                  title={
+                    isLocalAudioMonitoringEnabled
+                      ? 'Speaker monitoring ON (You hear playback)'
+                      : 'Speaker monitoring OFF (Only meeting attendees hear playback)'
+                  }
+                >
+                  {isLocalAudioMonitoringEnabled ? (
+                    <Headphones size={13} strokeWidth={ICON_STROKE} />
+                  ) : (
+                    <HeadphonesOff size={13} strokeWidth={ICON_STROKE} />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                <span className="text-[11px]">
+                  {isLocalAudioMonitoringEnabled
+                    ? 'Speaker monitoring ON (You hear playback)'
+                    : 'Speaker monitoring OFF (Only meeting attendees hear playback)'}
+                </span>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </footer>
       </div>
     </main>

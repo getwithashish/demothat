@@ -13,6 +13,7 @@ describe('virtualStudioSlice', () => {
     state.setMiniHudVisible(true)
     state.setLocalAudioMonitoringEnabled(true)
     state.setLocalMonitoringVolume(1.0)
+    state.setIsMirrored(false)
     state.setSelectedCameraId(null)
     state.setSelectedMicId(null)
   })
@@ -26,6 +27,37 @@ describe('virtualStudioSlice', () => {
     expect(state.isMicMuted).toBe(false)
     expect(state.isLocalAudioMonitoringEnabled).toBe(true)
     expect(state.localMonitoringVolume).toBe(1.0)
+    expect(state.isMirrored).toBe(false)
+  })
+
+  it('supports setting and toggling mirroring and audio monitoring directly', () => {
+    const { setIsMirrored, toggleMirror, toggleLocalAudioMonitoring } = useEditorStore.getState()
+
+    setIsMirrored(true)
+    expect(useEditorStore.getState().isMirrored).toBe(true)
+
+    toggleMirror()
+    expect(useEditorStore.getState().isMirrored).toBe(false)
+
+    toggleMirror()
+    expect(useEditorStore.getState().isMirrored).toBe(true)
+
+    expect(useEditorStore.getState().isLocalAudioMonitoringEnabled).toBe(true)
+    toggleLocalAudioMonitoring()
+    expect(useEditorStore.getState().isLocalAudioMonitoringEnabled).toBe(false)
+    toggleLocalAudioMonitoring()
+    expect(useEditorStore.getState().isLocalAudioMonitoringEnabled).toBe(true)
+  })
+
+  it('syncs isMirrored status updates via setVirtualStudioStatus', () => {
+    const { setVirtualStudioStatus } = useEditorStore.getState()
+    expect(useEditorStore.getState().isMirrored).toBe(false)
+
+    setVirtualStudioStatus({ isMirrored: true })
+    expect(useEditorStore.getState().isMirrored).toBe(true)
+
+    setVirtualStudioStatus({ isMirrored: false })
+    expect(useEditorStore.getState().isMirrored).toBe(false)
   })
 
   it('does NOT overwrite enableCamera or enableMic user preferences from isCameraActive/isMicActive', () => {
@@ -82,6 +114,20 @@ describe('virtualStudioSlice', () => {
     expect(useEditorStore.getState().isMiniHudVisible).toBe(false)
     handleTrayAction('toggle-hud')
     expect(useEditorStore.getState().isMiniHudVisible).toBe(true)
+
+    // toggle-mirror
+    expect(useEditorStore.getState().isMirrored).toBe(false)
+    handleTrayAction('toggle-mirror')
+    expect(useEditorStore.getState().isMirrored).toBe(true)
+    handleTrayAction('toggle-mirror')
+    expect(useEditorStore.getState().isMirrored).toBe(false)
+
+    // toggle-audio-monitor
+    expect(useEditorStore.getState().isLocalAudioMonitoringEnabled).toBe(true)
+    handleTrayAction('toggle-audio-monitor')
+    expect(useEditorStore.getState().isLocalAudioMonitoringEnabled).toBe(false)
+    handleTrayAction('toggle-audio-monitor')
+    expect(useEditorStore.getState().isLocalAudioMonitoringEnabled).toBe(true)
 
     // stop-studio
     useEditorStore.getState().setVirtualStudioActive(true)

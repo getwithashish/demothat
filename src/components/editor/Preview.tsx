@@ -87,7 +87,7 @@ export const Preview = memo(
     // The recording's audio tracks, mixed separately from the video element so each
     // source can be muted and balanced on its own. While the mixer is carrying the
     // audio the element is silenced — see the volume effect below.
-    const { mixerOwnsAudio } = usePreviewAudioMixer({ videoRef, isPlaying })
+    const { mixerOwnsAudio, outputStream } = usePreviewAudioMixer({ videoRef, isPlaying })
 
     const [bgImage, setBgImage] = useState<HTMLImageElement | null>(null)
     const canvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -427,6 +427,16 @@ export const Preview = memo(
         virtualStudioStreamer.detachVideoElement()
       }
     }, [videoRef, videoUrl])
+
+    // Attach multi-track mixed audio stream to Virtual Studio streamer when mixer is active
+    useEffect(() => {
+      if (outputStream) {
+        virtualStudioStreamer.attachMediaStream(outputStream)
+        return () => {
+          virtualStudioStreamer.detachMediaStream()
+        }
+      }
+    }, [outputStream])
 
     const hasSizedRef = useRef(false)
 

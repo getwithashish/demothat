@@ -27,6 +27,10 @@ export interface PreviewAudioState {
    * While it is, the video element must be muted or the first track is heard twice.
    */
   mixerOwnsAudio: boolean
+  /**
+   * Mixed audio MediaStream suitable for routing into Virtual Studio or virtual mic sinks.
+   */
+  outputStream: MediaStream | null
 }
 
 /** An `HTMLAudioElement` is a `MediaLike`; the cast lives here rather than at each use. */
@@ -39,6 +43,7 @@ export function usePreviewAudioMixer({ videoRef, isPlaying }: UsePreviewAudioMix
   const isMuted = useEditorStore((state) => state.isMuted)
 
   const [sources, setSources] = useState<PreviewTrackSource[]>([])
+  const [outputStream, setOutputStream] = useState<MediaStream | null>(null)
   const mixerRef = useRef<PreviewAudioMixer | null>(null)
   /** Which extraction attempt is current, so a slow one cannot overwrite a newer. */
   const extractToken = useRef(0)
@@ -105,11 +110,13 @@ export function usePreviewAudioMixer({ videoRef, isPlaying }: UsePreviewAudioMix
         },
       })
       mixer.attach(sources)
+      setOutputStream(mixer.getMediaStream())
     } catch (error) {
       // Silence would be the worst outcome: falling back to the element's own audio
       // gives the user a recording they can hear, just without per-track control.
       console.warn('[PreviewAudio] Could not build the preview mix; using the element’s audio:', error)
       setSources([])
+      setOutputStream(null)
       return
     }
     mixerRef.current = mixer
@@ -117,6 +124,7 @@ export function usePreviewAudioMixer({ videoRef, isPlaying }: UsePreviewAudioMix
     return () => {
       mixer.dispose()
       mixerRef.current = null
+      setOutputStream(null)
       void context.close().catch(() => undefined)
     }
   }, [sources, videoRef])
@@ -167,5 +175,5 @@ export function usePreviewAudioMixer({ videoRef, isPlaying }: UsePreviewAudioMix
     }
   }, [volume, isMuted, audioTracks, mixerOwnsAudio])
 
-  return { mixerOwnsAudio }
+  return { mixerOwnsAudio, outputStream }
 }

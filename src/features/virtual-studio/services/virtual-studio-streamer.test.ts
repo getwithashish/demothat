@@ -7,6 +7,9 @@ class MockAudioParam {
   setValueAtTime = vi.fn((val: number) => {
     this.value = val
   })
+  setTargetAtTime = vi.fn((val: number) => {
+    this.value = val
+  })
 }
 
 class MockAudioNode {
@@ -60,6 +63,10 @@ describe('VirtualStudioStreamer', () => {
     fillRect: ReturnType<typeof vi.fn>
     clearRect: ReturnType<typeof vi.fn>
     getImageData: ReturnType<typeof vi.fn>
+    save: ReturnType<typeof vi.fn>
+    restore: ReturnType<typeof vi.fn>
+    translate: ReturnType<typeof vi.fn>
+    scale: ReturnType<typeof vi.fn>
   }
   let mockVideo: {
     videoWidth: number
@@ -90,6 +97,7 @@ describe('VirtualStudioStreamer', () => {
         isPlaying: false,
         isLocalAudioMonitoringEnabled: true,
         localMonitoringVolume: 1.0,
+        isMirrored: false,
       }),
       installDriver: vi.fn().mockResolvedValue({ success: true }),
       start: vi.fn().mockResolvedValue({ success: true }),
@@ -120,6 +128,10 @@ describe('VirtualStudioStreamer', () => {
         width: 1920,
         height: 1080,
       })),
+      save: vi.fn(),
+      restore: vi.fn(),
+      translate: vi.fn(),
+      scale: vi.fn(),
     }
 
     mockCanvas = {
@@ -262,6 +274,20 @@ describe('VirtualStudioStreamer', () => {
       streamer.toggleMicMute()
       expect(streamer.isMuted()).toBe(false)
     })
+
+    it('uses 15ms exponential cross-fade transitions via setTargetAtTime to prevent audio clicks', async () => {
+      await streamer.start()
+      const gainResults = mockContext.createGain.mock.results
+      const videoGain = (gainResults[2].value as MockGainNode).gain
+      videoGain.setTargetAtTime.mockClear()
+
+      streamer.setPlaying(true)
+      expect(videoGain.setTargetAtTime).toHaveBeenCalledWith(1.0, expect.any(Number), 0.015)
+
+      videoGain.setTargetAtTime.mockClear()
+      streamer.setPlaying(false)
+      expect(videoGain.setTargetAtTime).toHaveBeenCalledWith(0.0, expect.any(Number), 0.015)
+    })
   })
 
   describe('Frame Capture and Preview Notifications', () => {
@@ -361,6 +387,69 @@ describe('VirtualStudioStreamer', () => {
       previewListener.mockClear()
       streamer.captureTick()
       expect(previewListener).not.toHaveBeenCalled()
+    })
+
+    it('applies centered aspect-fit letterboxing on sourceCanvas for non-16:9 aspect ratios', async () => {
+      await streamer.start()
+      const squareCanvas = { width: 1000, height: 1000 } as HTMLCanvasElement
+      streamer.attachCanvas(squareCanvas)
+
+      streamer.setPlaying(true) // activeSource = canvas
+      streamer.captureTick()
+
+      // For 1280x720 output and 1000x1000 input: scale = 720/1000 = 0.72 -> dw = 720, dh = 720, dx = (1280-720)/2 = 280, dy = 0
+      expect(mockCtx.fillRect).toHaveBeenCalledWith(0, 0, 1280, 720)
+      expect(mockCtx.drawImage).toHaveBeenCalledWith(squareCanvas, 280, 0, 720, 720)
+    })
+  })
+
+  describe('Video Mirroring', () => {
+    it('initializes with mirroring disabled and updates state and IPC on toggle', async () => {
+      await streamer.start()
+      expect(streamer.getMirrored()).toBe(false)
+      expect(streamer.isMirrorEnabled()).toBe(false)
+
+      mockIpc.updateStatus.mockClear()
+      streamer.setMirrored(true)
+      expect(streamer.getMirrored()).toBe(true)
+      expect(streamer.isMirrorEnabled()).toBe(true)
+      expect(mockIpc.updateStatus).toHaveBeenCalledWith({ isMirrored: true })
+
+      // Redundant setMirrored is a no-op
+      mockIpc.updateStatus.mockClear()
+      streamer.setMirrored(true)
+      expect(mockIpc.updateStatus).not.toHaveBeenCalled()
+
+      streamer.setMirrored(false)
+      expect(streamer.getMirrored()).toBe(false)
+      expect(mockIpc.updateStatus).toHaveBeenCalledWith({ isMirrored: false })
+    })
+
+    it('applies horizontal flip transform in captureTick when isMirrored is true', async () => {
+      await streamer.start()
+      streamer.setMirrored(true)
+
+      streamer.captureTick()
+      expect(mockCtx.save).toHaveBeenCalled()
+      expect(mockCtx.translate).toHaveBeenCalledWith(1280, 0)
+      expect(mockCtx.scale).toHaveBeenCalledWith(-1, 1)
+      expect(mockCtx.restore).toHaveBeenCalled()
+    })
+
+    it('guarantees context restore in finally block even if drawing throws during mirrored tick', async () => {
+      await streamer.start()
+      streamer.setMirrored(true)
+
+      mockCtx.drawImage.mockImplementationOnce(() => {
+        throw new Error('WebGL context lost')
+      })
+
+      expect(() => {
+        streamer.captureTick()
+      }).not.toThrow()
+
+      expect(mockCtx.save).toHaveBeenCalled()
+      expect(mockCtx.restore).toHaveBeenCalled()
     })
   })
 
@@ -477,6 +566,20 @@ describe('VirtualStudioStreamer', () => {
 
       cleanup()
     })
+
+    it('syncWithStore subscribes to isMirrored store changes', async () => {
+      await streamer.start()
+      const setMirroredSpy = vi.spyOn(streamer, 'setMirrored')
+      const cleanup = streamer.syncWithStore()
+
+      useEditorStore.setState({ isMirrored: true } as unknown as Parameters<typeof useEditorStore.setState>[0])
+      expect(setMirroredSpy).toHaveBeenCalledWith(true)
+
+      useEditorStore.setState({ isMirrored: false } as unknown as Parameters<typeof useEditorStore.setState>[0])
+      expect(setMirroredSpy).toHaveBeenCalledWith(false)
+
+      cleanup()
+    })
   })
 
   describe('Edge Cases & Resilient Fallbacks', () => {
@@ -531,6 +634,19 @@ describe('VirtualStudioStreamer', () => {
       // Detach should disconnect safely without throwing
       expect(() => {
         streamer.detachVideoElement()
+      }).not.toThrow()
+    })
+
+    it('supports attaching and detaching multi-track mixed MediaStream for audio input', async () => {
+      await streamer.start()
+      const mockStream = createMockMediaStream()
+
+      streamer.attachMediaStream(mockStream)
+      expect(mockContext.createMediaStreamSource).toHaveBeenCalledWith(mockStream)
+
+      // Detaching should disconnect cleanly
+      expect(() => {
+        streamer.detachMediaStream()
       }).not.toThrow()
     })
 

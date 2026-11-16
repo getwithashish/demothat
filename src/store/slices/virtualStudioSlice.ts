@@ -89,8 +89,6 @@ export const createVirtualStudioSlice: Slice<VirtualStudioState, VirtualStudioAc
       if (status.cameraDriverInstalled !== undefined) state.cameraDriverInstalled = status.cameraDriverInstalled
       if (status.micDriverInstalled !== undefined) state.micDriverInstalled = status.micDriverInstalled
       if (status.isStreaming !== undefined) state.isVirtualStudioActive = status.isStreaming
-      if (status.isCameraActive !== undefined) state.enableCamera = status.isCameraActive
-      if (status.isMicActive !== undefined) state.enableMic = status.isMicActive
       if (status.activeSource !== undefined) state.activeSource = status.activeSource
       if (status.isMicMuted !== undefined) state.isMicMuted = status.isMicMuted
       if (status.webcamDeviceId !== undefined) state.selectedCameraId = status.webcamDeviceId
@@ -98,7 +96,10 @@ export const createVirtualStudioSlice: Slice<VirtualStudioState, VirtualStudioAc
       if (status.isLocalAudioMonitoringEnabled !== undefined) {
         state.isLocalAudioMonitoringEnabled = status.isLocalAudioMonitoringEnabled
       }
-      if (status.localMonitoringVolume !== undefined) {
+      if (
+        status.localMonitoringVolume !== undefined &&
+        Math.abs(status.localMonitoringVolume - state.localMonitoringVolume) > 0.05
+      ) {
         state.localMonitoringVolume = Math.max(0, Math.min(1, status.localMonitoringVolume))
       }
       if (status.isMiniHudVisible !== undefined) state.isMiniHudVisible = status.isMiniHudVisible

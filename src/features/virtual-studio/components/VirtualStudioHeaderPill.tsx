@@ -80,6 +80,32 @@ export const VirtualStudioHeaderPill: React.FC = () => {
     pushToast,
   } = useEditorStore.getState()
 
+  const [sliderVol, setSliderVol] = useState(Math.round((localMonitoringVolume ?? 1.0) * 100))
+  const isAdjustingSliderRef = useRef(false)
+  const debounceCommitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    if (!isAdjustingSliderRef.current) {
+      setSliderVol(Math.round((localMonitoringVolume ?? 1.0) * 100))
+    }
+  }, [localMonitoringVolume])
+
+  const handleSliderChange = useCallback(
+    (val: number) => {
+      isAdjustingSliderRef.current = true
+      setSliderVol(val)
+      setLocalMonitoringVolume(val / 100)
+
+      if (debounceCommitTimeoutRef.current) {
+        clearTimeout(debounceCommitTimeoutRef.current)
+      }
+      debounceCommitTimeoutRef.current = setTimeout(() => {
+        isAdjustingSliderRef.current = false
+      }, 300)
+    },
+    [setLocalMonitoringVolume],
+  )
+
   // Enumerate physical camera and microphone devices
   const refreshDevices = useCallback(async () => {
     try {
@@ -469,8 +495,8 @@ export const VirtualStudioHeaderPill: React.FC = () => {
                   min={0}
                   max={100}
                   step={1}
-                  value={Math.round(localMonitoringVolume * 100)}
-                  onChange={(val) => setLocalMonitoringVolume(val / 100)}
+                  value={sliderVol}
+                  onChange={handleSliderChange}
                   formatValue={(val) => `${val}%`}
                   showValue
                   className="w-full"
@@ -482,14 +508,17 @@ export const VirtualStudioHeaderPill: React.FC = () => {
           {/* Mini-HUD & Display Controls */}
           {isVirtualStudioActive && (
             <div className="flex items-center justify-between border-t border-line pt-3">
-              <span className="text-xs text-muted">Mini-HUD on screen</span>
+              <span className="text-xs text-muted">Mini-HUD window</span>
               <Button
                 variant={isMiniHudVisible ? 'secondary' : 'primary'}
                 size="sm"
-                onClick={() => {
-                  const next = !isMiniHudVisible
-                  setMiniHudVisible(next)
-                  window.electronAPI?.virtualStudio?.updateStatus({ isMiniHudVisible: next })
+                onClick={async () => {
+                  if (window.electronAPI?.virtualStudio?.triggerAction) {
+                    await window.electronAPI.virtualStudio.triggerAction('toggle-hud')
+                  } else {
+                    const next = !isMiniHudVisible
+                    setMiniHudVisible(next)
+                  }
                 }}
                 className="h-7 text-xs"
               >

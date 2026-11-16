@@ -757,6 +757,17 @@ export const electronAPI = {
         ipcRenderer.removeListener('virtual-studio:tray-action', listener)
       }
     },
+    pushPreviewFrame: (dataUrl: string): void => ipcRenderer.send('virtual-studio:push-preview-frame', dataUrl),
+    onPreviewFrame: (callback: (dataUrl: string) => void) => {
+      const listener = (_event: IpcRendererEvent, dataUrl: string) => callback(dataUrl)
+      ipcRenderer.on('virtual-studio:preview-frame', listener)
+      return () => {
+        ipcRenderer.removeListener('virtual-studio:preview-frame', listener)
+      }
+    },
+    showHud: (): void => ipcRenderer.send('virtual-studio:show-hud'),
+    hideHud: (): void => ipcRenderer.send('virtual-studio:hide-hud'),
+    toggleHud: (): void => ipcRenderer.send('virtual-studio:toggle-hud'),
   },
 }
 

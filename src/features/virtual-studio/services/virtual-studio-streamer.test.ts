@@ -90,6 +90,11 @@ describe('VirtualStudioStreamer', () => {
       pushAudio: vi.fn().mockResolvedValue({ success: true }),
       triggerAction: vi.fn().mockResolvedValue({ success: true }),
       updateStatus: vi.fn(),
+      pushPreviewFrame: vi.fn(),
+      onPreviewFrame: vi.fn(() => vi.fn()),
+      showHud: vi.fn(),
+      hideHud: vi.fn(),
+      toggleHud: vi.fn(),
       onStatusChange: vi.fn(() => vi.fn()),
       onTrayAction: vi.fn(() => vi.fn()),
     }
@@ -110,9 +115,10 @@ describe('VirtualStudioStreamer', () => {
     }
 
     mockCanvas = {
-      width: 1920,
-      height: 1080,
+      width: 1280,
+      height: 720,
       getContext: vi.fn(() => mockCtx),
+      toDataURL: vi.fn(() => 'data:image/jpeg;base64,mockThumbnail'),
     } as unknown as HTMLCanvasElement
 
     mockVideo = {
@@ -170,7 +176,7 @@ describe('VirtualStudioStreamer', () => {
       expect(mockVideoSource.connect).toHaveBeenCalledTimes(2)
     })
 
-    it('clamps and updates local audio monitoring volume', async () => {
+    it('clamps and updates local audio monitoring volume locally without circular IPC echo', async () => {
       await streamer.start()
 
       streamer.setLocalMonitoringVolume(1.5)
@@ -181,7 +187,8 @@ describe('VirtualStudioStreamer', () => {
 
       streamer.setLocalMonitoringVolume(0.7)
       expect(streamer.getMonitoringVolume()).toBe(0.7)
-      expect(mockIpc.updateStatus).toHaveBeenCalledWith(expect.objectContaining({ localMonitoringVolume: 0.7 }))
+      // Must not dispatch updateStatus on continuous volume changes
+      expect(mockIpc.updateStatus).not.toHaveBeenCalledWith(expect.objectContaining({ localMonitoringVolume: 0.7 }))
     })
 
     it('updates local audio monitoring enabled state', async () => {
@@ -250,22 +257,23 @@ describe('VirtualStudioStreamer', () => {
   })
 
   describe('Frame Capture and Preview Notifications', () => {
-    it('captures canvas preview when activeSource is canvas', async () => {
+    it('captures canvas preview when activeSource is canvas and broadcasts live thumbnail to IPC', async () => {
       await streamer.start()
-      const testCanvas = { width: 1920, height: 1080 } as HTMLCanvasElement
+      const testCanvas = { width: 1280, height: 720 } as HTMLCanvasElement
       streamer.attachCanvas(testCanvas)
 
       streamer.setPlaying(true) // activeSource = canvas
       streamer.captureTick()
 
-      expect(mockCtx.drawImage).toHaveBeenCalledWith(testCanvas, 0, 0, 1920, 1080)
+      expect(mockCtx.drawImage).toHaveBeenCalledWith(testCanvas, 0, 0, 1280, 720)
       expect(mockIpc.pushFrame).toHaveBeenCalledWith(
         expect.objectContaining({
-          width: 1920,
-          height: 1080,
+          width: 1280,
+          height: 720,
           format: 'rgba',
         }),
       )
+      expect(mockIpc.pushPreviewFrame).toHaveBeenCalledWith('data:image/jpeg;base64,mockThumbnail')
     })
 
     it('captures webcam video when activeSource is webcam', async () => {

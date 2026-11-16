@@ -42,8 +42,18 @@ vi.mock('./driver-setup', () => ({
   installVirtualDrivers: vi.fn().mockResolvedValue({ success: true }),
 }))
 
+vi.mock('../../windows/hud-window', () => ({
+  showHudWindow: vi.fn(),
+  hideHudWindow: vi.fn(),
+  toggleHudWindow: vi.fn(),
+  createHudWindow: vi.fn(),
+  getHudWindow: vi.fn(),
+  destroyHudWindow: vi.fn(),
+}))
+
 import { VirtualStudioManager } from './virtual-studio-manager'
 import { checkVirtualDrivers, installVirtualDrivers } from './driver-setup'
+import { showHudWindow, hideHudWindow } from '../../windows/hud-window'
 import type { VirtualCameraSink } from './virtual-camera-sink'
 import type { VirtualAudioSink } from './virtual-audio-sink'
 import type { VirtualStudioTray } from './virtual-studio-tray'
@@ -99,11 +109,11 @@ describe('VirtualStudioManager', () => {
     )
   })
 
-  it('initializes with default stopped state', async () => {
+  it('initializes with default stopped state and active camera/mic user preferences', async () => {
     const status = await manager.getStatus()
     expect(status.isStreaming).toBe(false)
-    expect(status.isCameraActive).toBe(false)
-    expect(status.isMicActive).toBe(false)
+    expect(status.isCameraActive).toBe(true)
+    expect(status.isMicActive).toBe(true)
     expect(status.activeSource).toBe('webcam')
     expect(status.isPlaying).toBe(false)
     expect(status.cameraDriverInstalled).toBe(true)
@@ -121,6 +131,7 @@ describe('VirtualStudioManager', () => {
     })
     expect(mockAudioSink.start).toHaveBeenCalled()
     expect(mockTray.init).toHaveBeenCalled()
+    expect(showHudWindow).toHaveBeenCalled()
 
     const status = await manager.getStatus()
     expect(status.isStreaming).toBe(true)
@@ -145,10 +156,10 @@ describe('VirtualStudioManager', () => {
     expect(mockCameraSink.stop).toHaveBeenCalled()
     expect(mockAudioSink.stop).toHaveBeenCalled()
     expect(mockTray.destroy).toHaveBeenCalled()
+    expect(hideHudWindow).toHaveBeenCalled()
 
     const status = await manager.getStatus()
     expect(status.isStreaming).toBe(false)
-    expect(status.isCameraActive).toBe(false)
   })
 
   it('handles frame pushing only when streaming', async () => {
@@ -238,15 +249,43 @@ describe('VirtualStudioManager', () => {
     expect(mockTray.destroy).toHaveBeenCalled()
   })
 
-  it('allows updating status patch from renderer', async () => {
+  it('allows updating status patch from renderer and dynamically toggles sinks while streaming', async () => {
     await manager.start(defaultConfig)
 
-    manager.updateStatus({ isMicMuted: true, isPlaying: true, activeSource: 'canvas' })
+    await manager.updateStatus({ isMicMuted: true, isPlaying: true, activeSource: 'canvas' })
     const status = await manager.getStatus()
     expect(status.isMicMuted).toBe(true)
     expect(status.isPlaying).toBe(true)
     expect(status.activeSource).toBe('canvas')
     expect(mockAudioSink.setMuted).toHaveBeenCalledWith(true)
+
+    // Dynamic stop of camera sink while streaming
+    await manager.updateStatus({ isCameraActive: false })
+    expect(mockCameraSink.stop).toHaveBeenCalled()
+
+    // Dynamic start of camera sink while streaming
+    await manager.updateStatus({ isCameraActive: true })
+    expect(mockCameraSink.start).toHaveBeenCalledTimes(2)
+
+    // Dynamic stop of audio sink while streaming
+    await manager.updateStatus({ isMicActive: false })
+    expect(mockAudioSink.stop).toHaveBeenCalled()
+
+    // Dynamic start of audio sink while streaming
+    await manager.updateStatus({ isMicActive: true })
+    expect(mockAudioSink.start).toHaveBeenCalledTimes(2)
+  })
+
+  it('forwards preview frames to windows via pushPreviewFrame', () => {
+    manager.pushPreviewFrame('data:image/jpeg;base64,mockthumb')
+    expect(mockWindow.webContents.send).toHaveBeenCalledWith(
+      'virtual-studio:preview-frame',
+      'data:image/jpeg;base64,mockthumb',
+    )
+    expect(mockDestroyedWindow.webContents.send).not.toHaveBeenCalledWith(
+      'virtual-studio:preview-frame',
+      expect.anything(),
+    )
   })
 
   describe('Edge Cases & Driver Scenarios', () => {
@@ -383,6 +422,15 @@ describe('VirtualStudioManager', () => {
       mockAudioSink.pushAudio.mockResolvedValueOnce(false)
       const audioRes = await manager.pushAudio(new Uint8Array([0, 1]))
       expect(audioRes.success).toBe(false)
+    })
+
+    it('broadcasts preview frame to non-destroyed windows', () => {
+      manager.pushPreviewFrame('data:image/jpeg;base64,sample')
+      expect(mockWindow.webContents.send).toHaveBeenCalledWith(
+        'virtual-studio:preview-frame',
+        'data:image/jpeg;base64,sample',
+      )
+      expect(mockDestroyedWindow.webContents.send).not.toHaveBeenCalled()
     })
   })
 })

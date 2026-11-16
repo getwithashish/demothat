@@ -3,6 +3,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { EditorPage } from './pages/EditorPage'
 import { RecorderPage } from './pages/RecorderPage'
 import { RendererPage } from './pages/RendererPage'
+import { MiniHudPage } from './pages/MiniHudPage'
 import { useEditorStore } from './store/editorStore'
 import { useStaleScrollLockGuard } from './hooks/useStaleScrollLockGuard'
 
@@ -45,6 +46,10 @@ function App() {
 
   if (route.startsWith('#editor')) {
     return <EditorPage />
+  }
+
+  if (route.startsWith('#mini-hud')) {
+    return <MiniHudPage />
   }
 
   return <RecorderPage />

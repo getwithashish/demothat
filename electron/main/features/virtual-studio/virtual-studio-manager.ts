@@ -11,14 +11,15 @@ import { checkVirtualDrivers, installVirtualDrivers } from './driver-setup'
 import { virtualCameraSink, VirtualCameraSink } from './virtual-camera-sink'
 import { virtualAudioSink, VirtualAudioSink } from './virtual-audio-sink'
 import { virtualStudioTray, VirtualStudioTray } from './virtual-studio-tray'
+import { showHudWindow, hideHudWindow } from '../../windows/hud-window'
 
 export class VirtualStudioManager {
   private status: VirtualStudioStatus = {
     cameraDriverInstalled: false,
     micDriverInstalled: false,
     isStreaming: false,
-    isCameraActive: false,
-    isMicActive: false,
+    isCameraActive: true,
+    isMicActive: true,
     activeSource: 'webcam',
     webcamDeviceId: null,
     micDeviceId: null,
@@ -93,9 +94,9 @@ export class VirtualStudioManager {
       // 2. Start Camera Sink if enabled
       if (config.enableCamera) {
         const camRes = await this.cameraSink.start({
-          width: config.outputResolution.width,
-          height: config.outputResolution.height,
-          fps: config.outputResolution.fps,
+          width: config.outputResolution.width || 1280,
+          height: config.outputResolution.height || 720,
+          fps: config.outputResolution.fps || 30,
         })
         if (!camRes.success) {
           log.warn('[VirtualStudioManager] Camera sink start warning:', camRes.error)
@@ -128,6 +129,10 @@ export class VirtualStudioManager {
       this.status.isMicMuted = false
       this.status.error = null
 
+      if (this.status.isMiniHudVisible !== false) {
+        showHudWindow()
+      }
+
       this.tray.updateState(this.status)
       this.broadcastStatus()
 
@@ -150,10 +155,9 @@ export class VirtualStudioManager {
       await this.cameraSink.stop()
       await this.audioSink.stop()
       this.tray.destroy()
+      hideHudWindow()
 
       this.status.isStreaming = false
-      this.status.isCameraActive = false
-      this.status.isMicActive = false
       this.status.isPlaying = false
       this.status.activeSource = 'webcam'
       this.status.error = null
@@ -191,6 +195,18 @@ export class VirtualStudioManager {
   }
 
   /**
+   * Forwards live thumbnail preview frame (Base64 data URL) to floating Mini-HUD overlay window.
+   */
+  public pushPreviewFrame(dataUrl: string): void {
+    const windows = BrowserWindow.getAllWindows()
+    for (const win of windows) {
+      if (!win.isDestroyed()) {
+        win.webContents.send('virtual-studio:preview-frame', dataUrl)
+      }
+    }
+  }
+
+  /**
    * Triggers a quick action from System Tray or UI.
    */
   public async triggerAction(action: TrayQuickAction): Promise<VirtualStudioActionResult> {
@@ -200,13 +216,51 @@ export class VirtualStudioManager {
   }
 
   /**
-   * Synchronizes status updates from renderer (such as isPlaying, activeSource, or isMicMuted).
+   * Synchronizes status updates from renderer and dynamically starts/stops sinks.
    */
-  public updateStatus(patch: Partial<VirtualStudioStatus>): void {
+  public async updateStatus(patch: Partial<VirtualStudioStatus>): Promise<void> {
+    const prevCameraActive = this.status.isCameraActive
+    const prevMicActive = this.status.isMicActive
+
     this.status = { ...this.status, ...patch }
 
     if (patch.isMicMuted !== undefined) {
       this.audioSink.setMuted(patch.isMicMuted)
+    }
+
+    // Dynamic start/stop when streaming
+    if (this.status.isStreaming) {
+      if (patch.isCameraActive !== undefined && patch.isCameraActive !== prevCameraActive) {
+        if (patch.isCameraActive) {
+          log.info('[VirtualStudioManager] Dynamically starting camera sink while streaming')
+          await this.cameraSink.start({
+            width: this.config?.outputResolution.width || 1280,
+            height: this.config?.outputResolution.height || 720,
+            fps: this.config?.outputResolution.fps || 30,
+          })
+        } else {
+          log.info('[VirtualStudioManager] Dynamically stopping camera sink while streaming')
+          await this.cameraSink.stop()
+        }
+      }
+
+      if (patch.isMicActive !== undefined && patch.isMicActive !== prevMicActive) {
+        if (patch.isMicActive) {
+          log.info('[VirtualStudioManager] Dynamically starting audio sink while streaming')
+          await this.audioSink.start()
+        } else {
+          log.info('[VirtualStudioManager] Dynamically stopping audio sink while streaming')
+          await this.audioSink.stop()
+        }
+      }
+    }
+
+    if (patch.isMiniHudVisible !== undefined) {
+      if (patch.isMiniHudVisible) {
+        showHudWindow()
+      } else {
+        hideHudWindow()
+      }
     }
 
     this.tray.updateState(this.status)
@@ -241,6 +295,11 @@ export class VirtualStudioManager {
       case 'toggle-hud': {
         const nextHud = !(this.status.isMiniHudVisible ?? true)
         this.status.isMiniHudVisible = nextHud
+        if (nextHud) {
+          showHudWindow()
+        } else {
+          hideHudWindow()
+        }
         this.tray.updateState(this.status)
         this.broadcastAction(action)
         this.broadcastStatus()

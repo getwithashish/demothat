@@ -38,7 +38,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { useAIToolDispatcher } from '../components/ai/useAIToolDispatcher'
 import { EdCommandPalette } from '../features/ed/palette/EdCommandPalette'
 import { EdSidebar } from '../features/ed/sidebar/EdSidebar'
-import { VirtualStudioHeaderPill, VirtualStudioMiniHud, virtualStudioStreamer } from '../features/virtual-studio'
+import { VirtualStudioHeaderPill, virtualStudioStreamer } from '../features/virtual-studio'
 
 export function EditorPage() {
   const {
@@ -752,9 +752,6 @@ export function EditorPage() {
           useEditorStore.getState().openBuyCredits()
         }}
       />
-      {/* Floating Virtual Studio Mini-HUD */}
-      <VirtualStudioMiniHud />
-
       {/* Kept clear of the minimised-export bubble in the same corner. */}
       <ToastViewport className={isExporting && isExportMinimized ? 'bottom-20' : 'bottom-5'} />
 

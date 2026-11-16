@@ -6,6 +6,7 @@ import type {
   VirtualStudioStatus,
 } from '../../../../shared/virtual-camera-types'
 import { virtualStudioManager } from '../../features/virtual-studio/virtual-studio-manager'
+import { showHudWindow, hideHudWindow, toggleHudWindow } from '../../windows/hud-window'
 
 export function registerVirtualStudioHandlers(): void {
   ipcMain.handle('virtual-studio:get-status', async () => {
@@ -37,6 +38,22 @@ export function registerVirtualStudioHandlers(): void {
   })
 
   ipcMain.on('virtual-studio:update-status', (_event, patch: Partial<VirtualStudioStatus>) => {
-    virtualStudioManager.updateStatus(patch)
+    void virtualStudioManager.updateStatus(patch)
+  })
+
+  ipcMain.on('virtual-studio:push-preview-frame', (_event, dataUrl: string) => {
+    virtualStudioManager.pushPreviewFrame(dataUrl)
+  })
+
+  ipcMain.on('virtual-studio:show-hud', () => {
+    showHudWindow()
+  })
+
+  ipcMain.on('virtual-studio:hide-hud', () => {
+    hideHudWindow()
+  })
+
+  ipcMain.on('virtual-studio:toggle-hud', () => {
+    toggleHudWindow()
   })
 }

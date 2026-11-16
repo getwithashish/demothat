@@ -16,6 +16,11 @@ export interface VirtualStudioIPC {
   pushAudio: (buffer: Uint8Array | ArrayBuffer) => Promise<VirtualStudioActionResult>
   triggerAction: (action: TrayQuickAction) => Promise<VirtualStudioActionResult>
   updateStatus: (patch: Partial<VirtualStudioStatus>) => void
+  pushPreviewFrame?: (dataUrl: string) => void
+  onPreviewFrame?: (callback: (dataUrl: string) => void) => () => void
+  showHud?: () => void
+  hideHud?: () => void
+  toggleHud?: () => void
   onStatusChange?: (callback: (status: VirtualStudioStatus) => void) => () => void
   onTrayAction?: (callback: (action: TrayQuickAction) => void) => () => void
 }
@@ -62,6 +67,20 @@ export const defaultIpcBridge: VirtualStudioIPC = {
   updateStatus: (patch: Partial<VirtualStudioStatus>) => {
     getVirtualStudioAPI()?.updateStatus(patch)
   },
+  pushPreviewFrame: (dataUrl: string) => {
+    getVirtualStudioAPI()?.pushPreviewFrame?.(dataUrl)
+  },
+  onPreviewFrame: (callback: (dataUrl: string) => void) =>
+    getVirtualStudioAPI()?.onPreviewFrame?.(callback) ?? (() => {}),
+  showHud: () => {
+    getVirtualStudioAPI()?.showHud?.()
+  },
+  hideHud: () => {
+    getVirtualStudioAPI()?.hideHud?.()
+  },
+  toggleHud: () => {
+    getVirtualStudioAPI()?.toggleHud?.()
+  },
   onStatusChange: (callback) => getVirtualStudioAPI()?.onStatusChange?.(callback) ?? (() => {}),
   onTrayAction: (callback) => getVirtualStudioAPI()?.onTrayAction?.(callback) ?? (() => {}),
 }
@@ -91,7 +110,8 @@ export class VirtualStudioStreamer {
   private selectedMicId: string | null = null
   private enableCamera = true
   private enableMic = true
-  private outputResolution = { width: 1920, height: 1080, fps: 30 }
+  private outputResolution = { width: 1280, height: 720, fps: 30 }
+  private lastThumbnailTime = 0
 
   // Dependency Injections
   private audioContext: AudioContext | null = null
@@ -377,11 +397,11 @@ export class VirtualStudioStreamer {
 
   /**
    * Sets local audio monitoring volume (clamped between 0.0 and 1.0).
+   * Note: Does not dispatch async updateStatus to IPC to prevent circular slider fighting loops.
    */
   public setLocalMonitoringVolume(volume: number): void {
     this.localMonitoringVolume = Math.max(0, Math.min(1, volume))
     this.applyInstantAutoReturn()
-    this.ipcBridge.updateStatus({ localMonitoringVolume: this.localMonitoringVolume })
   }
 
   /**
@@ -659,6 +679,20 @@ export class VirtualStudioStreamer {
       format: 'rgba',
       timestamp: performance.now(),
     })
+
+    // Broadcast live thumbnail frame to IPC for the standalone desktop Mini-HUD window
+    const now = performance.now()
+    if (now - this.lastThumbnailTime >= 100) {
+      this.lastThumbnailTime = now
+      try {
+        if (typeof this.scratchCanvas.toDataURL === 'function') {
+          const thumbnail = this.scratchCanvas.toDataURL('image/jpeg', 0.5)
+          this.ipcBridge.pushPreviewFrame?.(thumbnail)
+        }
+      } catch {
+        // Ignore canvas read/data URL errors
+      }
+    }
 
     // Notify preview thumbnail listeners (Mini-HUD)
     for (const listener of this.previewListeners) {

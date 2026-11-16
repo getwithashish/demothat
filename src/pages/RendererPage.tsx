@@ -9,6 +9,7 @@ import { drawScene, getClipSourceTime, type VideoClipLayer } from '../lib/render
 import { prepareCursorBitmaps, mapExportTimeToSourceTime } from '../lib/utils'
 import { prepareCursorIcons } from '../lib/cursor-icons'
 import { loadVideo, seekVideo } from '../lib/video-seek'
+import { WebCodecsChunkExporter, isWebCodecsSupported } from '../lib/webcodecs-exporter'
 import type { VideoClip } from '../types'
 
 type RenderStartPayload = {
@@ -22,6 +23,7 @@ type RenderStartPayload = {
   endFrame?: number
   totalFrames?: number
   chunkDuration?: number
+  useWebCodecs?: boolean
 }
 
 // These are needed to regenerate bitmaps within the renderer worker context.
@@ -351,14 +353,35 @@ export function RendererPage() {
         // --- 5b. SETUP SEEK-DRIVEN RENDER LOOP ---
         isRenderingRef.current = true
 
-        // Bounded pipeline for in-flight frame writes. This keeps Chromium's render engine
-        // and FFmpeg's encoding process running in parallel without unbounded memory growth.
+        const isMp4 = exportSettings.format === 'mp4'
+        const wantsWebCodecs = payload.useWebCodecs !== false && isMp4
+        let webCodecsExporter: WebCodecsChunkExporter | null = null
+
+        if (wantsWebCodecs && (await isWebCodecsSupported(outputWidth, outputHeight))) {
+          try {
+            webCodecsExporter = new WebCodecsChunkExporter({
+              width: outputWidth,
+              height: outputHeight,
+              fps,
+              quality: exportSettings.quality,
+            })
+            await webCodecsExporter.init(exportSettings.quality)
+            log.info(
+              `[RendererPage] WebCodecs GPU acceleration active for chunk #${payload.chunkIndex ?? 0} (${outputWidth}x${outputHeight} @ ${fps}fps)`,
+            )
+          } catch (err) {
+            log.warn('[RendererPage] WebCodecs initialization failed; falling back to raw video pipe:', err)
+            webCodecsExporter = null
+          }
+        }
+
+        // Bounded pipeline for fallback in-flight frame writes.
         const MAX_IN_FLIGHT = 3
         const inFlightWrites: Promise<{ aborted: boolean }>[] = []
         let isAborted = false
 
         for (let frame = startFrame; frame < endFrame; frame++) {
-          if (inFlightWrites.length >= MAX_IN_FLIGHT) {
+          if (!webCodecsExporter && inFlightWrites.length >= MAX_IN_FLIGHT) {
             const earliest = await inFlightWrites.shift()!
             if (earliest.aborted) {
               log.info('[RendererPage] Export aborted by the main process; stopping render loop.')
@@ -423,22 +446,47 @@ export function RendererPage() {
             activeClipLayers,
           )
 
-          // Send the rendered frame to the main process. Direct view on buffer avoids re-allocation.
-          const imageData = ctx.getImageData(0, 0, outputWidth, outputHeight)
-          const frameBuffer = new Uint8Array(
-            imageData.data.buffer,
-            imageData.data.byteOffset,
-            imageData.data.byteLength,
-          )
-          const progress = ((frame - startFrame + 1) / chunkTotalFrames) * 100
-          inFlightWrites.push(
-            window.electronAPI
-              .sendFrameToMain({ frame: frameBuffer, progress, chunkIndex: payload.chunkIndex })
-              .catch(() => ({ aborted: true })),
-          )
+          if (webCodecsExporter) {
+            const frameTimestampMicros = ((frame - startFrame) * 1_000_000) / fps
+            await webCodecsExporter.addFrame(canvas, frameTimestampMicros)
+            const progress = ((frame - startFrame + 1) / chunkTotalFrames) * 100
+            window.electronAPI.sendChunkProgress({
+              chunkIndex: payload.chunkIndex,
+              progress,
+              framesDone: frame - startFrame + 1,
+            })
+          } else {
+            // Send the rendered frame to the main process. Direct view on buffer avoids re-allocation.
+            const imageData = ctx.getImageData(0, 0, outputWidth, outputHeight)
+            const frameBuffer = new Uint8Array(
+              imageData.data.buffer,
+              imageData.data.byteOffset,
+              imageData.data.byteLength,
+            )
+            const progress = ((frame - startFrame + 1) / chunkTotalFrames) * 100
+            inFlightWrites.push(
+              window.electronAPI
+                .sendFrameToMain({ frame: frameBuffer, progress, chunkIndex: payload.chunkIndex })
+                .catch(() => ({ aborted: true })),
+            )
+          }
         }
 
-        // Drain remaining in-flight writes
+        if (webCodecsExporter) {
+          log.info(
+            `[RendererPage] WebCodecs render loop finished for chunk #${payload.chunkIndex ?? 0}. Finalizing container...`,
+          )
+          const chunkData = await webCodecsExporter.finish()
+          await window.electronAPI.saveChunkFile({
+            chunkIndex: payload.chunkIndex ?? 0,
+            buffer: chunkData,
+          })
+          log.info(`[RendererPage] Saved chunk #${payload.chunkIndex ?? 0} MP4 file. Sending finishRender signal.`)
+          window.electronAPI.finishRender(isChunked ? { chunkIndex: payload.chunkIndex } : undefined)
+          return
+        }
+
+        // Drain remaining in-flight writes for fallback path
         for (const pending of inFlightWrites) {
           const res = await pending
           if (res.aborted) {
@@ -452,7 +500,7 @@ export function RendererPage() {
           return
         }
 
-        // --- 6. FINISH ---
+        // --- 6. FINISH (Fallback path) ---
         log.info(
           `[RendererPage] Render loop finished${isChunked ? ` for chunk #${payload.chunkIndex}` : ''}. Sending "finishRender" signal.`,
         )

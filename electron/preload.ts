@@ -94,6 +94,7 @@ type RenderStartPayload = {
   endFrame?: number
   totalFrames?: number
   chunkDuration?: number
+  useWebCodecs?: boolean
 }
 
 type WindowSource = {
@@ -642,6 +643,10 @@ export const electronAPI = {
     progress: number
     chunkIndex?: number
   }): Promise<{ aborted: boolean }> => ipcRenderer.invoke('export:frame-data', payload),
+  saveChunkFile: (payload: { chunkIndex: number; buffer: Uint8Array }): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('export:save-chunk-file', payload),
+  sendChunkProgress: (payload: { chunkIndex?: number; progress: number; framesDone: number }): void =>
+    ipcRenderer.send('export:chunk-progress', payload),
   finishRender: (payload?: { chunkIndex?: number }) => {
     ipcRenderer.send('export:render-finished', payload)
   },

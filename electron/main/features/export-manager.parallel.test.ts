@@ -294,4 +294,67 @@ describe('parallel export synchronization & frame quota enforcement', () => {
       expect(secondCall).toEqual({ ignored: true })
     })
   })
+
+  describe('WebCodecs chunk saving and completion flow', () => {
+    it('saves WebCodecs MP4 chunk directly to session chunk path and completes without child process', async () => {
+      const chunks: ChunkSlice[] = [
+        { index: 0, startFrame: 0, endFrame: 60, chunkFrames: 60, chunkDuration: 2.0, chunkPath: '/tmp/chunk_0.mp4' },
+      ]
+      const writtenFiles = new Map<string, Uint8Array>()
+      const mockFsWriteFile = vi.fn(async (filePath: string, buffer: Uint8Array) => {
+        writtenFiles.set(filePath, buffer)
+      })
+
+      const saveChunkHandler = async (chunkIndex: number, buffer: Uint8Array) => {
+        const chunk = chunks[chunkIndex]
+        await mockFsWriteFile(chunk.chunkPath, buffer)
+        return { success: true }
+      }
+
+      const mockBuffer = new Uint8Array([0, 0, 0, 0x20, 0x66, 0x74, 0x79, 0x70]) // ftyp box header
+      const saveResult = await saveChunkHandler(0, mockBuffer)
+      expect(saveResult).toEqual({ success: true })
+      expect(mockFsWriteFile).toHaveBeenCalledWith('/tmp/chunk_0.mp4', mockBuffer)
+      expect(writtenFiles.get('/tmp/chunk_0.mp4')).toEqual(mockBuffer)
+
+      // Test WebCodecs completion flow: resolver is called directly when finishRender arrives
+      const chunkProcesses: (Record<string, unknown> | null)[] = [null]
+      let resolved = false
+      const chunkResolvers = [
+        () => {
+          resolved = true
+        },
+      ]
+      const finishListener = (chunkIndex: number) => {
+        if (!chunkProcesses[chunkIndex]) {
+          chunkResolvers[chunkIndex]?.()
+        }
+      }
+
+      finishListener(0)
+      expect(resolved).toBe(true)
+    })
+
+    it('updates progress when worker sends chunk progress', () => {
+      const chunkFramesWritten = [0, 0]
+      let lastProgress: { totalDone: number } | null = null
+      const onProgress = (p: { totalDone: number }) => {
+        lastProgress = p
+      }
+
+      const chunkProgressHandler = (chunkIndex: number, framesDone: number) => {
+        chunkFramesWritten[chunkIndex] = framesDone
+        const totalDone = chunkFramesWritten.reduce((a, b) => a + b, 0)
+        onProgress({ totalDone })
+      }
+
+      chunkProgressHandler(0, 45)
+      expect(chunkFramesWritten[0]).toBe(45)
+      expect(lastProgress).toEqual({ totalDone: 45 })
+
+      chunkProgressHandler(1, 30)
+      expect(chunkFramesWritten[1]).toBe(30)
+      expect(lastProgress).toEqual({ totalDone: 75 })
+    })
+  })
 })

@@ -318,9 +318,12 @@ export async function runParallelExport(options: ParallelExportOptions) {
 
   const chunks = planChunkSlices(totalFrames, numWorkers, exportSettings.fps, sessionDir)
 
-  // Spawn FFmpeg chunk processes
-  const chunkProcesses: ChildProcessWithoutNullStreams[] = []
-  for (const chunk of chunks) {
+  const useWebCodecs = exportSettings.format === 'mp4'
+  const chunkProcesses: (ChildProcessWithoutNullStreams | null)[] = Array(numWorkers).fill(null)
+
+  const getOrCreateChunkProc = (idx: number): ChildProcessWithoutNullStreams => {
+    if (chunkProcesses[idx]) return chunkProcesses[idx]!
+    const chunk = chunks[idx]
     const chunkArgs = buildChunkExportArgs({
       renderWidth,
       renderHeight,
@@ -332,9 +335,19 @@ export async function runParallelExport(options: ParallelExportOptions) {
       encoder: bestEncoder,
       quality: exportSettings.quality,
     })
-    log.info(`[ExportManager] Spawning chunk proc #${chunk.index} with args:`, chunkArgs.join(' '))
+    log.info(`[ExportManager] (Fallback) Spawning chunk proc #${idx} with args:`, chunkArgs.join(' '))
     const proc = spawn(FFMPEG_PATH, chunkArgs)
-    chunkProcesses.push(proc)
+    proc.stderr?.on('data', (data) => log.info(`[FFmpeg chunk #${idx} stderr]: ${data.toString()}`))
+    proc.stdin?.on('error', (err) => {
+      if ((err as NodeJS.ErrnoException).code === 'EPIPE') {
+        log.info(`[ExportManager] Chunk #${idx} FFmpeg closed stdin after reaching chunk duration.`)
+        return
+      }
+      log.error(`[ExportManager] Chunk #${idx} FFmpeg stdin error:`, err)
+      abortParallelExport(`chunk #${idx} stdin error`)
+    })
+    chunkProcesses[idx] = proc
+    return proc
   }
 
   // Spawn worker BrowserWindow instances
@@ -356,10 +369,19 @@ export async function runParallelExport(options: ParallelExportOptions) {
   const chunkFramesWritten: number[] = Array(numWorkers).fill(0)
   const chunkFinished: boolean[] = Array(numWorkers).fill(false)
 
+  const chunkDoneResolvers: Array<(() => void) | null> = Array(numWorkers).fill(null)
+  const chunkDoneRejecters: Array<((err: Error) => void) | null> = Array(numWorkers).fill(null)
+  const chunkPromises = chunks.map((_chunk, index) => {
+    return new Promise<void>((resolve, reject) => {
+      chunkDoneResolvers[index] = resolve
+      chunkDoneRejecters[index] = reject
+    })
+  })
+
   const writeChunkFrame = (chunkIndex: number, frame: Uint8Array): Promise<FrameWriteResult> =>
     new Promise((resolve) => {
-      const proc = chunkProcesses[chunkIndex]
-      const stdin = proc?.stdin
+      const proc = getOrCreateChunkProc(chunkIndex)
+      const stdin = proc.stdin
       const done = (aborted: boolean) => {
         unblockPendingChunkWrites[chunkIndex] = null
         stdin?.off('drain', onDrain)
@@ -444,6 +466,8 @@ export async function runParallelExport(options: ParallelExportOptions) {
     }
 
     ipcMain.removeHandler('export:frame-data')
+    ipcMain.removeHandler('export:save-chunk-file')
+    ipcMain.removeListener('export:chunk-progress', chunkProgressHandler)
     ipcMain.removeListener('export:render-finished', finishListener)
     ipcMain.removeListener('export:cancel', cancellationHandler)
     ipcMain.removeListener('render:ready', renderReadyListener)
@@ -453,17 +477,32 @@ export async function runParallelExport(options: ParallelExportOptions) {
     }
   }
 
-  chunkProcesses.forEach((proc, idx) => {
-    proc.stderr?.on('data', (data) => log.info(`[FFmpeg chunk #${idx} stderr]: ${data.toString()}`))
-    proc.stdin?.on('error', (err) => {
-      if ((err as NodeJS.ErrnoException).code === 'EPIPE') {
-        log.info(`[ExportManager] Chunk #${idx} FFmpeg closed stdin after reaching chunk duration.`)
-        return
-      }
-      log.error(`[ExportManager] Chunk #${idx} FFmpeg stdin error:`, err)
-      abortParallelExport(`chunk #${idx} stdin error`)
-    })
-  })
+  const saveChunkHandler = async (
+    _event: IpcMainInvokeEvent,
+    { chunkIndex, buffer }: { chunkIndex: number; buffer: Uint8Array },
+  ): Promise<{ success: boolean; error?: string }> => {
+    const idx = typeof chunkIndex === 'number' && chunkIndex >= 0 && chunkIndex < numWorkers ? chunkIndex : 0
+    const chunk = chunks[idx]
+    try {
+      await fsPromises.writeFile(chunk.chunkPath, Buffer.from(buffer))
+      log.info(
+        `[ExportManager] Saved WebCodecs MP4 chunk #${idx} to ${chunk.chunkPath} (${(buffer.byteLength / 1024 / 1024).toFixed(2)} MB).`,
+      )
+      return { success: true }
+    } catch (err) {
+      log.error(`[ExportManager] Failed to save chunk #${idx} file:`, err)
+      return { success: false, error: String(err) }
+    }
+  }
+
+  const chunkProgressHandler = (
+    _event: IpcMainEvent,
+    { chunkIndex, framesDone }: { chunkIndex?: number; progress: number; framesDone: number },
+  ) => {
+    const idx = typeof chunkIndex === 'number' && chunkIndex >= 0 && chunkIndex < numWorkers ? chunkIndex : 0
+    chunkFramesWritten[idx] = framesDone
+    emitParallelProgress()
+  }
 
   const frameHandler = async (
     _event: IpcMainInvokeEvent,
@@ -518,12 +557,27 @@ export async function runParallelExport(options: ParallelExportOptions) {
   const finishListener = async (_event: IpcMainEvent, data?: { chunkIndex?: number }) => {
     const idx =
       typeof data?.chunkIndex === 'number' && data.chunkIndex >= 0 && data.chunkIndex < numWorkers ? data.chunkIndex : 0
-    log.info(`[ExportManager] Chunk #${idx} finished frame render. Waiting for write queue.`)
+    log.info(`[ExportManager] Chunk #${idx} finished frame render.`)
     chunkFinished[idx] = true
-    await chunkWriteQueues[idx].catch(() => {})
+
     const proc = chunkProcesses[idx]
-    if (proc && !proc.killed && proc.stdin?.writable) {
-      proc.stdin.end()
+    if (proc) {
+      await chunkWriteQueues[idx].catch(() => {})
+      if (!proc.killed && proc.stdin?.writable) {
+        proc.stdin.end()
+      }
+      proc.once('close', (code) => {
+        if (workerWindows[idx] && !workerWindows[idx].isDestroyed()) {
+          workerWindows[idx].close()
+        }
+        if (code === 0) chunkDoneResolvers[idx]?.()
+        else chunkDoneRejecters[idx]?.(new Error(`Chunk #${idx} FFmpeg exited with code ${code}`))
+      })
+    } else {
+      if (workerWindows[idx] && !workerWindows[idx].isDestroyed()) {
+        workerWindows[idx].close()
+      }
+      chunkDoneResolvers[idx]?.()
     }
   }
 
@@ -544,7 +598,7 @@ export async function runParallelExport(options: ParallelExportOptions) {
     const worker = workerWindows[chunkIndex]
     const chunk = chunks[chunkIndex]
     log.info(
-      `[ExportManager] Worker for chunk #${chunkIndex} (sender ${senderId}) ready. Sending render:start slice [${chunk.startFrame}..${chunk.endFrame}).`,
+      `[ExportManager] Worker for chunk #${chunkIndex} (sender ${senderId}) ready. Sending render:start slice [${chunk.startFrame}..${chunk.endFrame}) [WebCodecs=${useWebCodecs}].`,
     )
     if (worker && !worker.isDestroyed()) {
       worker.webContents.send('render:start', {
@@ -558,28 +612,17 @@ export async function runParallelExport(options: ParallelExportOptions) {
         endFrame: chunk.endFrame,
         totalFrames,
         chunkDuration: chunk.chunkDuration,
+        useWebCodecs,
       })
     }
   }
 
   ipcMain.handle('export:frame-data', frameHandler)
+  ipcMain.handle('export:save-chunk-file', saveChunkHandler)
+  ipcMain.on('export:chunk-progress', chunkProgressHandler)
   ipcMain.on('export:render-finished', finishListener)
   ipcMain.once('export:cancel', cancellationHandler)
   ipcMain.on('render:ready', renderReadyListener)
-
-  const chunkPromises = chunkProcesses.map((proc, index) => {
-    return new Promise<void>((resolve, reject) => {
-      proc.on('close', (code) => {
-        log.info(`[ExportManager] Chunk #${index} FFmpeg process exited with code ${code}.`)
-        if (workerWindows[index] && !workerWindows[index].isDestroyed()) {
-          workerWindows[index].close()
-        }
-        if (code === 0) resolve()
-        else reject(new Error(`Chunk #${index} FFmpeg exited with code ${code}`))
-      })
-      proc.on('error', (err) => reject(err))
-    })
-  })
 
   try {
     await Promise.all(chunkPromises)
@@ -628,6 +671,8 @@ export async function runParallelExport(options: ParallelExportOptions) {
   }
 
   ipcMain.removeHandler('export:frame-data')
+  ipcMain.removeHandler('export:save-chunk-file')
+  ipcMain.removeListener('export:chunk-progress', chunkProgressHandler)
   ipcMain.removeListener('export:render-finished', finishListener)
   ipcMain.removeListener('export:cancel', cancellationHandler)
   ipcMain.removeListener('render:ready', renderReadyListener)

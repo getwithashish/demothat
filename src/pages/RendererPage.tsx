@@ -117,11 +117,21 @@ export function RendererPage() {
   const videoRef = useRef<HTMLVideoElement>(null)
   const webcamVideoRef = useRef<HTMLVideoElement>(null)
   const clipContainerRef = useRef<HTMLDivElement>(null)
+  const isRenderingRef = useRef(false)
+  const hasFinishedRef = useRef(false)
 
   useEffect(() => {
     log.info('[RendererPage] Component mounted. Setting up listeners.')
 
     const cleanup = window.electronAPI.onRenderStart(async (payload: RenderStartPayload) => {
+      if (isRenderingRef.current || hasFinishedRef.current) {
+        log.warn(
+          `[RendererPage] Duplicate or redundant render:start received (isRendering=${isRenderingRef.current}, hasFinished=${hasFinishedRef.current}); ignoring.`,
+        )
+        return
+      }
+      isRenderingRef.current = true
+
       const { projectState, exportSettings, renderWidth, renderHeight } = payload
       const canvas = canvasRef.current
       const video = videoRef.current
@@ -339,6 +349,7 @@ export function RendererPage() {
         }
 
         // --- 5b. SETUP SEEK-DRIVEN RENDER LOOP ---
+        isRenderingRef.current = true
 
         // Bounded pipeline for in-flight frame writes. This keeps Chromium's render engine
         // and FFmpeg's encoding process running in parallel without unbounded memory growth.
@@ -448,6 +459,9 @@ export function RendererPage() {
         window.electronAPI.finishRender(isChunked ? { chunkIndex: payload.chunkIndex } : undefined)
       } catch (error) {
         log.error('[RendererPage] CRITICAL ERROR during render process:', error)
+      } finally {
+        isRenderingRef.current = false
+        hasFinishedRef.current = true
       }
     })
 

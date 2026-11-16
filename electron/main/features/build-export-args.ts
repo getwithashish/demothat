@@ -33,12 +33,59 @@ export interface ExportAudioClip {
   speed?: number
 }
 
+export interface ExportRecordingGeometry {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export interface ExportMetaDataItem {
+  timestamp: number
+  x: number
+  y: number
+  type: 'click' | 'move' | 'scroll'
+  button?: string
+  pressed?: boolean
+  cursorImageKey?: string
+}
+
+export interface ExportCursorStyles {
+  showCursor?: boolean
+  cursorIcon?: 'recorded' | 'arrow' | 'text' | 'hand' | 'crosshair' | 'pointer'
+  shadowBlur?: number
+  shadowOffsetX?: number
+  shadowOffsetY?: number
+  shadowColor?: string
+  clickRippleEffect?: boolean
+  clickRippleColor?: string
+  clickRippleSize?: number
+  clickRippleDuration?: number
+  clickScaleEffect?: boolean
+  clickScaleAmount?: number
+  clickScaleDuration?: number
+  clickScaleEasing?: string
+  smoothingEnabled?: boolean
+  smoothing?: number
+  motionBlurEnabled?: boolean
+  motionBlurShutterAngle?: number
+  motionBlurSamples?: number
+  motionBlurStrength?: number
+}
+
+export type RecordingGeometry = ExportRecordingGeometry
+export type MetaDataItem = ExportMetaDataItem
+export type CursorStyles = ExportCursorStyles
+
 /** Shapes the renderer sends over IPC for an export (structural mirror of src/types). */
 export interface ExportProjectState {
   aspectRatio: string
   duration: number
   videoPath?: string
   videoDimensions?: { width: number; height: number }
+  recordingGeometry?: ExportRecordingGeometry | null
+  metadata?: ExportMetaDataItem[]
+  cursorStyles?: ExportCursorStyles
   frameStyles?: { padding?: number }
   zoomRegions?: Record<string, { zoomLevel?: number }>
   cameraMotions?: Array<{ from?: { scale?: number }; to?: { scale?: number } }>

@@ -83,6 +83,7 @@ export const Preview = memo(
 
     const { setPlaying, setDuration, setVideoDimensions, setHasAudioTrack } = useEditorStore.getState()
     const { isPlaying, isCurrentlyCut } = usePlaybackState()
+    const isVirtualStudioActive = useEditorStore((state) => state.isVirtualStudioActive)
 
     // The recording's audio tracks, mixed separately from the video element so each
     // source can be muted and balanced on its own. While the mixer is carrying the
@@ -467,8 +468,20 @@ export const Preview = memo(
           const fitW = w * dpr
           const fitH = h * dpr
           const maxScale = Math.min(1, srcW / fitW, srcH / fitH)
-          const nextW = Math.max(1, Math.round(fitW * maxScale))
-          const nextH = Math.max(1, Math.round(fitH * maxScale))
+          let nextW = Math.max(1, Math.round(fitW * maxScale))
+          let nextH = Math.max(1, Math.round(fitH * maxScale))
+
+          // When Virtual Studio is active, clamp backing size to at least 720p HD (or full source if smaller)
+          // preserving aspect ratio so Virtual Camera broadcasts razor-sharp HD demo playback
+          if (isVirtualStudioActive) {
+            nextW = Math.max(nextW, Math.min(srcW, 1280))
+            nextH = Math.max(nextH, Math.min(srcH, 720))
+            if (aspect >= 1) {
+              nextW = Math.min(srcW, Math.round(nextH * aspect))
+            } else {
+              nextH = Math.min(srcH, Math.round(nextW / aspect))
+            }
+          }
 
           const applySize = () => {
             hasSizedRef.current = true
@@ -498,7 +511,7 @@ export const Preview = memo(
         cancelAnimationFrame(raf)
         if (resizeTimer !== null) window.clearTimeout(resizeTimer)
       }
-    }, [canvasDimensions, isPreviewFullScreen])
+    }, [canvasDimensions, isPreviewFullScreen, isVirtualStudioActive])
 
     const beginEffectTransform = (event: React.MouseEvent, effect: VisualEffectRegion, mode: 'move' | 'resize') => {
       event.preventDefault()

@@ -67,6 +67,8 @@ describe('VirtualStudioStreamer', () => {
     restore: ReturnType<typeof vi.fn>
     translate: ReturnType<typeof vi.fn>
     scale: ReturnType<typeof vi.fn>
+    imageSmoothingEnabled: boolean
+    imageSmoothingQuality: ImageSmoothingQuality
   }
   let mockVideo: {
     videoWidth: number
@@ -132,6 +134,8 @@ describe('VirtualStudioStreamer', () => {
       restore: vi.fn(),
       translate: vi.fn(),
       scale: vi.fn(),
+      imageSmoothingEnabled: false,
+      imageSmoothingQuality: 'low',
     }
 
     mockCanvas = {
@@ -400,6 +404,21 @@ describe('VirtualStudioStreamer', () => {
       // For 1280x720 output and 1000x1000 input: scale = 720/1000 = 0.72 -> dw = 720, dh = 720, dx = (1280-720)/2 = 280, dy = 0
       expect(mockCtx.fillRect).toHaveBeenCalledWith(0, 0, 1280, 720)
       expect(mockCtx.drawImage).toHaveBeenCalledWith(squareCanvas, 280, 0, 720, 720)
+    })
+
+    it('enables high-quality image smoothing on scratchCtx for crisp HD video scaling', async () => {
+      mockCtx.imageSmoothingEnabled = false
+      mockCtx.imageSmoothingQuality = 'low'
+
+      await streamer.start()
+      expect(mockCtx.imageSmoothingEnabled).toBe(true)
+      expect(mockCtx.imageSmoothingQuality).toBe('high')
+
+      mockCtx.imageSmoothingEnabled = false
+      mockCtx.imageSmoothingQuality = 'low'
+      streamer.captureTick()
+      expect(mockCtx.imageSmoothingEnabled).toBe(true)
+      expect(mockCtx.imageSmoothingQuality).toBe('high')
     })
   })
 

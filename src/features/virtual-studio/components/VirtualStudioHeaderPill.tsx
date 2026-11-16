@@ -12,7 +12,7 @@ import {
   Volume3,
   ChevronDown,
   Loader2,
-  FlipHorizontal,
+  FlipVertical,
 } from 'tabler-icons-react'
 import { useEditorStore } from '../../../store/editorStore'
 import { ICON_SIZE, ICON_STROKE } from '../../../components/ui/icons'
@@ -452,11 +452,7 @@ export const VirtualStudioHeaderPill: React.FC = () => {
           {/* Mirror Output toggle switch */}
           <div className="flex items-center justify-between rounded-ctl border border-line bg-ctl/50 p-2.5">
             <div className="flex items-center gap-2">
-              <FlipHorizontal
-                size={16}
-                strokeWidth={ICON_STROKE}
-                className={isMirrored ? 'text-accent' : 'text-muted'}
-              />
+              <FlipVertical size={16} strokeWidth={ICON_STROKE} className={isMirrored ? 'text-accent' : 'text-muted'} />
               <div>
                 <span className="text-xs font-medium block">Mirror Output</span>
                 <span className="text-[11px] text-muted block">Flip video horizontally for webcam preview</span>

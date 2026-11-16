@@ -8,7 +8,7 @@ import {
   Video,
   Broadcast,
   GripHorizontal,
-  FlipHorizontal,
+  FlipVertical,
   Headphones,
   HeadphonesOff,
 } from 'tabler-icons-react'
@@ -190,7 +190,7 @@ export function MiniHudPage() {
                     aria-label="Toggle Mirroring"
                     title={isMirrored ? 'Mirroring ON (Camera & HUD flipped)' : 'Mirroring OFF (Normal)'}
                   >
-                    <FlipHorizontal size={13} strokeWidth={ICON_STROKE} />
+                    <FlipVertical size={13} strokeWidth={ICON_STROKE} />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="top">

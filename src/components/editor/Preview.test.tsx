@@ -75,4 +75,16 @@ describe('Preview Virtual Studio canvas attachment', () => {
 
     expect(virtualStudioStreamer.detachCanvas).toHaveBeenCalled()
   })
+
+  it('updates canvas size when isVirtualStudioActive is toggled', async () => {
+    const videoRef = { current: document.createElement('video') }
+    const el = await renderAsync(<Preview videoRef={videoRef} onSeekFrame={vi.fn()} />)
+
+    act(() => {
+      useEditorStore.setState({ isVirtualStudioActive: true })
+    })
+
+    const canvas = el.querySelector('canvas')
+    expect(canvas).not.toBeNull()
+  })
 })

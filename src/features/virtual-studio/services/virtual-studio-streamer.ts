@@ -373,6 +373,10 @@ export class VirtualStudioStreamer {
     this.scratchCanvas.width = this.outputResolution.width
     this.scratchCanvas.height = this.outputResolution.height
     this.scratchCtx = this.scratchCanvas.getContext?.('2d') ?? null
+    if (this.scratchCtx) {
+      this.scratchCtx.imageSmoothingEnabled = true
+      this.scratchCtx.imageSmoothingQuality = 'high'
+    }
 
     // Initialize Audio Graph
     this.initAudioContext()
@@ -829,6 +833,9 @@ export class VirtualStudioStreamer {
 
     const { width, height } = this.outputResolution
     if (width <= 0 || height <= 0) return
+
+    this.scratchCtx.imageSmoothingEnabled = true
+    this.scratchCtx.imageSmoothingQuality = 'high'
 
     if (this.isMirrored && typeof this.scratchCtx.save === 'function') {
       this.scratchCtx.save()

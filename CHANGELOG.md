@@ -1,3 +1,9 @@
+## [1.21.0-beta.11](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.10...v1.21.0-beta.11) (2026-11-16)
+
+### Bug Fixes
+
+* **export:** eliminate duplicate render loops and enforce chunk frame quotas ([#65](https://github.com/getwithashish/DemoThat/issues/65)) ([caf2fd6](https://github.com/getwithashish/DemoThat/commit/caf2fd6204d834a537915bb640b8e9dca23321b9))
+
 ## [1.21.0-beta.10](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.9...v1.21.0-beta.10) (2026-11-15)
 
 ### Bug Fixes

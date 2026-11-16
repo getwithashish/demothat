@@ -17,10 +17,15 @@ function detectFileType(buffer: Buffer): 'ani' | 'cur' | 'unknown' {
   return 'unknown'
 }
 
+const themeCache = new Map<string, CursorTheme>()
+
 /**
  * Parses a .theme file with the CURA format.
  */
 export async function loadCursorThemeFromFile(themePath: string): Promise<CursorTheme> {
+  const cached = themeCache.get(themePath)
+  if (cached) return cached
+
   const buf = await fs.readFile(themePath)
   if (buf.toString('ascii', 0, 4) !== 'CURA') {
     throw new Error('Incorrect CURA format')
@@ -66,5 +71,6 @@ export async function loadCursorThemeFromFile(themePath: string): Promise<Cursor
       log.error(`[CURAParser] ❌ Error parsing ${name}:`, e)
     }
   }
+  themeCache.set(themePath, result)
   return result
 }

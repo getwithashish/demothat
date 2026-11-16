@@ -64,7 +64,7 @@ interface CachedShadow {
   key: string
   pad: number
 }
-let shadowCache: CachedShadow | null = null
+const shadowCacheMap = new Map<string, CachedShadow>()
 
 function drawCachedShadow(
   ctx: CanvasRenderingContext2D,
@@ -94,7 +94,8 @@ function drawCachedShadow(
   const roundedH = Math.round(height)
   const key = `${roundedW}_${roundedH}_${borderRadius}_${blur}_${offsetX}_${offsetY}_${color}`
 
-  if (!shadowCache || shadowCache.key !== key) {
+  let cached = shadowCacheMap.get(key)
+  if (!cached) {
     const pad = Math.ceil(blur * 2 + Math.max(Math.abs(offsetX), Math.abs(offsetY)))
     const canvas = document.createElement('canvas')
     canvas.width = roundedW + pad * 2
@@ -109,12 +110,16 @@ function drawCachedShadow(
       shadowPath.roundRect(pad, pad, roundedW, roundedH, borderRadius)
       shadowCtx.fillStyle = 'rgba(0,0,0,1)'
       shadowCtx.fill(shadowPath)
-      shadowCache = { canvas, key, pad }
+      cached = { canvas, key, pad }
+      if (shadowCacheMap.size > 20) {
+        shadowCacheMap.clear()
+      }
+      shadowCacheMap.set(key, cached)
     }
   }
 
-  if (shadowCache && shadowCache.key === key) {
-    ctx.drawImage(shadowCache.canvas, -shadowCache.pad, -shadowCache.pad)
+  if (cached) {
+    ctx.drawImage(cached.canvas, -cached.pad, -cached.pad)
   } else {
     ctx.save()
     ctx.shadowColor = color

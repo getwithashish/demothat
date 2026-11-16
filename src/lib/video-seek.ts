@@ -60,7 +60,7 @@ export const seekVideo = (videoElement: HTMLVideoElement, targetTime: number, ti
   if (
     !videoElement.seeking &&
     !activeSeeks.has(videoElement) &&
-    Math.abs(videoElement.currentTime - clampedTarget) < 0.001
+    Math.abs(videoElement.currentTime - clampedTarget) < 0.005
   ) {
     return Promise.resolve()
   }
@@ -81,7 +81,7 @@ export const seekVideo = (videoElement: HTMLVideoElement, targetTime: number, ti
     }
 
     // If already at target time and not seeking, no-op
-    if (Math.abs(videoElement.currentTime - clampedTarget) < 0.001 && !videoElement.seeking) {
+    if (Math.abs(videoElement.currentTime - clampedTarget) < 0.005 && !videoElement.seeking) {
       return
     }
 

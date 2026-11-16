@@ -42,13 +42,30 @@ export class VirtualAudioSink {
    * Starts the virtual audio sink.
    */
   public async start(options: AudioSinkOptions = {}): Promise<{ success: boolean; error?: string }> {
-    if (this.active) {
+    const targetSampleRate = options.sampleRate || 48000
+    const targetChannels = options.channels || 2
+
+    // Idempotent guard: if already active with identical configuration, keep running without restarting
+    if (
+      this.active &&
+      this.options &&
+      this.sampleRate === targetSampleRate &&
+      this.channels === targetChannels &&
+      this.options.deviceSinkName === options.deviceSinkName &&
+      this.audioProcess &&
+      !this.audioProcess.killed
+    ) {
+      log.info('[VirtualAudioSink] Audio sink already active with identical configuration; keeping existing stream')
+      return { success: true }
+    }
+
+    if (this.active || this.audioProcess) {
       await this.stop()
     }
 
     this.options = options
-    this.sampleRate = options.sampleRate || 48000
-    this.channels = options.channels || 2
+    this.sampleRate = targetSampleRate
+    this.channels = targetChannels
     this.chunksWritten = 0
 
     try {
@@ -91,8 +108,10 @@ export class VirtualAudioSink {
 
       proc.on('close', (code) => {
         log.info(`[VirtualAudioSink] pacat closed with code ${code}`)
-        this.active = false
-        this.audioProcess = null
+        if (this.audioProcess === proc) {
+          this.active = false
+          this.audioProcess = null
+        }
       })
 
       this.audioProcess = proc
@@ -119,6 +138,13 @@ export class VirtualAudioSink {
         ]
         const proc = spawn(ffmpegPath, args)
         proc.stdin.on('error', () => {})
+        proc.on('close', (code) => {
+          log.info(`[VirtualAudioSink] FFmpeg pulse sink closed with code ${code}`)
+          if (this.audioProcess === proc) {
+            this.active = false
+            this.audioProcess = null
+          }
+        })
         this.audioProcess = proc
         this.active = true
         return { success: true }
@@ -175,7 +201,7 @@ export class VirtualAudioSink {
   }
 
   /**
-   * Stops the virtual audio sink.
+   * Stops the virtual audio sink and cleanly awaits child process termination.
    */
   public async stop(): Promise<void> {
     if (!this.active && !this.audioProcess) {
@@ -184,20 +210,48 @@ export class VirtualAudioSink {
 
     log.info('[VirtualAudioSink] Stopping virtual audio sink')
     this.active = false
-
-    if (this.audioProcess) {
-      try {
-        if (this.audioProcess.stdin && !this.audioProcess.stdin.destroyed) {
-          this.audioProcess.stdin.end()
-        }
-        this.audioProcess.kill('SIGTERM')
-      } catch (err) {
-        log.warn('[VirtualAudioSink] Error terminating audio process:', err)
-      }
-      this.audioProcess = null
-    }
-
+    const proc = this.audioProcess
+    this.audioProcess = null
     this.options = null
+
+    if (proc) {
+      await new Promise<void>((resolve) => {
+        let resolved = false
+        const timer = setTimeout(() => {
+          if (!resolved) {
+            resolved = true
+            try {
+              proc.kill('SIGKILL')
+            } catch {
+              // ignore
+            }
+            resolve()
+          }
+        }, 1500)
+
+        proc.once('close', () => {
+          if (!resolved) {
+            resolved = true
+            clearTimeout(timer)
+            resolve()
+          }
+        })
+
+        try {
+          if (proc.stdin && !proc.stdin.destroyed) {
+            proc.stdin.end()
+          }
+          proc.kill('SIGTERM')
+        } catch (err) {
+          log.warn('[VirtualAudioSink] Error terminating audio process:', err)
+          if (!resolved) {
+            resolved = true
+            clearTimeout(timer)
+            resolve()
+          }
+        }
+      })
+    }
   }
 }
 

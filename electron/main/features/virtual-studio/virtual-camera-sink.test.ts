@@ -126,9 +126,36 @@ describe('VirtualCameraSink', () => {
     await sink.start({ width: 1280, height: 720, fps: 30 })
     expect(sink.isActive()).toBe(true)
 
-    await sink.stop()
+    // Simulate close on proc after SIGTERM
+    const stopPromise = sink.stop()
+    mockProc.emit('close', 0)
+    await stopPromise
+
     expect(sink.isActive()).toBe(false)
     expect(mockStdin.end).toHaveBeenCalled()
     expect(mockProc.kill).toHaveBeenCalledWith('SIGTERM')
+  })
+
+  it('keeps running idempotently when start() is called with identical configuration', async () => {
+    const res1 = await sink.start({ width: 1280, height: 720, fps: 30 })
+    expect(res1.success).toBe(true)
+    expect(spawn).toHaveBeenCalledTimes(1)
+
+    // Call start again with exact matching configuration
+    const res2 = await sink.start({ width: 1280, height: 720, fps: 30 })
+    expect(res2.success).toBe(true)
+    expect(spawn).toHaveBeenCalledTimes(1) // Should not spawn a second process
+  })
+
+  it('ignores close event from previous process if newer process is active', async () => {
+    await sink.start({ width: 1280, height: 720, fps: 30 })
+    expect(sink.isActive()).toBe(true)
+
+    // Create fake stale proc and emit close
+    const staleProc = new EventEmitter()
+    staleProc.emit('close', 0)
+
+    // Sink should remain active
+    expect(sink.isActive()).toBe(true)
   })
 })

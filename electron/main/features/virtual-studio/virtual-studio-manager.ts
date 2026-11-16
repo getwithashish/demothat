@@ -8,11 +8,17 @@ import type {
   VirtualStudioActionResult,
 } from '../../../../shared/virtual-camera-types'
 import { DEFAULT_VIRTUAL_STUDIO_RESOLUTION } from '../../../../shared/virtual-camera-types'
-import { checkVirtualDrivers, installVirtualDrivers } from './driver-setup'
+import {
+  checkVirtualDrivers,
+  installVirtualDrivers,
+  ensureLinuxCameraDriver,
+  teardownLinuxCameraDriver,
+  teardownLinuxAudioSink,
+} from './driver-setup'
 import { virtualCameraSink, VirtualCameraSink } from './virtual-camera-sink'
 import { virtualAudioSink, VirtualAudioSink } from './virtual-audio-sink'
 import { virtualStudioTray, VirtualStudioTray } from './virtual-studio-tray'
-import { showHudWindow, hideHudWindow } from '../../windows/hud-window'
+import { showHudWindow, hideHudWindow, destroyHudWindow } from '../../windows/hud-window'
 
 export class VirtualStudioManager {
   private status: VirtualStudioStatus = {
@@ -84,10 +90,29 @@ export class VirtualStudioManager {
    */
   public async start(config: VirtualStudioConfig): Promise<VirtualStudioActionResult> {
     log.info('[VirtualStudioManager] Starting Virtual Studio with config:', config)
+
+    // Idempotent guard: if already streaming, update config and delegate to updateStatus to prevent sink restart race
+    if (this.status.isStreaming) {
+      log.info('[VirtualStudioManager] Virtual Studio is already streaming; updating config without tearing down sinks')
+      this.config = config
+      await this.updateStatus({
+        isCameraActive: config.enableCamera,
+        isMicActive: config.enableMic,
+        webcamDeviceId: config.selectedWebcamId ?? null,
+        micDeviceId: config.selectedMicId ?? null,
+        isLocalAudioMonitoringEnabled: config.enableLocalAudioMonitoring,
+        localMonitoringVolume: config.localMonitoringVolume,
+      })
+      return { success: true }
+    }
+
     this.config = config
 
     try {
-      // 1. Verify driver status
+      // 1. Verify/ensure driver status
+      if (process.platform === 'linux') {
+        await ensureLinuxCameraDriver()
+      }
       const driverCheck = await checkVirtualDrivers()
       this.status.cameraDriverInstalled = driverCheck.cameraDriverInstalled
       this.status.micDriverInstalled = driverCheck.micDriverInstalled
@@ -168,6 +193,30 @@ export class VirtualStudioManager {
     } catch (err: unknown) {
       const error = err instanceof Error ? err.message : String(err)
       return { success: false, error }
+    }
+  }
+
+  /**
+   * Complete lifecycle cleanup invoked on application quit.
+   * Stops sinks, closes overlay windows, and dynamically unloads OS virtual devices.
+   */
+  public async cleanupOnExit(): Promise<void> {
+    log.info('[VirtualStudioManager] Executing application exit cleanup')
+    try {
+      await this.cameraSink.stop()
+      await this.audioSink.stop()
+      this.tray.destroy()
+      destroyHudWindow()
+
+      this.status.isStreaming = false
+      this.status.isPlaying = false
+
+      if (process.platform === 'linux') {
+        await teardownLinuxCameraDriver()
+        await teardownLinuxAudioSink()
+      }
+    } catch (err: unknown) {
+      log.warn('[VirtualStudioManager] Error during cleanupOnExit:', err)
     }
   }
 

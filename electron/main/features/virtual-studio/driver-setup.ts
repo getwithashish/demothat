@@ -190,12 +190,23 @@ export async function checkVirtualDrivers(platform: NodeJS.Platform = process.pl
 export async function installLinuxDriver(): Promise<{ success: boolean; error?: string }> {
   try {
     log.info('[DriverSetup] Attempting Linux v4l2loopback driver setup via pkexec')
-    // Attempt loading v4l2loopback with custom device number and label
-    const { code, stderr } = await execPromise(
-      'pkexec',
-      ['modprobe', 'v4l2loopback', 'video_nr=10', 'card_label=DemoThat Virtual Camera', 'exclusive_caps=1'],
-      { timeout: 30000 },
-    )
+    // Attempt loading v4l2loopback and configuring passwordless sudoers rule for dynamic unload on app exit
+    const sudoersRule =
+      'ALL ALL=(root) NOPASSWD: /usr/sbin/modprobe -r v4l2loopback, /usr/sbin/modprobe v4l2loopback *, /sbin/modprobe -r v4l2loopback, /sbin/modprobe v4l2loopback *'
+    const script = `modprobe v4l2loopback video_nr=10 card_label="DemoThat Virtual Camera" exclusive_caps=1 && echo "${sudoersRule}" > /etc/sudoers.d/demothat-v4l2 && chmod 0440 /etc/sudoers.d/demothat-v4l2`
+
+    let { code, stderr } = await execPromise('pkexec', ['sh', '-c', script], { timeout: 30000 })
+
+    if (code !== 0) {
+      // Fallback to simple modprobe without sudoers write if restricted
+      const fallback = await execPromise(
+        'pkexec',
+        ['modprobe', 'v4l2loopback', 'video_nr=10', 'card_label=DemoThat Virtual Camera', 'exclusive_caps=1'],
+        { timeout: 30000 },
+      )
+      code = fallback.code
+      stderr = fallback.stderr
+    }
 
     if (code !== 0) {
       log.warn(`[DriverSetup] pkexec modprobe failed: ${stderr}`)
@@ -204,16 +215,97 @@ export async function installLinuxDriver(): Promise<{ success: boolean; error?: 
 
     // Set up PulseAudio null sink if not present
     try {
-      await execPromise('pactl', [
-        'load-module',
-        'module-null-sink',
-        'sink_name=demothat_mic',
-        'sink_properties=device.description=DemoThat_Virtual_Microphone',
-      ])
+      await ensureLinuxAudioSink()
     } catch {
       // Audio null sink setup is optional/best-effort
     }
 
+    return { success: true }
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+/**
+ * Ensures Linux camera driver is loaded, using passwordless sudo if available.
+ */
+export async function ensureLinuxCameraDriver(): Promise<{ success: boolean; error?: string }> {
+  try {
+    const status = await checkLinuxCameraDriver()
+    if (status.installed) {
+      return { success: true }
+    }
+    const { code, stderr } = await execPromise(
+      'sudo',
+      ['-n', 'modprobe', 'v4l2loopback', 'video_nr=10', 'card_label=DemoThat Virtual Camera', 'exclusive_caps=1'],
+      { timeout: 5000 },
+    )
+    if (code === 0) {
+      log.info('[DriverSetup] Successfully ensured Linux camera driver via passwordless sudo')
+      return { success: true }
+    }
+    return { success: false, error: stderr || 'v4l2loopback module not loaded' }
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+/**
+ * Ensures Linux PulseAudio/PipeWire null sink exists.
+ */
+export async function ensureLinuxAudioSink(): Promise<{ success: boolean; error?: string }> {
+  try {
+    const isSinkReady = await checkLinuxAudioSink()
+    if (isSinkReady) {
+      return { success: true }
+    }
+    await execPromise('pactl', [
+      'load-module',
+      'module-null-sink',
+      'sink_name=demothat_mic',
+      'sink_properties=device.description=DemoThat_Virtual_Microphone',
+    ])
+    return { success: true }
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+/**
+ * Dynamically unloads Linux v4l2loopback kernel module so /dev/video10 disappears when app exits.
+ */
+export async function teardownLinuxCameraDriver(): Promise<{ success: boolean; error?: string }> {
+  try {
+    log.info('[DriverSetup] Teardown Linux camera driver (modprobe -r v4l2loopback)')
+    const { code, stderr } = await execPromise('sudo', ['-n', 'modprobe', '-r', 'v4l2loopback'], { timeout: 5000 })
+    if (code !== 0) {
+      log.debug(`[DriverSetup] Passwordless sudo modprobe -r returned code ${code}: ${stderr}`)
+      return { success: false, error: stderr }
+    }
+    log.info('[DriverSetup] Successfully unloaded v4l2loopback module')
+    return { success: true }
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+/**
+ * Dynamically unloads PulseAudio null sink module so demothat_mic disappears when app exits.
+ */
+export async function teardownLinuxAudioSink(): Promise<{ success: boolean; error?: string }> {
+  try {
+    log.info('[DriverSetup] Teardown Linux audio sink (demothat_mic)')
+    const { stdout } = await execPromise('pactl', ['list', 'short', 'modules'], { timeout: 5000 })
+    const lines = stdout.split('\n')
+    for (const line of lines) {
+      if (line.includes('demothat_mic')) {
+        const moduleId = line.trim().split(/\s+/)[0]
+        if (moduleId && !isNaN(Number(moduleId))) {
+          log.info(`[DriverSetup] Unloading PulseAudio module ${moduleId} for demothat_mic`)
+          await execPromise('pactl', ['unload-module', moduleId], { timeout: 5000 })
+        }
+      }
+    }
     return { success: true }
   } catch (err: unknown) {
     return { success: false, error: err instanceof Error ? err.message : String(err) }

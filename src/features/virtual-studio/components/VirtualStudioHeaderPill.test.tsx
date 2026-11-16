@@ -5,7 +5,6 @@ import { createRoot, type Root } from 'react-dom/client'
 import { VirtualStudioHeaderPill } from './VirtualStudioHeaderPill'
 import { useEditorStore } from '../../../store/editorStore'
 import { initialVirtualStudioState } from '../../../store/slices/virtualStudioSlice'
-import { DEFAULT_VIRTUAL_STUDIO_RESOLUTION } from '../../../../shared/virtual-camera-types'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -173,11 +172,7 @@ describe('VirtualStudioHeaderPill', () => {
       masterSwitch.click()
     })
 
-    expect(mockVirtualStudio.start).toHaveBeenCalledWith(
-      expect.objectContaining({
-        outputResolution: DEFAULT_VIRTUAL_STUDIO_RESOLUTION,
-      }),
-    )
     expect(useEditorStore.getState().isVirtualStudioActive).toBe(true)
+    expect(useEditorStore.getState().isMiniHudVisible).toBe(true)
   })
 })

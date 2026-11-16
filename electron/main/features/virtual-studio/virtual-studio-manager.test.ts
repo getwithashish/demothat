@@ -40,6 +40,9 @@ vi.mock('./driver-setup', () => ({
     details: 'v4l2loopback ready',
   }),
   installVirtualDrivers: vi.fn().mockResolvedValue({ success: true }),
+  ensureLinuxCameraDriver: vi.fn().mockResolvedValue({ success: true }),
+  teardownLinuxCameraDriver: vi.fn().mockResolvedValue({ success: true }),
+  teardownLinuxAudioSink: vi.fn().mockResolvedValue({ success: true }),
 }))
 
 vi.mock('../../windows/hud-window', () => ({
@@ -52,8 +55,13 @@ vi.mock('../../windows/hud-window', () => ({
 }))
 
 import { VirtualStudioManager } from './virtual-studio-manager'
-import { checkVirtualDrivers, installVirtualDrivers } from './driver-setup'
-import { showHudWindow, hideHudWindow } from '../../windows/hud-window'
+import {
+  checkVirtualDrivers,
+  installVirtualDrivers,
+  teardownLinuxCameraDriver,
+  teardownLinuxAudioSink,
+} from './driver-setup'
+import { showHudWindow, hideHudWindow, destroyHudWindow } from '../../windows/hud-window'
 import type { VirtualCameraSink } from './virtual-camera-sink'
 import type { VirtualAudioSink } from './virtual-audio-sink'
 import type { VirtualStudioTray } from './virtual-studio-tray'
@@ -431,6 +439,42 @@ describe('VirtualStudioManager', () => {
         'data:image/jpeg;base64,sample',
       )
       expect(mockDestroyedWindow.webContents.send).not.toHaveBeenCalled()
+    })
+
+    it('handles duplicate start() calls while already streaming without tearing down sinks', async () => {
+      await manager.start(defaultConfig)
+      expect(mockCameraSink.start).toHaveBeenCalledTimes(1)
+      expect(mockAudioSink.start).toHaveBeenCalledTimes(1)
+
+      // Call start a second time (e.g. from streamer syncWithStore)
+      const res = await manager.start({
+        ...defaultConfig,
+        localMonitoringVolume: 0.5,
+      })
+
+      expect(res.success).toBe(true)
+      // Sinks should NOT have been restarted (stop was not called, start was not called again)
+      expect(mockCameraSink.start).toHaveBeenCalledTimes(1)
+      expect(mockAudioSink.start).toHaveBeenCalledTimes(1)
+      expect(mockCameraSink.stop).not.toHaveBeenCalled()
+    })
+
+    it('cleanupOnExit terminates sinks, tray, HUD window and unloads Linux device nodes', async () => {
+      await manager.start(defaultConfig)
+
+      await manager.cleanupOnExit()
+
+      expect(mockCameraSink.stop).toHaveBeenCalled()
+      expect(mockAudioSink.stop).toHaveBeenCalled()
+      expect(mockTray.destroy).toHaveBeenCalled()
+      expect(destroyHudWindow).toHaveBeenCalled()
+      if (process.platform === 'linux') {
+        expect(teardownLinuxCameraDriver).toHaveBeenCalled()
+        expect(teardownLinuxAudioSink).toHaveBeenCalled()
+      }
+
+      const status = await manager.getStatus()
+      expect(status.isStreaming).toBe(false)
     })
   })
 })

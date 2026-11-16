@@ -19,7 +19,6 @@ import { Button } from '../../../components/ui/button'
 import { Switch } from '../../../components/ui/switch'
 import { Slider } from '../../../components/ui/slider'
 import { cn } from '../../../lib/utils'
-import { DEFAULT_VIRTUAL_STUDIO_RESOLUTION } from '../../../../shared/virtual-camera-types'
 
 interface MediaDeviceInfoItem {
   deviceId: string
@@ -198,35 +197,12 @@ export const VirtualStudioHeaderPill: React.FC = () => {
   }, [isOpen])
 
   // Master Studio toggle handler
-  const handleToggleStudio = async (checked: boolean) => {
+  const handleToggleStudio = (checked: boolean) => {
+    setVirtualStudioActive(checked)
     if (checked) {
-      if (window.electronAPI?.virtualStudio?.start) {
-        const res = await window.electronAPI.virtualStudio.start({
-          enableCamera,
-          enableMic,
-          outputResolution: DEFAULT_VIRTUAL_STUDIO_RESOLUTION,
-          enableLocalAudioMonitoring: isLocalAudioMonitoringEnabled,
-          localMonitoringVolume,
-          selectedWebcamId: selectedCameraId ?? undefined,
-          selectedMicId: selectedMicId ?? undefined,
-        })
-
-        if (res.success) {
-          setVirtualStudioActive(true)
-          setMiniHudVisible(true)
-          pushToast({ message: 'Virtual Studio is now On Air' })
-        } else {
-          pushToast({ message: res.error || 'Failed to start Virtual Studio' })
-        }
-      } else {
-        setVirtualStudioActive(true)
-        setMiniHudVisible(true)
-      }
+      setMiniHudVisible(true)
+      pushToast({ message: 'Virtual Studio is now On Air' })
     } else {
-      if (window.electronAPI?.virtualStudio?.stop) {
-        await window.electronAPI.virtualStudio.stop()
-      }
-      setVirtualStudioActive(false)
       pushToast({ message: 'Virtual Studio stopped' })
     }
   }

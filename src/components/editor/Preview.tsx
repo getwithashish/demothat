@@ -90,7 +90,17 @@ export const Preview = memo(
     const { mixerOwnsAudio } = usePreviewAudioMixer({ videoRef, isPlaying })
 
     const [bgImage, setBgImage] = useState<HTMLImageElement | null>(null)
-    const canvasRef = useRef<HTMLCanvasElement>(null)
+    const canvasRef = useRef<HTMLCanvasElement | null>(null)
+
+    // Reactive callback ref to immediately attach/detach canvas with Virtual Studio streamer
+    const setCanvasRef = useCallback((el: HTMLCanvasElement | null) => {
+      canvasRef.current = el
+      if (el) {
+        virtualStudioStreamer.attachCanvas(el)
+      } else {
+        virtualStudioStreamer.detachCanvas()
+      }
+    }, [])
     const webcamVideoRef = useRef<HTMLVideoElement>(null)
     const clipVideoRefs = useRef<Map<string, HTMLVideoElement>>(new Map())
     const animationFrameId = useRef<number>()
@@ -408,16 +418,12 @@ export const Preview = memo(
       }
     }, [canvasDimensions, isPreviewFullScreen, videoUrl])
 
-    // Attach active preview canvas and video element to Virtual Studio streamer
+    // Attach active video element to Virtual Studio streamer
     useEffect(() => {
-      if (canvasRef.current) {
-        virtualStudioStreamer.attachCanvas(canvasRef.current)
-      }
       if (videoRef.current) {
         virtualStudioStreamer.attachVideoElement(videoRef.current)
       }
       return () => {
-        virtualStudioStreamer.detachCanvas()
         virtualStudioStreamer.detachVideoElement()
       }
     }, [videoRef, videoUrl])
@@ -802,7 +808,7 @@ export const Preview = memo(
             {videoUrl ? (
               <>
                 <canvas
-                  ref={canvasRef}
+                  ref={setCanvasRef}
                   width={backingSize?.width ?? canvasDimensions.width}
                   height={backingSize?.height ?? canvasDimensions.height}
                   style={{ width: '100%', height: '100%', objectFit: 'contain' }}

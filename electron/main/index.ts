@@ -15,6 +15,7 @@ import { registerRecordingShortcuts, unregisterRecordingShortcuts } from './feat
 import { findProjectArg, markAppReadyForProjects, promptOpenProject, requestOpenProject } from './features/project-open'
 import { initializeMouseTrackerDependencies } from './features/mouse-tracker'
 import { confirmReplaceSession, isQuitApproved, markQuitApproved } from './features/session-guard'
+import { virtualStudioManager } from './features/virtual-studio/virtual-studio-manager'
 import { appState } from './state'
 import { detectSession, WAYLAND_CHROMIUM_FEATURES } from '../../shared/session'
 
@@ -146,6 +147,9 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', onAppQuit)
+app.on('before-quit', () => {
+  void virtualStudioManager.cleanupOnExit()
+})
 
 // Quitting is the other data-loss point. The guard runs once per quit; the
 // window's own close handler then lets the window go without asking again.
@@ -165,6 +169,7 @@ app.on('before-quit', (event) => {
 app.on('will-quit', () => {
   // Release the global recording shortcuts before the process goes away.
   unregisterRecordingShortcuts()
+  void virtualStudioManager.cleanupOnExit()
 })
 
 app.on('activate', () => {

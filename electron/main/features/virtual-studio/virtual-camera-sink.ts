@@ -38,16 +38,31 @@ export class VirtualCameraSink {
    * Starts the camera sink on the host OS.
    */
   public async start(options: CameraSinkOptions): Promise<{ success: boolean; error?: string }> {
-    if (this.active) {
-      await this.stop()
-    }
-
     // Standardize default resolution to 1280x720 @ 30fps for optimal WebRTC / Google Meet compatibility
     const standardizedOptions: CameraSinkOptions = {
       width: options.width || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.width,
       height: options.height || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.height,
       fps: options.fps || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.fps,
       devicePath: options.devicePath,
+    }
+
+    // Idempotent guard: if already active with identical configuration, keep running without restarting
+    if (
+      this.active &&
+      this.options &&
+      this.options.width === standardizedOptions.width &&
+      this.options.height === standardizedOptions.height &&
+      this.options.fps === standardizedOptions.fps &&
+      this.options.devicePath === standardizedOptions.devicePath &&
+      this.ffmpegProcess &&
+      !this.ffmpegProcess.killed
+    ) {
+      log.info('[VirtualCameraSink] Sink already active with identical configuration; keeping existing stream')
+      return { success: true }
+    }
+
+    if (this.active || this.ffmpegProcess) {
+      await this.stop()
     }
 
     this.options = standardizedOptions
@@ -122,8 +137,10 @@ export class VirtualCameraSink {
 
       proc.on('close', (code) => {
         log.info(`[VirtualCameraSink] FFmpeg sink closed with code ${code}`)
-        this.active = false
-        this.ffmpegProcess = null
+        if (this.ffmpegProcess === proc) {
+          this.active = false
+          this.ffmpegProcess = null
+        }
       })
 
       this.ffmpegProcess = proc
@@ -216,7 +233,7 @@ export class VirtualCameraSink {
   }
 
   /**
-   * Stops the virtual camera sink.
+   * Stops the virtual camera sink and cleanly awaits child process termination.
    */
   public async stop(): Promise<void> {
     if (!this.active && !this.ffmpegProcess) {
@@ -225,20 +242,48 @@ export class VirtualCameraSink {
 
     log.info('[VirtualCameraSink] Stopping virtual camera sink')
     this.active = false
-
-    if (this.ffmpegProcess) {
-      try {
-        if (this.ffmpegProcess.stdin && !this.ffmpegProcess.stdin.destroyed) {
-          this.ffmpegProcess.stdin.end()
-        }
-        this.ffmpegProcess.kill('SIGTERM')
-      } catch (err) {
-        log.warn('[VirtualCameraSink] Error terminating sink process:', err)
-      }
-      this.ffmpegProcess = null
-    }
-
+    const proc = this.ffmpegProcess
+    this.ffmpegProcess = null
     this.options = null
+
+    if (proc) {
+      await new Promise<void>((resolve) => {
+        let resolved = false
+        const timer = setTimeout(() => {
+          if (!resolved) {
+            resolved = true
+            try {
+              proc.kill('SIGKILL')
+            } catch {
+              // ignore
+            }
+            resolve()
+          }
+        }, 1500)
+
+        proc.once('close', () => {
+          if (!resolved) {
+            resolved = true
+            clearTimeout(timer)
+            resolve()
+          }
+        })
+
+        try {
+          if (proc.stdin && !proc.stdin.destroyed) {
+            proc.stdin.end()
+          }
+          proc.kill('SIGTERM')
+        } catch (err) {
+          log.warn('[VirtualCameraSink] Error terminating sink process:', err)
+          if (!resolved) {
+            resolved = true
+            clearTimeout(timer)
+            resolve()
+          }
+        }
+      })
+    }
   }
 }
 

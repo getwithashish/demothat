@@ -330,24 +330,8 @@ export class VirtualStudioStreamer {
   public async stop(): Promise<VirtualStudioActionResult> {
     this.active = false
     this.stopFrameLoop()
-
-    // Stop physical webcam stream
-    if (this.webcamStream) {
-      this.webcamStream.getTracks().forEach((track) => track.stop())
-      this.webcamStream = null
-    }
-    if (this.webcamVideo) {
-      this.webcamVideo.srcObject = null
-      this.webcamVideo = null
-    }
-
-    // Stop physical microphone stream
-    if (this.micStream) {
-      this.micStream.getTracks().forEach((track) => track.stop())
-      this.micStream = null
-    }
-
-    // Disconnect audio nodes
+    this.stopWebcam()
+    this.stopMicrophone()
     this.teardownAudioGraph()
 
     // Notify IPC main process
@@ -407,6 +391,38 @@ export class VirtualStudioStreamer {
   public setLocalMonitoringVolume(volume: number): void {
     this.localMonitoringVolume = Math.max(0, Math.min(1, volume))
     this.applyInstantAutoReturn()
+  }
+
+  /**
+   * Dynamically enables or disables physical camera capture while active.
+   */
+  public async setEnableCamera(enable: boolean): Promise<void> {
+    if (this.enableCamera === enable) return
+    this.enableCamera = enable
+    if (this.active) {
+      if (enable) {
+        await this.startWebcam()
+      } else {
+        this.stopWebcam()
+      }
+      this.ipcBridge.updateStatus({ isCameraActive: enable })
+    }
+  }
+
+  /**
+   * Dynamically enables or disables physical microphone capture while active.
+   */
+  public async setEnableMic(enable: boolean): Promise<void> {
+    if (this.enableMic === enable) return
+    this.enableMic = enable
+    if (this.active) {
+      if (enable) {
+        await this.startMicrophone()
+      } else {
+        this.stopMicrophone()
+      }
+      this.ipcBridge.updateStatus({ isMicActive: enable })
+    }
   }
 
   /**
@@ -634,6 +650,32 @@ export class VirtualStudioStreamer {
     }
   }
 
+  private stopWebcam(): void {
+    if (this.webcamStream) {
+      this.webcamStream.getTracks().forEach((track) => track.stop())
+      this.webcamStream = null
+    }
+    if (this.webcamVideo) {
+      this.webcamVideo.srcObject = null
+      this.webcamVideo = null
+    }
+  }
+
+  private stopMicrophone(): void {
+    if (this.micStream) {
+      this.micStream.getTracks().forEach((track) => track.stop())
+      this.micStream = null
+    }
+    if (this.micSourceNode) {
+      try {
+        this.micSourceNode.disconnect()
+      } catch {
+        // Ignore disconnect errors
+      }
+      this.micSourceNode = null
+    }
+  }
+
   private startFrameLoop(): void {
     this.stopFrameLoop()
     const intervalMs = Math.round(1000 / (this.outputResolution.fps || 30))
@@ -661,29 +703,53 @@ export class VirtualStudioStreamer {
     }
 
     const { width, height } = this.outputResolution
+    if (width <= 0 || height <= 0) return
 
     if (this.activeSource === 'canvas') {
-      if (this.sourceCanvas) {
-        // Canvas Preview Mode
-        this.scratchCtx.drawImage(this.sourceCanvas, 0, 0, width, height)
+      if (this.sourceCanvas && this.sourceCanvas.width > 0 && this.sourceCanvas.height > 0) {
+        try {
+          this.scratchCtx.drawImage(this.sourceCanvas, 0, 0, width, height)
+        } catch {
+          this.scratchCtx.fillStyle = DEFAULT_VIRTUAL_STUDIO_FALLBACK_COLOR
+          this.scratchCtx.fillRect(0, 0, width, height)
+        }
       } else {
         this.scratchCtx.fillStyle = DEFAULT_VIRTUAL_STUDIO_FALLBACK_COLOR
         this.scratchCtx.fillRect(0, 0, width, height)
       }
     } else {
       // Physical Webcam Mode with Last-Frame Hold Fallback
-      if (this.webcamVideo && this.webcamVideo.videoWidth > 0) {
-        const vw = this.webcamVideo.videoWidth
-        const vh = this.webcamVideo.videoHeight
-        const scale = Math.max(width / vw, height / vh)
-        const dw = vw * scale
-        const dh = vh * scale
-        const dx = (width - dw) / 2
-        const dy = (height - dh) / 2
-        this.scratchCtx.drawImage(this.webcamVideo, dx, dy, dw, dh)
-      } else if (this.sourceCanvas) {
+      if (this.webcamVideo && this.webcamVideo.videoWidth > 0 && this.webcamVideo.videoHeight > 0) {
+        try {
+          const vw = this.webcamVideo.videoWidth
+          const vh = this.webcamVideo.videoHeight
+          const scale = Math.max(width / vw, height / vh)
+          const dw = vw * scale
+          const dh = vh * scale
+          const dx = (width - dw) / 2
+          const dy = (height - dh) / 2
+          this.scratchCtx.drawImage(this.webcamVideo, dx, dy, dw, dh)
+        } catch {
+          if (this.sourceCanvas && this.sourceCanvas.width > 0 && this.sourceCanvas.height > 0) {
+            try {
+              this.scratchCtx.drawImage(this.sourceCanvas, 0, 0, width, height)
+            } catch {
+              this.scratchCtx.fillStyle = DEFAULT_VIRTUAL_STUDIO_FALLBACK_COLOR
+              this.scratchCtx.fillRect(0, 0, width, height)
+            }
+          } else {
+            this.scratchCtx.fillStyle = DEFAULT_VIRTUAL_STUDIO_FALLBACK_COLOR
+            this.scratchCtx.fillRect(0, 0, width, height)
+          }
+        }
+      } else if (this.sourceCanvas && this.sourceCanvas.width > 0 && this.sourceCanvas.height > 0) {
         // Last-Frame Hold Fallback: Hold editor canvas preview if physical webcam is absent/unavailable
-        this.scratchCtx.drawImage(this.sourceCanvas, 0, 0, width, height)
+        try {
+          this.scratchCtx.drawImage(this.sourceCanvas, 0, 0, width, height)
+        } catch {
+          this.scratchCtx.fillStyle = DEFAULT_VIRTUAL_STUDIO_FALLBACK_COLOR
+          this.scratchCtx.fillRect(0, 0, width, height)
+        }
       } else {
         // Dark background fallback
         this.scratchCtx.fillStyle = DEFAULT_VIRTUAL_STUDIO_FALLBACK_COLOR
@@ -691,20 +757,25 @@ export class VirtualStudioStreamer {
       }
     }
 
-    // Extract frame pixels
-    const imgData = this.scratchCtx.getImageData(0, 0, width, height)
-    this.isPushingFrame = true
-    void this.ipcBridge
-      .pushFrame({
-        data: new Uint8Array(imgData.data.buffer, imgData.data.byteOffset, imgData.data.byteLength),
-        width,
-        height,
-        format: 'rgba',
-        timestamp: performance.now(),
-      })
-      .finally(() => {
-        this.isPushingFrame = false
-      })
+    try {
+      // Extract frame pixels
+      const imgData = this.scratchCtx.getImageData(0, 0, width, height)
+      this.isPushingFrame = true
+      void this.ipcBridge
+        .pushFrame({
+          data: new Uint8Array(imgData.data.buffer, imgData.data.byteOffset, imgData.data.byteLength),
+          width,
+          height,
+          format: 'rgba',
+          timestamp: performance.now(),
+        })
+        .finally(() => {
+          this.isPushingFrame = false
+        })
+    } catch (err) {
+      this.isPushingFrame = false
+      console.warn('[VirtualStudioStreamer] Error extracting or pushing frame:', err)
+    }
 
     // Broadcast live thumbnail frame to IPC for the standalone desktop Mini-HUD window
     const now = performance.now()
@@ -746,6 +817,18 @@ export class VirtualStudioStreamer {
       }
       if (state.isLocalAudioMonitoringEnabled !== prevState.isLocalAudioMonitoringEnabled) {
         this.setLocalAudioMonitoringEnabled(state.isLocalAudioMonitoringEnabled)
+      }
+      if (state.enableCamera !== prevState.enableCamera) {
+        void this.setEnableCamera(state.enableCamera)
+      }
+      if (state.enableMic !== prevState.enableMic) {
+        void this.setEnableMic(state.enableMic)
+      }
+      if (state.selectedCameraId !== prevState.selectedCameraId) {
+        void this.setSelectedCamera(state.selectedCameraId)
+      }
+      if (state.selectedMicId !== prevState.selectedMicId) {
+        void this.setSelectedMic(state.selectedMicId)
       }
       if (state.isVirtualStudioActive !== prevState.isVirtualStudioActive) {
         if (state.isVirtualStudioActive) {

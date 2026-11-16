@@ -38,7 +38,7 @@ export class VirtualCameraSink {
    * Starts the camera sink on the host OS.
    */
   public async start(options: CameraSinkOptions): Promise<{ success: boolean; error?: string }> {
-    // Standardize default resolution to 1280x720 @ 30fps for optimal WebRTC / Google Meet compatibility
+    // Standardize default resolution to 1920x1080 @ 30fps for razor-sharp Full HD streaming
     const standardizedOptions: CameraSinkOptions = {
       width: options.width || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.width,
       height: options.height || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.height,
@@ -112,6 +112,16 @@ export class VirtualCameraSink {
         String(options.fps || 30),
         '-i',
         'pipe:0',
+        '-vf',
+        'scale=out_color_matrix=bt709:out_range=limited:flags=lanczos+accurate_rnd+full_chroma_int',
+        '-color_range',
+        'tv',
+        '-colorspace',
+        'bt709',
+        '-color_primaries',
+        'bt709',
+        '-color_trc',
+        'bt709',
         '-f',
         'v4l2',
         '-pix_fmt',

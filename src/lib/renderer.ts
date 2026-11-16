@@ -604,14 +604,15 @@ export const drawScene = async (
   outputHeight: number,
   preloadedBgImage: HTMLImageElement | null,
   videoClipLayers: VideoClipLayer[] = [],
-  options: { livePreview?: boolean } = {},
+  options: { livePreview?: boolean; isVirtualStudioActive?: boolean } = {},
 ): Promise<void> => {
   if (!state.videoDimensions.width || !state.videoDimensions.height) return
 
   // Enable high-quality rendering (cheaper smoothing while live-previewing:
-  // the picture is moving; the resample quality is invisible at playback).
+  // the picture is moving; the resample quality is invisible at playback,
+  // unless Virtual Studio is active where crystal-clear text legibility is required).
   ctx.imageSmoothingEnabled = true
-  ctx.imageSmoothingQuality = options.livePreview ? 'low' : 'high'
+  ctx.imageSmoothingQuality = options.isVirtualStudioActive || !options.livePreview ? 'high' : 'low'
 
   // --- 1. Draw Background ---
   drawBackground(ctx, outputWidth, outputHeight, state.frameStyles.background, preloadedBgImage)

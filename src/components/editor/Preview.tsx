@@ -20,6 +20,7 @@ import { usePreviewAudioMixer } from '../../hooks/usePreviewAudioMixer'
 import { mapSourceTimeToExportTime } from '../../lib/utils'
 import { mediaUrl } from '../../../shared/media-url'
 import { virtualStudioStreamer } from '../../features/virtual-studio'
+import { DEFAULT_VIRTUAL_STUDIO_RESOLUTION } from '../../../shared/virtual-camera-types'
 
 export const Preview = memo(
   ({
@@ -471,11 +472,13 @@ export const Preview = memo(
           let nextW = Math.max(1, Math.round(fitW * maxScale))
           let nextH = Math.max(1, Math.round(fitH * maxScale))
 
-          // When Virtual Studio is active, clamp backing size to at least 720p HD (or full source if smaller)
-          // preserving aspect ratio so Virtual Camera broadcasts razor-sharp HD demo playback
+          // When Virtual Studio is active, clamp backing size to native 1080p Full HD (or full source if smaller)
+          // preserving aspect ratio so Virtual Camera broadcasts razor-sharp 1080p Full HD demo playback
           if (isVirtualStudioActive) {
-            nextW = Math.max(nextW, Math.min(srcW, 1280))
-            nextH = Math.max(nextH, Math.min(srcH, 720))
+            const targetW = DEFAULT_VIRTUAL_STUDIO_RESOLUTION.width
+            const targetH = DEFAULT_VIRTUAL_STUDIO_RESOLUTION.height
+            nextW = Math.max(nextW, Math.min(srcW, targetW))
+            nextH = Math.max(nextH, Math.min(srcH, targetH))
             if (aspect >= 1) {
               nextW = Math.min(srcW, Math.round(nextH * aspect))
             } else {
@@ -626,7 +629,8 @@ export const Preview = memo(
           clipLayers,
           // While playing, skip the per-frame soft shadow (the costliest op in
           // the scene, and it never changes) — still frames and export draw it.
-          { livePreview: state.isPlaying },
+          // Enforce high-quality image smoothing when Virtual Studio is active.
+          { livePreview: state.isPlaying, isVirtualStudioActive },
         )
         if (state.isPlaying) {
           animationFrameId.current = requestAnimationFrame(renderCanvas)
@@ -634,7 +638,7 @@ export const Preview = memo(
       } finally {
         drawInFlight.current = false
       }
-    }, [videoRef, bgImage, syncClipVideos])
+    }, [videoRef, bgImage, syncClipVideos, isVirtualStudioActive])
 
     useEffect(() => {
       if (isPlaying) {

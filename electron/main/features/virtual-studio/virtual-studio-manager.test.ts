@@ -157,6 +157,21 @@ describe('VirtualStudioManager', () => {
     )
   })
 
+  it('falls back to DEFAULT_VIRTUAL_STUDIO_RESOLUTION (1920x1080@30fps) when output resolution is omitted or 0', async () => {
+    const configWithoutRes: VirtualStudioConfig = {
+      ...defaultConfig,
+      outputResolution: { width: 0, height: 0, fps: 0 },
+    }
+    const result = await manager.start(configWithoutRes)
+    expect(result.success).toBe(true)
+
+    expect(mockCameraSink.start).toHaveBeenCalledWith({
+      width: 1920,
+      height: 1080,
+      fps: 30,
+    })
+  })
+
   it('stops virtual studio and cleans up sinks and tray', async () => {
     await manager.start(defaultConfig)
     const stopResult = await manager.stop()

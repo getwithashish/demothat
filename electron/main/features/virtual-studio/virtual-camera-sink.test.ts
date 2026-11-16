@@ -54,7 +54,7 @@ describe('VirtualCameraSink', () => {
     sink = new VirtualCameraSink()
   })
 
-  it('standardizes resolution to DEFAULT_VIRTUAL_STUDIO_RESOLUTION and passes -flush_packets 1 on Linux', async () => {
+  it('standardizes resolution to DEFAULT_VIRTUAL_STUDIO_RESOLUTION and passes Lanczos chroma filter and BT.709 color matrix flags on Linux', async () => {
     const res = await sink.start({ width: 0, height: 0, fps: 0 })
     expect(res.success).toBe(true)
     expect(sink.isActive()).toBe(true)
@@ -63,10 +63,30 @@ describe('VirtualCameraSink', () => {
     expect(options?.width).toBe(DEFAULT_VIRTUAL_STUDIO_RESOLUTION.width)
     expect(options?.height).toBe(DEFAULT_VIRTUAL_STUDIO_RESOLUTION.height)
     expect(options?.fps).toBe(DEFAULT_VIRTUAL_STUDIO_RESOLUTION.fps)
+    expect(options?.width).toBe(1920)
+    expect(options?.height).toBe(1080)
 
     expect(spawn).toHaveBeenCalledWith(
       '/mock/bin/ffmpeg',
-      expect.arrayContaining(['-s', '1280x720', '-r', '30', '-flush_packets', '1', '/dev/video10']),
+      expect.arrayContaining([
+        '-s',
+        '1920x1080',
+        '-r',
+        '30',
+        '-vf',
+        'scale=out_color_matrix=bt709:out_range=limited:flags=lanczos+accurate_rnd+full_chroma_int',
+        '-color_range',
+        'tv',
+        '-colorspace',
+        'bt709',
+        '-color_primaries',
+        'bt709',
+        '-color_trc',
+        'bt709',
+        '-flush_packets',
+        '1',
+        '/dev/video10',
+      ]),
     )
 
     // Initial frames burst should have been piped to stdin

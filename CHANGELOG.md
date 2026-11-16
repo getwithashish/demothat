@@ -1,3 +1,14 @@
+## [1.21.0-beta.12](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.11...v1.21.0-beta.12) (2026-11-16)
+
+### Features
+
+* **export:** hybrid fast intra-proxy and parallel chunk export pipeline ([e0513c9](https://github.com/getwithashish/DemoThat/commit/e0513c90fdf64da88c731cd7ef2b0a8e64fc7507))
+
+### Performance Improvements
+
+* **export:** add shadow caching, chromium foreground priority, and cursor parsing cache ([f40ef8e](https://github.com/getwithashish/DemoThat/commit/f40ef8e34f1bf4de24839e4cd6dcfe4feae2acb2))
+* **export:** eliminate startup delay and scale parallel chunk export ([2037eab](https://github.com/getwithashish/DemoThat/commit/2037eab143b569047bcc795110b89a5afeb95e79))
+
 ## [1.21.0-beta.11](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.10...v1.21.0-beta.11) (2026-11-16)
 
 ### Bug Fixes

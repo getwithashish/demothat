@@ -126,9 +126,9 @@ describe('VirtualStudioStreamer', () => {
       fillRect: vi.fn(),
       clearRect: vi.fn(),
       getImageData: vi.fn(() => ({
-        data: new Uint8ClampedArray(1920 * 1080 * 4),
-        width: 1920,
-        height: 1080,
+        data: new Uint8ClampedArray(1280 * 720 * 4),
+        width: 1280,
+        height: 720,
       })),
       save: vi.fn(),
       restore: vi.fn(),
@@ -139,15 +139,15 @@ describe('VirtualStudioStreamer', () => {
     }
 
     mockCanvas = {
-      width: 1920,
-      height: 1080,
+      width: 1280,
+      height: 720,
       getContext: vi.fn(() => mockCtx),
       toDataURL: vi.fn(() => 'data:image/jpeg;base64,mockThumbnail'),
     } as unknown as HTMLCanvasElement
 
     mockVideo = {
-      videoWidth: 1920,
-      videoHeight: 1080,
+      videoWidth: 1280,
+      videoHeight: 720,
       play: vi.fn().mockResolvedValue(undefined),
       pause: vi.fn(),
       srcObject: null,
@@ -303,14 +303,16 @@ describe('VirtualStudioStreamer', () => {
       streamer.setPlaying(true) // activeSource = canvas
       streamer.captureTick()
 
-      expect(mockCtx.drawImage).toHaveBeenCalledWith(testCanvas, 0, 0, 1920, 1080)
+      expect(mockCtx.drawImage).toHaveBeenCalledWith(testCanvas, 0, 0, 1280, 720)
       expect(mockIpc.pushFrame).toHaveBeenCalledWith(
         expect.objectContaining({
-          width: 1920,
-          height: 1080,
+          width: 1280,
+          height: 720,
           format: 'rgba',
         }),
       )
+      const pushCall = mockIpc.pushFrame.mock.calls[0][0]
+      expect(pushCall.data.byteLength).toBe(3686400) // 1280 * 720 * 4 bytes
       expect(mockIpc.pushPreviewFrame).toHaveBeenCalledWith('data:image/jpeg;base64,mockThumbnail')
     })
 
@@ -336,7 +338,7 @@ describe('VirtualStudioStreamer', () => {
       streamer.captureTick()
 
       // Should hold the last editor canvas preview frame!
-      expect(mockCtx.drawImage).toHaveBeenCalledWith(testCanvas, 0, 0, 1920, 1080)
+      expect(mockCtx.drawImage).toHaveBeenCalledWith(testCanvas, 0, 0, 1280, 720)
       expect(mockIpc.pushFrame).toHaveBeenCalled()
     })
 
@@ -349,7 +351,7 @@ describe('VirtualStudioStreamer', () => {
       streamer.setPlaying(false) // activeSource = webcam
       streamer.captureTick()
 
-      expect(mockCtx.fillRect).toHaveBeenCalledWith(0, 0, 1920, 1080)
+      expect(mockCtx.fillRect).toHaveBeenCalledWith(0, 0, 1280, 720)
       expect(mockIpc.pushFrame).toHaveBeenCalled()
     })
 
@@ -401,9 +403,9 @@ describe('VirtualStudioStreamer', () => {
       streamer.setPlaying(true) // activeSource = canvas
       streamer.captureTick()
 
-      // For 1920x1080 output and 1000x1000 input: scale = 1080/1000 = 1.08 -> dw = 1080, dh = 1080, dx = (1920-1080)/2 = 420, dy = 0
-      expect(mockCtx.fillRect).toHaveBeenCalledWith(0, 0, 1920, 1080)
-      expect(mockCtx.drawImage).toHaveBeenCalledWith(squareCanvas, 420, 0, 1080, 1080)
+      // For 1280x720 output and 1000x1000 input: scale = 720/1000 = 0.72 -> dw = 720, dh = 720, dx = (1280-720)/2 = 280, dy = 0
+      expect(mockCtx.fillRect).toHaveBeenCalledWith(0, 0, 1280, 720)
+      expect(mockCtx.drawImage).toHaveBeenCalledWith(squareCanvas, 280, 0, 720, 720)
     })
 
     it('enables high-quality image smoothing on scratchCtx for crisp HD video scaling', async () => {
@@ -459,7 +461,7 @@ describe('VirtualStudioStreamer', () => {
 
       streamer.captureTick()
       expect(mockCtx.save).toHaveBeenCalled()
-      expect(mockCtx.translate).toHaveBeenCalledWith(1920, 0)
+      expect(mockCtx.translate).toHaveBeenCalledWith(1280, 0)
       expect(mockCtx.scale).toHaveBeenCalledWith(-1, 1)
       expect(mockCtx.restore).toHaveBeenCalled()
     })
@@ -522,8 +524,8 @@ describe('VirtualStudioStreamer', () => {
       expect(mockMediaDevices.getUserMedia).toHaveBeenCalledWith(
         expect.objectContaining({
           video: expect.objectContaining({
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
           }),
         }),
       )

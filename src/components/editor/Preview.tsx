@@ -20,7 +20,6 @@ import { usePreviewAudioMixer } from '../../hooks/usePreviewAudioMixer'
 import { mapSourceTimeToExportTime } from '../../lib/utils'
 import { mediaUrl } from '../../../shared/media-url'
 import { virtualStudioStreamer } from '../../features/virtual-studio'
-import { DEFAULT_VIRTUAL_STUDIO_RESOLUTION } from '../../../shared/virtual-camera-types'
 
 export const Preview = memo(
   ({
@@ -472,11 +471,11 @@ export const Preview = memo(
           let nextW = Math.max(1, Math.round(fitW * maxScale))
           let nextH = Math.max(1, Math.round(fitH * maxScale))
 
-          // When Virtual Studio is active, clamp backing size to native 1080p Full HD (or full source if smaller)
-          // preserving aspect ratio so Virtual Camera broadcasts razor-sharp 1080p Full HD demo playback
+          // When Virtual Studio is active, clamp backing store to native 1080p Full HD (SSAA supersampling)
+          // preserving aspect ratio so canvas drawing is rendered with 2.25x pixel detail for crisp text and code
           if (isVirtualStudioActive) {
-            const targetW = DEFAULT_VIRTUAL_STUDIO_RESOLUTION.width
-            const targetH = DEFAULT_VIRTUAL_STUDIO_RESOLUTION.height
+            const targetW = 1920
+            const targetH = 1080
             nextW = Math.max(nextW, Math.min(srcW, targetW))
             nextH = Math.max(nextH, Math.min(srcH, targetH))
             if (aspect >= 1) {

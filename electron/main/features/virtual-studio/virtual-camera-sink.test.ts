@@ -63,14 +63,14 @@ describe('VirtualCameraSink', () => {
     expect(options?.width).toBe(DEFAULT_VIRTUAL_STUDIO_RESOLUTION.width)
     expect(options?.height).toBe(DEFAULT_VIRTUAL_STUDIO_RESOLUTION.height)
     expect(options?.fps).toBe(DEFAULT_VIRTUAL_STUDIO_RESOLUTION.fps)
-    expect(options?.width).toBe(1920)
-    expect(options?.height).toBe(1080)
+    expect(options?.width).toBe(1280)
+    expect(options?.height).toBe(720)
 
     expect(spawn).toHaveBeenCalledWith(
       '/mock/bin/ffmpeg',
       expect.arrayContaining([
         '-s',
-        '1920x1080',
+        '1280x720',
         '-r',
         '30',
         '-vf',

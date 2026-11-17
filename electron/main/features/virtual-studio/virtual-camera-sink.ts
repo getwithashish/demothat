@@ -38,7 +38,7 @@ export class VirtualCameraSink {
    * Starts the camera sink on the host OS.
    */
   public async start(options: CameraSinkOptions): Promise<{ success: boolean; error?: string }> {
-    // Standardize default resolution to 1920x1080 @ 30fps for razor-sharp Full HD streaming
+    // Standardize default resolution to 1280x720 @ 30fps
     const standardizedOptions: CameraSinkOptions = {
       width: options.width || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.width,
       height: options.height || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.height,

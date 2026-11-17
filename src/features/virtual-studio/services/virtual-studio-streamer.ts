@@ -108,6 +108,7 @@ export class VirtualStudioStreamer {
   private isPlaying = false
   private activeSource: 'webcam' | 'canvas' = 'webcam'
   private isMicMuted = false
+  private playbackMicUnmuted: boolean = false
   private isLocalAudioMonitoringEnabled = true
   private localMonitoringVolume = 1.0
   private isMirrored = false
@@ -467,6 +468,10 @@ export class VirtualStudioStreamer {
     this.isPlaying = isPlaying
     this.activeSource = isPlaying ? 'canvas' : 'webcam'
 
+    if (isPlaying) {
+      this.playbackMicUnmuted = false
+    }
+
     if (isPlaying && this.audioContext?.state === 'suspended') {
       void this.audioContext.resume().catch(() => {})
     }
@@ -489,6 +494,9 @@ export class VirtualStudioStreamer {
    */
   public setMicMuted(muted: boolean): void {
     this.isMicMuted = muted
+    if (this.isPlaying) {
+      this.playbackMicUnmuted = !muted
+    }
     this.applyInstantAutoReturn()
     this.ipcBridge.updateStatus({ isMicMuted: this.isMicMuted })
   }
@@ -713,8 +721,9 @@ export class VirtualStudioStreamer {
       const monitorVol = this.isLocalAudioMonitoringEnabled ? this.localMonitoringVolume : 0.0
       setParam(this.localMonitoringGain, monitorVol)
 
-      // 3. Physical mic is MUTED during playback
-      setParam(this.micGainNode, 0.0)
+      // 3. Default-muted during demo video unless user explicitly clicked unmute:
+      const micActive = this.playbackMicUnmuted && !this.isMicMuted
+      setParam(this.micGainNode, micActive ? 1.0 : 0.0)
     } else {
       // 1. Video audio to virtual mic is MUTED
       setParam(this.videoToVirtualMicGain, 0.0)
@@ -723,8 +732,7 @@ export class VirtualStudioStreamer {
       setParam(this.localMonitoringGain, 0.0)
 
       // 3. Physical mic is UNMUTED (unless manual mic mute is active)
-      const micVol = this.isMicMuted ? 0.0 : 1.0
-      setParam(this.micGainNode, micVol)
+      setParam(this.micGainNode, this.isMicMuted ? 0.0 : 1.0)
     }
   }
 

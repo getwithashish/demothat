@@ -99,7 +99,7 @@ export function usePreviewAudioMixer({ videoRef, isPlaying }: UsePreviewAudioMix
     let context: AudioContext
     let mixer: PreviewAudioMixer
     try {
-      context = new AudioContext()
+      context = new AudioContext({ sampleRate: 48000 })
       mixer = new PreviewAudioMixer({
         context,
         video: video as unknown as MediaLike,

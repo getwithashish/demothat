@@ -288,6 +288,60 @@ describe('VirtualStudioStreamer', () => {
       expect(streamer.isMuted()).toBe(false)
     })
 
+    it('resets playbackMicUnmuted when transitioning to playing=true', async () => {
+      await streamer.start()
+      const gainResults = mockContext.createGain.mock.results
+      const micGain = (gainResults[1].value as MockGainNode).gain
+
+      // Start playing: mic should be muted by default (playbackMicUnmuted=false)
+      streamer.setPlaying(true)
+      expect(micGain.setTargetAtTime).toHaveBeenCalledWith(0.0, expect.any(Number), 0.015)
+    })
+
+    it('allows explicit unmute of physical mic during video playback via setMicMuted', async () => {
+      await streamer.start()
+      const gainResults = mockContext.createGain.mock.results
+      const micGain = (gainResults[1].value as MockGainNode).gain
+
+      streamer.setPlaying(true)
+      micGain.setTargetAtTime.mockClear()
+
+      // Explicitly unmute during playback: sets playbackMicUnmuted=true
+      streamer.setMicMuted(false)
+      expect(micGain.setTargetAtTime).toHaveBeenCalledWith(1.0, expect.any(Number), 0.015)
+    })
+
+    it('allows re-muting physical mic during video playback via toggleMicMute', async () => {
+      await streamer.start()
+      const gainResults = mockContext.createGain.mock.results
+      const micGain = (gainResults[1].value as MockGainNode).gain
+
+      streamer.setPlaying(true)
+      // Unmute during playback
+      streamer.setMicMuted(false)
+      micGain.setTargetAtTime.mockClear()
+
+      // Re-mute during playback
+      streamer.toggleMicMute()
+      expect(micGain.setTargetAtTime).toHaveBeenCalledWith(0.0, expect.any(Number), 0.015)
+    })
+
+    it('resets playback mic unmuted state at the start of each new playback session', async () => {
+      await streamer.start()
+      const gainResults = mockContext.createGain.mock.results
+      const micGain = (gainResults[1].value as MockGainNode).gain
+
+      // Start playing and unmute mic
+      streamer.setPlaying(true)
+      streamer.setMicMuted(false) // playbackMicUnmuted=true
+      streamer.setPlaying(false)
+
+      micGain.setTargetAtTime.mockClear()
+      // Start playing again: playbackMicUnmuted must reset to false
+      streamer.setPlaying(true)
+      expect(micGain.setTargetAtTime).toHaveBeenCalledWith(0.0, expect.any(Number), 0.015)
+    })
+
     it('uses 15ms exponential cross-fade transitions via setTargetAtTime to prevent audio clicks', async () => {
       await streamer.start()
       const gainResults = mockContext.createGain.mock.results

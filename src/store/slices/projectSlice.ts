@@ -520,8 +520,10 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
       // A manifest that predates the split could not say how many sources there
       // were, so its tracks were provisional: the player's answer is the one fact
       // available, and it decides whether there is a track at all.
-      if (!state.audioTracksFromManifest) {
-        state.audioTracks = legacyTracks(hasAudio)
+      if (!state.audioTracksFromManifest || state.audioTracks.length === 0) {
+        if (hasAudio) {
+          state.audioTracks = legacyTracks(hasAudio)
+        }
       }
     })
   },

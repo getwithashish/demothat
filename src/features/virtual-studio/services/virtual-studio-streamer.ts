@@ -394,6 +394,12 @@ export class VirtualStudioStreamer {
       this.scratchCtx.imageSmoothingQuality = 'high'
     }
 
+    // Pre-allocate transfer buffer for native 1080p RGBA frames (1920x1080x4 = 8,294,400 bytes)
+    const byteLength = this.outputResolution.width * this.outputResolution.height * 4
+    if (!this.transferBuffer || this.transferBuffer.byteLength !== byteLength) {
+      this.transferBuffer = new Uint8Array(byteLength)
+    }
+
     // Initialize HUD thumbnail canvas (320x180) to reduce JPEG encoding overhead by 36x
     this.hudThumbnailCanvas = this.createCanvas()
     this.hudThumbnailCanvas.width = 320
@@ -852,6 +858,15 @@ export class VirtualStudioStreamer {
       try {
         const cw = this.sourceCanvas.width
         const ch = this.sourceCanvas.height
+
+        if (cw === width && ch === height) {
+          // Native 1080p 1:1 canvas extraction without 0.6667x fractional scaling downsample blur
+          this.scratchCtx.fillStyle = DEFAULT_VIRTUAL_STUDIO_FALLBACK_COLOR
+          this.scratchCtx.fillRect(0, 0, width, height)
+          this.scratchCtx.drawImage(this.sourceCanvas, 0, 0, width, height)
+          return
+        }
+
         const scale = Math.min(width / cw, height / ch)
         const dw = cw * scale
         const dh = ch * scale

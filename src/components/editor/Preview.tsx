@@ -105,6 +105,9 @@ export const Preview = memo(
     const webcamVideoRef = useRef<HTMLVideoElement>(null)
     const clipVideoRefs = useRef<Map<string, HTMLVideoElement>>(new Map())
     const animationFrameId = useRef<number>()
+    const studioTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const nextFrameTimeRef = useRef<number>(0)
+    const renderCanvasRef = useRef<() => Promise<void>>()
     const drawInFlight = useRef(false)
     // Preview backing store, sized to the DISPLAYED area (×dpr), NOT the 1080p
     // source: drawing a 1920×1080 scene to show ~900px burns ~4× the pixels per
@@ -476,12 +479,12 @@ export const Preview = memo(
           if (isVirtualStudioActive) {
             const targetW = 1920
             const targetH = 1080
-            nextW = Math.max(nextW, Math.min(srcW, targetW))
-            nextH = Math.max(nextH, Math.min(srcH, targetH))
+            nextW = targetW
+            nextH = targetH
             if (aspect >= 1) {
-              nextW = Math.min(srcW, Math.round(nextH * aspect))
+              nextW = Math.round(nextH * aspect)
             } else {
-              nextH = Math.min(srcH, Math.round(nextW / aspect))
+              nextH = Math.round(nextW / aspect)
             }
           }
 
@@ -594,6 +597,44 @@ export const Preview = memo(
       [videoClips],
     )
 
+    const cancelScheduledRender = useCallback(() => {
+      if (animationFrameId.current !== undefined) {
+        cancelAnimationFrame(animationFrameId.current)
+        animationFrameId.current = undefined
+      }
+      if (studioTimerRef.current !== null) {
+        clearTimeout(studioTimerRef.current)
+        studioTimerRef.current = null
+      }
+    }, [])
+
+    const scheduleNextRender = useCallback(() => {
+      cancelScheduledRender()
+      if (isVirtualStudioActive) {
+        // High-precision setTimeout loop running at 30 FPS with drift compensation,
+        // decoupled from requestAnimationFrame so frames continue rendering and
+        // extracting at 30 FPS even when DemoThat is minimized or occluded by a fullscreen window.
+        const fps = 30
+        const frameInterval = 1000 / fps
+        const now = performance.now()
+        if (!nextFrameTimeRef.current || now - nextFrameTimeRef.current > frameInterval * 2) {
+          nextFrameTimeRef.current = now + frameInterval
+        } else {
+          nextFrameTimeRef.current += frameInterval
+        }
+        const delay = Math.max(0, nextFrameTimeRef.current - performance.now())
+        studioTimerRef.current = setTimeout(() => {
+          studioTimerRef.current = null
+          void renderCanvasRef.current?.()
+        }, delay)
+      } else {
+        animationFrameId.current = requestAnimationFrame(() => {
+          animationFrameId.current = undefined
+          void renderCanvasRef.current?.()
+        })
+      }
+    }, [isVirtualStudioActive, cancelScheduledRender])
+
     const renderCanvas = useCallback(async () => {
       // While playing, drop a frame instead of queueing one when the previous
       // draw is still in flight. While paused (seek/scrub), never drop: a
@@ -607,7 +648,7 @@ export const Preview = memo(
         const state = useEditorStore.getState()
         const ctx = canvas?.getContext('2d')
         if (!canvas || !video || !ctx || !state.videoDimensions.width) {
-          if (state.isPlaying) animationFrameId.current = requestAnimationFrame(renderCanvas)
+          if (state.isPlaying) scheduleNextRender()
           return
         }
         syncClipVideos(state.isPlaying, video.currentTime)
@@ -632,28 +673,33 @@ export const Preview = memo(
           { livePreview: state.isPlaying, isVirtualStudioActive },
         )
         if (state.isPlaying) {
-          animationFrameId.current = requestAnimationFrame(renderCanvas)
+          scheduleNextRender()
         }
       } finally {
         drawInFlight.current = false
       }
-    }, [videoRef, bgImage, syncClipVideos, isVirtualStudioActive])
+    }, [videoRef, bgImage, syncClipVideos, isVirtualStudioActive, scheduleNextRender])
+
+    renderCanvasRef.current = renderCanvas
 
     useEffect(() => {
       if (isPlaying) {
-        animationFrameId.current = requestAnimationFrame(renderCanvas)
+        nextFrameTimeRef.current = performance.now()
+        scheduleNextRender()
       } else {
-        renderCanvas()
+        cancelScheduledRender()
+        void renderCanvas()
       }
       return () => {
-        if (animationFrameId.current) {
-          cancelAnimationFrame(animationFrameId.current)
-        }
+        cancelScheduledRender()
       }
     }, [
       isPlaying,
+      isVirtualStudioActive,
       currentTime,
       renderCanvas,
+      scheduleNextRender,
+      cancelScheduledRender,
       canvasDimensions,
       backingSize,
       frameStyles,
@@ -672,8 +718,8 @@ export const Preview = memo(
       if (!video) return
       const webcamVideo = webcamVideoRef.current
       if (isPlaying) {
-        video.play().catch(console.error)
-        webcamVideo?.play().catch(console.error)
+        void video.play()?.catch?.(console.error)
+        void webcamVideo?.play()?.catch?.(console.error)
       } else {
         video.pause()
         webcamVideo?.pause()

@@ -87,4 +87,20 @@ describe('Preview Virtual Studio canvas attachment', () => {
     const canvas = el.querySelector('canvas')
     expect(canvas).not.toBeNull()
   })
+
+  it('decouples canvas rendering from requestAnimationFrame and uses setTimeout loop when isVirtualStudioActive is true', async () => {
+    const setTimeoutSpy = vi.spyOn(window, 'setTimeout')
+
+    const videoRef = { current: document.createElement('video') }
+    await renderAsync(<Preview videoRef={videoRef} onSeekFrame={vi.fn()} />)
+
+    setTimeoutSpy.mockClear()
+
+    act(() => {
+      useEditorStore.setState({ isVirtualStudioActive: true, isPlaying: true })
+    })
+
+    // In virtual studio active playback, setTimeout should be used instead of requestAnimationFrame for the render loop
+    expect(setTimeoutSpy).toHaveBeenCalled()
+  })
 })

@@ -79,7 +79,7 @@ describe('VirtualStudioManager', () => {
   const defaultConfig: VirtualStudioConfig = {
     enableCamera: true,
     enableMic: true,
-    outputResolution: { width: 1280, height: 720, fps: 30 },
+    outputResolution: { width: 1920, height: 1080, fps: 30 },
     enableLocalAudioMonitoring: true,
     localMonitoringVolume: 0.8,
     selectedWebcamId: 'cam-123',
@@ -137,8 +137,8 @@ describe('VirtualStudioManager', () => {
     expect(result.success).toBe(true)
 
     expect(mockCameraSink.start).toHaveBeenCalledWith({
-      width: 1280,
-      height: 720,
+      width: 1920,
+      height: 1080,
       fps: 30,
     })
     expect(mockAudioSink.start).toHaveBeenCalled()
@@ -165,7 +165,7 @@ describe('VirtualStudioManager', () => {
     )
   })
 
-  it('falls back to DEFAULT_VIRTUAL_STUDIO_RESOLUTION (1280x720@30fps) when output resolution is omitted or 0', async () => {
+  it('falls back to DEFAULT_VIRTUAL_STUDIO_RESOLUTION (1920x1080@30fps) when output resolution is omitted or 0', async () => {
     const configWithoutRes: VirtualStudioConfig = {
       ...defaultConfig,
       outputResolution: { width: 0, height: 0, fps: 0 },
@@ -174,8 +174,8 @@ describe('VirtualStudioManager', () => {
     expect(result.success).toBe(true)
 
     expect(mockCameraSink.start).toHaveBeenCalledWith({
-      width: 1280,
-      height: 720,
+      width: 1920,
+      height: 1080,
       fps: 30,
     })
   })

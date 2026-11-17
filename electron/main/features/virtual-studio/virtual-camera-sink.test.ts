@@ -56,7 +56,7 @@ describe('VirtualCameraSink', () => {
     sink = new VirtualCameraSink()
   })
 
-  it('standardizes resolution to DEFAULT_VIRTUAL_STUDIO_RESOLUTION and passes BT.709 bicubic scale flags on Linux', async () => {
+  it('standardizes resolution to DEFAULT_VIRTUAL_STUDIO_RESOLUTION and passes BT.709 Lanczos unsharp scale flags on Linux', async () => {
     const res = await sink.start({ width: 0, height: 0, fps: 0 })
     expect(res.success).toBe(true)
     expect(sink.isActive()).toBe(true)
@@ -65,20 +65,20 @@ describe('VirtualCameraSink', () => {
     expect(options?.width).toBe(DEFAULT_VIRTUAL_STUDIO_RESOLUTION.width)
     expect(options?.height).toBe(DEFAULT_VIRTUAL_STUDIO_RESOLUTION.height)
     expect(options?.fps).toBe(DEFAULT_VIRTUAL_STUDIO_RESOLUTION.fps)
-    expect(options?.width).toBe(1280)
-    expect(options?.height).toBe(720)
+    expect(options?.width).toBe(1920)
+    expect(options?.height).toBe(1080)
 
     expect(spawn).toHaveBeenCalledWith(
       '/mock/bin/ffmpeg',
       expect.arrayContaining([
         '-s',
-        '1280x720',
+        '1920x1080',
         '-r',
         '30',
         '-vf',
-        'scale=out_color_matrix=bt709:out_range=limited:flags=bicubic',
+        'scale=out_color_matrix=bt709:out_range=full:flags=lanczos+accurate_rnd+full_chroma_int,unsharp=lx=5:ly=5:la=0.6:cx=5:cy=5:ca=0.3',
         '-color_range',
-        'tv',
+        'pc',
         '-colorspace',
         'bt709',
         '-color_primaries',
@@ -180,5 +180,52 @@ describe('VirtualCameraSink', () => {
 
     // Sink should remain active
     expect(sink.isActive()).toBe(true)
+  })
+
+  it('starts idle standby slate at 1080p and seamlessly switches to live frames on start() without restarting FFmpeg', async () => {
+    // 1. Start standby slate
+    const standbyRes = await sink.startStandby({ width: 1920, height: 1080, fps: 30 })
+    expect(standbyRes.success).toBe(true)
+    expect(sink.isStandbyActive()).toBe(true)
+    expect(sink.isActive()).toBe(false)
+    expect(spawn).toHaveBeenCalledTimes(1)
+
+    // In standby, pushFrame should return false
+    const pushInStandby = await sink.pushFrame({
+      data: new Uint8Array([1, 2, 3]),
+      width: 1920,
+      height: 1080,
+    })
+    expect(pushInStandby).toBe(false)
+
+    // 2. Seamlessly switch to live streaming via start() with identical resolution
+    const startRes = await sink.start({ width: 1920, height: 1080, fps: 30 })
+    expect(startRes.success).toBe(true)
+    expect(sink.isStandbyActive()).toBe(false)
+    expect(sink.isActive()).toBe(true)
+    // FFmpeg process MUST NOT be respawned (spawn called only once!)
+    expect(spawn).toHaveBeenCalledTimes(1)
+
+    // Now pushFrame should succeed
+    const pushLive = await sink.pushFrame({
+      data: new Uint8Array([1, 2, 3, 4]),
+      width: 1920,
+      height: 1080,
+    })
+    expect(pushLive).toBe(true)
+
+    // 3. Fallback to standby on stop({ fallbackToStandby: true })
+    await sink.stop({ fallbackToStandby: true })
+    expect(sink.isStandbyActive()).toBe(true)
+    expect(sink.isActive()).toBe(false)
+    expect(mockProc.kill).not.toHaveBeenCalled()
+
+    // 4. Complete stop on exit terminates process
+    const stopPromise = sink.stop()
+    mockProc.emit('close', 0)
+    await stopPromise
+    expect(sink.isStandbyActive()).toBe(false)
+    expect(sink.isActive()).toBe(false)
+    expect(mockProc.kill).toHaveBeenCalledWith('SIGTERM')
   })
 })

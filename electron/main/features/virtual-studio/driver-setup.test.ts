@@ -78,6 +78,28 @@ describe('driver-setup', () => {
       expect(unloaded).toEqual(['42', '43'])
     })
 
+    it('teardownLinuxCameraDriver handles sudo failure gracefully without throwing', async () => {
+      mockExecFile.mockImplementation((_file: string, _args: string[], _opts: unknown, cb: ExecFileCallback) => {
+        const err = new Error('Module v4l2loopback is in use') as Error & { code?: number }
+        err.code = 1
+        cb(err, '', 'Module is in use')
+      })
+
+      const res = await teardownLinuxCameraDriver()
+      expect(res.success).toBe(false)
+      expect(res.error).toContain('Module is in use')
+    })
+
+    it('teardownLinuxAudioSink succeeds when no demothat modules are loaded', async () => {
+      mockExecFile.mockImplementation((file: string, _args: string[], _opts: unknown, cb: ExecFileCallback) => {
+        expect(file).toBe('pactl')
+        cb(null, '12\tmodule-always-sink\t\n', '')
+      })
+
+      const res = await teardownLinuxAudioSink()
+      expect(res.success).toBe(true)
+    })
+
     describe('checkLinuxAudioSink', () => {
       it('returns true when demothat_virtual_mic source exists', async () => {
         mockExecFile.mockImplementation((file: string, args: string[], _opts: unknown, cb: ExecFileCallback) => {

@@ -41,6 +41,7 @@ vi.mock('./driver-setup', () => ({
   }),
   installVirtualDrivers: vi.fn().mockResolvedValue({ success: true }),
   ensureLinuxCameraDriver: vi.fn().mockResolvedValue({ success: true }),
+  ensureLinuxAudioSink: vi.fn().mockResolvedValue({ success: true }),
   teardownLinuxCameraDriver: vi.fn().mockResolvedValue({ success: true }),
   teardownLinuxAudioSink: vi.fn().mockResolvedValue({ success: true }),
 }))
@@ -58,6 +59,8 @@ import { VirtualStudioManager } from './virtual-studio-manager'
 import {
   checkVirtualDrivers,
   installVirtualDrivers,
+  ensureLinuxCameraDriver,
+  ensureLinuxAudioSink,
   teardownLinuxCameraDriver,
   teardownLinuxAudioSink,
 } from './driver-setup'
@@ -149,6 +152,11 @@ describe('VirtualStudioManager', () => {
     expect(status.activeSource).toBe('webcam')
     expect(status.webcamDeviceId).toBe('cam-123')
     expect(status.micDeviceId).toBe('mic-456')
+
+    if (process.platform === 'linux') {
+      expect(ensureLinuxCameraDriver).toHaveBeenCalled()
+      expect(ensureLinuxAudioSink).toHaveBeenCalled()
+    }
 
     // Broadcasts status to windows
     expect(mockWindow.webContents.send).toHaveBeenCalledWith(

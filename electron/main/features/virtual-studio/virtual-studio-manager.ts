@@ -12,6 +12,7 @@ import {
   checkVirtualDrivers,
   installVirtualDrivers,
   ensureLinuxCameraDriver,
+  ensureLinuxAudioSink,
   teardownLinuxCameraDriver,
   teardownLinuxAudioSink,
 } from './driver-setup'
@@ -114,6 +115,7 @@ export class VirtualStudioManager {
       // 1. Verify/ensure driver status
       if (process.platform === 'linux') {
         await ensureLinuxCameraDriver()
+        await ensureLinuxAudioSink()
       }
       const driverCheck = await checkVirtualDrivers()
       this.status.cameraDriverInstalled = driverCheck.cameraDriverInstalled

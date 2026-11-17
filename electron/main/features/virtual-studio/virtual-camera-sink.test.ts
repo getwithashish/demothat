@@ -54,7 +54,7 @@ describe('VirtualCameraSink', () => {
     sink = new VirtualCameraSink()
   })
 
-  it('standardizes resolution to DEFAULT_VIRTUAL_STUDIO_RESOLUTION and passes Lanczos chroma filter and BT.709 color matrix flags on Linux', async () => {
+  it('standardizes resolution to DEFAULT_VIRTUAL_STUDIO_RESOLUTION and passes Lanczos chroma filter, unsharp edge filter, and BT.709 color matrix flags on Linux', async () => {
     const res = await sink.start({ width: 0, height: 0, fps: 0 })
     expect(res.success).toBe(true)
     expect(sink.isActive()).toBe(true)
@@ -74,7 +74,7 @@ describe('VirtualCameraSink', () => {
         '-r',
         '30',
         '-vf',
-        'scale=out_color_matrix=bt709:out_range=limited:flags=lanczos+accurate_rnd+full_chroma_int',
+        'scale=out_color_matrix=bt709:out_range=limited:flags=lanczos+accurate_rnd+full_chroma_int,unsharp=lx=5:ly=5:la=1.0:cx=5:cy=5:ca=0.5',
         '-color_range',
         'tv',
         '-colorspace',

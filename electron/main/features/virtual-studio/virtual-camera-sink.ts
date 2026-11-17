@@ -113,7 +113,7 @@ export class VirtualCameraSink {
         '-i',
         'pipe:0',
         '-vf',
-        'scale=out_color_matrix=bt709:out_range=limited:flags=lanczos+accurate_rnd+full_chroma_int',
+        'scale=out_color_matrix=bt709:out_range=limited:flags=lanczos+accurate_rnd+full_chroma_int,unsharp=lx=5:ly=5:la=1.0:cx=5:cy=5:ca=0.5',
         '-color_range',
         'tv',
         '-colorspace',

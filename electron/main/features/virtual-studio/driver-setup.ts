@@ -82,17 +82,12 @@ export async function checkLinuxCameraDriver(): Promise<{ installed: boolean; de
 }
 
 /**
- * Checks Linux virtual audio sink (PulseAudio or PipeWire).
+ * Checks Linux virtual audio sink and source (PulseAudio or PipeWire).
  */
 export async function checkLinuxAudioSink(): Promise<boolean> {
   try {
-    const { stdout } = await execPromise('pactl', ['list', 'short', 'sinks'])
-    if (stdout.includes('demothat') || stdout.includes('null') || stdout.includes('PipeWire')) {
-      return true
-    }
-    // Also check pipewire daemon presence
-    const { stdout: pwOut } = await execPromise('pw-cli', ['info', '0'])
-    if (pwOut && pwOut.length > 0) {
+    const { stdout } = await execPromise('pactl', ['list', 'short', 'sources'])
+    if (stdout.includes('demothat_virtual_mic') || stdout.includes('demothat_mic')) {
       return true
     }
     return false
@@ -251,20 +246,44 @@ export async function ensureLinuxCameraDriver(): Promise<{ success: boolean; err
 }
 
 /**
- * Ensures Linux PulseAudio/PipeWire null sink exists.
+ * Ensures Linux PulseAudio/PipeWire virtual microphone source and null sink exist.
  */
 export async function ensureLinuxAudioSink(): Promise<{ success: boolean; error?: string }> {
   try {
-    const isSinkReady = await checkLinuxAudioSink()
-    if (isSinkReady) {
+    // Step 1: Check if demothat_virtual_mic source exists via pactl list short sources
+    const { stdout: sourcesOut } = await execPromise('pactl', ['list', 'short', 'sources'])
+    if (sourcesOut.includes('demothat_virtual_mic')) {
       return { success: true }
     }
-    await execPromise('pactl', [
+
+    // Step 2: Check if demothat_mic sink exists via pactl list short sinks
+    const { stdout: sinksOut } = await execPromise('pactl', ['list', 'short', 'sinks'])
+    if (!sinksOut.includes('demothat_mic')) {
+      const loadSink = await execPromise('pactl', [
+        'load-module',
+        'module-null-sink',
+        'sink_name=demothat_mic',
+        'sink_properties=device.description=DemoThat_Virtual_Audio',
+      ])
+      if (loadSink.code !== 0) {
+        log.warn(`[DriverSetup] Failed to load module-null-sink: ${loadSink.stderr}`)
+        return { success: false, error: loadSink.stderr || 'Failed to load module-null-sink' }
+      }
+    }
+
+    // Step 3: Load module-remap-source master=demothat_mic.monitor source_name=demothat_virtual_mic source_properties=device.description="DemoThat Virtual Microphone"
+    const loadSource = await execPromise('pactl', [
       'load-module',
-      'module-null-sink',
-      'sink_name=demothat_mic',
-      'sink_properties=device.description=DemoThat_Virtual_Microphone',
+      'module-remap-source',
+      'master=demothat_mic.monitor',
+      'source_name=demothat_virtual_mic',
+      'source_properties=device.description=DemoThat_Virtual_Microphone',
     ])
+    if (loadSource.code !== 0) {
+      log.warn(`[DriverSetup] Failed to load module-remap-source: ${loadSource.stderr}`)
+      return { success: false, error: loadSource.stderr || 'Failed to load module-remap-source' }
+    }
+
     return { success: true }
   } catch (err: unknown) {
     return { success: false, error: err instanceof Error ? err.message : String(err) }
@@ -290,18 +309,20 @@ export async function teardownLinuxCameraDriver(): Promise<{ success: boolean; e
 }
 
 /**
- * Dynamically unloads PulseAudio null sink module so demothat_mic disappears when app exits.
+ * Dynamically unloads PulseAudio modules matching demothat_virtual_mic and demothat_mic so devices disappear when app exits.
  */
 export async function teardownLinuxAudioSink(): Promise<{ success: boolean; error?: string }> {
   try {
-    log.info('[DriverSetup] Teardown Linux audio sink (demothat_mic)')
+    log.info('[DriverSetup] Teardown Linux audio virtual devices (demothat_virtual_mic and demothat_mic)')
     const { stdout } = await execPromise('pactl', ['list', 'short', 'modules'], { timeout: 5000 })
     const lines = stdout.split('\n')
+    const seenIds = new Set<string>()
     for (const line of lines) {
-      if (line.includes('demothat_mic')) {
+      if (line.includes('demothat_virtual_mic') || line.includes('demothat_mic')) {
         const moduleId = line.trim().split(/\s+/)[0]
-        if (moduleId && !isNaN(Number(moduleId))) {
-          log.info(`[DriverSetup] Unloading PulseAudio module ${moduleId} for demothat_mic`)
+        if (moduleId && !isNaN(Number(moduleId)) && !seenIds.has(moduleId)) {
+          seenIds.add(moduleId)
+          log.info(`[DriverSetup] Unloading PulseAudio module ${moduleId}`)
           await execPromise('pactl', ['unload-module', moduleId], { timeout: 5000 })
         }
       }

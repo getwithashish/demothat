@@ -947,6 +947,7 @@ export const Preview = memo(
 
         <video
           ref={videoRef}
+          crossOrigin="anonymous"
           src={videoUrl || undefined}
           onTimeUpdate={handleTimeUpdate}
           onLoadedMetadata={handleLoadedMetadata}

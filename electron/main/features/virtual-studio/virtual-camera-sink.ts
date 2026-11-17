@@ -113,7 +113,7 @@ export class VirtualCameraSink {
         '-i',
         'pipe:0',
         '-vf',
-        'scale=out_color_matrix=bt709:out_range=limited:flags=lanczos+accurate_rnd+full_chroma_int,unsharp=lx=5:ly=5:la=1.0:cx=5:cy=5:ca=0.5',
+        'scale=out_color_matrix=bt709:out_range=limited:flags=bicubic',
         '-color_range',
         'tv',
         '-colorspace',
@@ -223,14 +223,14 @@ export class VirtualCameraSink {
       }
 
       if (this.ffmpegProcess && this.ffmpegProcess.stdin.writable) {
-        const flushed = this.ffmpegProcess.stdin.write(buffer)
-        if (!flushed) {
-          // Backpressure encountered; wait for drain or drop next frame
+        const stdin = this.ffmpegProcess.stdin
+        if (stdin.writableLength > buffer.length * 2) {
           await new Promise<void>((resolve) => {
-            this.ffmpegProcess?.stdin.once('drain', () => resolve())
+            stdin.once('drain', () => resolve())
             setTimeout(resolve, 10)
           })
         }
+        stdin.write(buffer)
       }
 
       this.frameCount++

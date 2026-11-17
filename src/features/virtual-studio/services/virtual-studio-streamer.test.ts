@@ -259,6 +259,14 @@ describe('VirtualStudioStreamer', () => {
       )
     })
 
+    it('resumes suspended audioContext when playback starts', async () => {
+      mockContext.state = 'suspended'
+      await streamer.start()
+
+      streamer.setPlaying(true)
+      expect(mockContext.resume).toHaveBeenCalled()
+    })
+
     it('respects manual mic mute when paused and maintains mute during playback', async () => {
       await streamer.start()
 
@@ -508,6 +516,36 @@ describe('VirtualStudioStreamer', () => {
       await streamer.stop()
       expect(streamer.isActive()).toBe(false)
       expect(mockIpc.stop).toHaveBeenCalled()
+    })
+
+    it('preserves attached MediaStream across stop and re-wires on start', async () => {
+      const mockStream = createMockMediaStream()
+      streamer.attachMediaStream(mockStream)
+
+      await streamer.start()
+      expect(mockContext.createMediaStreamSource).toHaveBeenCalledWith(mockStream)
+
+      await streamer.stop()
+      mockContext.createMediaStreamSource.mockClear()
+
+      await streamer.start()
+      expect(mockContext.createMediaStreamSource).toHaveBeenCalledWith(mockStream)
+    })
+
+    it('preserves attached video element across stop and re-wires on start', async () => {
+      const mockEl = {} as HTMLVideoElement
+      streamer.attachVideoElement(mockEl)
+
+      await streamer.start()
+      const firstSource = mockContext.createMediaElementSource.mock.results[0].value as MockAudioNode
+      expect(firstSource.connect).toHaveBeenCalled()
+
+      await streamer.stop()
+      firstSource.connect.mockClear()
+
+      await streamer.start()
+      // Web Audio caches MediaElementSourceNode per element; verify it was reconnected to the graph
+      expect(firstSource.connect).toHaveBeenCalled()
     })
   })
 

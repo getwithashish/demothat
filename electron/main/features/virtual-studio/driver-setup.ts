@@ -252,12 +252,13 @@ export async function ensureLinuxAudioSink(): Promise<{ success: boolean; error?
   try {
     // Step 1: Check if demothat_virtual_mic source exists via pactl list short sources
     const { stdout: sourcesOut } = await execPromise('pactl', ['list', 'short', 'sources'])
-    if (sourcesOut.includes('demothat_virtual_mic')) {
+    // Step 2: Check if demothat_mic sink exists via pactl list short sinks
+    const { stdout: sinksOut } = await execPromise('pactl', ['list', 'short', 'sinks'])
+
+    if (sourcesOut.includes('demothat_virtual_mic') && sinksOut.includes('demothat_mic')) {
       return { success: true }
     }
 
-    // Step 2: Check if demothat_mic sink exists via pactl list short sinks
-    const { stdout: sinksOut } = await execPromise('pactl', ['list', 'short', 'sinks'])
     if (!sinksOut.includes('demothat_mic')) {
       const loadSink = await execPromise('pactl', [
         'load-module',
@@ -271,17 +272,19 @@ export async function ensureLinuxAudioSink(): Promise<{ success: boolean; error?
       }
     }
 
-    // Step 3: Load module-remap-source master=demothat_mic.monitor source_name=demothat_virtual_mic source_properties=device.description="DemoThat Virtual Microphone"
-    const loadSource = await execPromise('pactl', [
-      'load-module',
-      'module-remap-source',
-      'master=demothat_mic.monitor',
-      'source_name=demothat_virtual_mic',
-      'source_properties=device.description=DemoThat_Virtual_Microphone',
-    ])
-    if (loadSource.code !== 0) {
-      log.warn(`[DriverSetup] Failed to load module-remap-source: ${loadSource.stderr}`)
-      return { success: false, error: loadSource.stderr || 'Failed to load module-remap-source' }
+    if (!sourcesOut.includes('demothat_virtual_mic')) {
+      // Step 3: Load module-remap-source master=demothat_mic.monitor source_name=demothat_virtual_mic source_properties=device.description="DemoThat Virtual Microphone"
+      const loadSource = await execPromise('pactl', [
+        'load-module',
+        'module-remap-source',
+        'master=demothat_mic.monitor',
+        'source_name=demothat_virtual_mic',
+        'source_properties=device.description=DemoThat_Virtual_Microphone',
+      ])
+      if (loadSource.code !== 0) {
+        log.warn(`[DriverSetup] Failed to load module-remap-source: ${loadSource.stderr}`)
+        return { success: false, error: loadSource.stderr || 'Failed to load module-remap-source' }
+      }
     }
 
     return { success: true }

@@ -26,8 +26,11 @@ import { detectSession, WAYLAND_CHROMIUM_FEATURES } from '../../shared/session'
 // +faststart). Without range support the video element stalls forever at
 // readyState 0 with NO error event: a black preview while ffmpeg-based export
 // still works. (`stream` enables ranged/streaming responses; `secure` keeps
-// media loadable from the renderer's context.)
-protocol.registerSchemesAsPrivileged([{ scheme: 'media', privileges: { stream: true, secure: true } }])
+// media loadable from the renderer's context; `corsEnabled` lets Web Audio
+// nodes tap into media:// audio sources without security restrictions.)
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'media', privileges: { stream: true, secure: true, corsEnabled: true } },
+])
 
 // --- Initialization ---
 setupLogging()
@@ -296,7 +299,13 @@ app.whenReady().then(async () => {
       '.webp': 'image/webp',
     }
     const contentType = MIME[path.extname(filePath).toLowerCase()] ?? 'application/octet-stream'
-    const baseHeaders: Record<string, string> = { 'Content-Type': contentType, 'Accept-Ranges': 'bytes' }
+    const baseHeaders: Record<string, string> = {
+      'Content-Type': contentType,
+      'Accept-Ranges': 'bytes',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+      'Access-Control-Allow-Headers': 'Range, Origin, Content-Type, Accept',
+    }
 
     try {
       const size = fsSync.statSync(filePath).size

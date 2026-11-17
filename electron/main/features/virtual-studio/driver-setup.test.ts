@@ -123,16 +123,45 @@ describe('driver-setup', () => {
     })
 
     describe('ensureLinuxAudioSink', () => {
-      it('returns success immediately if demothat_virtual_mic source already exists', async () => {
+      it('returns success immediately if both demothat_virtual_mic source and demothat_mic sink already exist', async () => {
         mockExecFile.mockImplementation((file: string, args: string[], _opts: unknown, cb: ExecFileCallback) => {
           expect(file).toBe('pactl')
-          expect(args).toEqual(['list', 'short', 'sources'])
-          cb(null, '8890\tdemothat_virtual_mic\tPipeWire\n', '')
+          if (args[0] === 'list' && args[2] === 'sources') {
+            cb(null, '8890\tdemothat_virtual_mic\tPipeWire\n', '')
+          } else if (args[0] === 'list' && args[2] === 'sinks') {
+            cb(null, '8883\tdemothat_mic\tPipeWire\n', '')
+          } else {
+            cb(new Error(`unexpected command ${args.join(' ')}`), '', '')
+          }
         })
 
         const res = await ensureLinuxAudioSink()
         expect(res.success).toBe(true)
-        expect(mockExecFile).toHaveBeenCalledTimes(1)
+        expect(mockExecFile).toHaveBeenCalledTimes(2)
+      })
+
+      it('creates module-null-sink if demothat_virtual_mic source exists but demothat_mic sink is missing', async () => {
+        const executedCommands: string[][] = []
+        mockExecFile.mockImplementation((file: string, args: string[], _opts: unknown, cb: ExecFileCallback) => {
+          expect(file).toBe('pactl')
+          executedCommands.push(args)
+          if (args[0] === 'list' && args[2] === 'sources') {
+            cb(null, '8890\tdemothat_virtual_mic\tPipeWire\n', '')
+          } else if (args[0] === 'list' && args[2] === 'sinks') {
+            cb(null, '51\tdefault_sink\n', '')
+          } else if (args[0] === 'load-module' && args[1] === 'module-null-sink') {
+            cb(null, '101\n', '')
+          } else {
+            cb(new Error(`unexpected command ${args.join(' ')}`), '', '')
+          }
+        })
+
+        const res = await ensureLinuxAudioSink()
+        expect(res.success).toBe(true)
+        expect(executedCommands).toHaveLength(3)
+        expect(executedCommands[0]).toEqual(['list', 'short', 'sources'])
+        expect(executedCommands[1]).toEqual(['list', 'short', 'sinks'])
+        expect(executedCommands[2][1]).toBe('module-null-sink')
       })
 
       it('creates both null sink and remap-source when neither exists', async () => {

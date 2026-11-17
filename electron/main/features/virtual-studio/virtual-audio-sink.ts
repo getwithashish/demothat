@@ -106,6 +106,10 @@ export class VirtualAudioSink {
         log.warn('[VirtualAudioSink] pacat stdin error:', err.message)
       })
 
+      proc.on('error', (err) => {
+        log.error('[VirtualAudioSink] pacat process error:', err)
+      })
+
       proc.on('close', (code) => {
         log.info(`[VirtualAudioSink] pacat closed with code ${code}`)
         if (this.audioProcess === proc) {
@@ -187,7 +191,11 @@ export class VirtualAudioSink {
     }
 
     try {
-      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk instanceof ArrayBuffer ? chunk : chunk.buffer)
+      const buffer = Buffer.isBuffer(chunk)
+        ? chunk
+        : chunk instanceof ArrayBuffer
+          ? Buffer.from(chunk)
+          : Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength)
 
       if (this.audioProcess && this.audioProcess.stdin.writable) {
         this.audioProcess.stdin.write(buffer)

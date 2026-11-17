@@ -105,6 +105,7 @@ export function usePreviewAudioMixer({ videoRef, isPlaying }: UsePreviewAudioMix
         video: video as unknown as MediaLike,
         createElement: (url) => {
           const element = new Audio(url)
+          element.crossOrigin = 'anonymous'
           element.preload = 'auto'
           return asMedia(element)
         },

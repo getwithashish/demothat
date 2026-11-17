@@ -5,6 +5,7 @@ const mockStdin = {
   write: vi.fn().mockReturnValue(true),
   end: vi.fn(),
   writable: true,
+  writableLength: 0,
   destroyed: false,
   on: vi.fn(),
   once: vi.fn(),
@@ -51,10 +52,11 @@ describe('VirtualCameraSink', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    mockStdin.writableLength = 0
     sink = new VirtualCameraSink()
   })
 
-  it('standardizes resolution to DEFAULT_VIRTUAL_STUDIO_RESOLUTION and passes Lanczos chroma filter, unsharp edge filter, and BT.709 color matrix flags on Linux', async () => {
+  it('standardizes resolution to DEFAULT_VIRTUAL_STUDIO_RESOLUTION and passes BT.709 bicubic scale flags on Linux', async () => {
     const res = await sink.start({ width: 0, height: 0, fps: 0 })
     expect(res.success).toBe(true)
     expect(sink.isActive()).toBe(true)
@@ -74,7 +76,7 @@ describe('VirtualCameraSink', () => {
         '-r',
         '30',
         '-vf',
-        'scale=out_color_matrix=bt709:out_range=limited:flags=lanczos+accurate_rnd+full_chroma_int,unsharp=lx=5:ly=5:la=1.0:cx=5:cy=5:ca=0.5',
+        'scale=out_color_matrix=bt709:out_range=limited:flags=bicubic',
         '-color_range',
         'tv',
         '-colorspace',
@@ -124,9 +126,9 @@ describe('VirtualCameraSink', () => {
     })
     expect(stoppedOk).toBe(false)
 
-    // When active and write returns false (backpressure)
+    // When active and queue length exceeds threshold (backpressure)
     await sink.start({ width: 1280, height: 720, fps: 30 })
-    mockStdin.write.mockReturnValueOnce(false)
+    mockStdin.writableLength = 100 // > 3 * 2
 
     const drainedPromise = sink.pushFrame({
       data: new Uint8Array([1, 2, 3]),
@@ -136,6 +138,7 @@ describe('VirtualCameraSink', () => {
 
     // Simulate drain
     const drainCallback = mockStdin.once.mock.calls.find((call) => call[0] === 'drain')?.[1]
+    mockStdin.writableLength = 0
     drainCallback?.()
 
     const backpressureOk = await drainedPromise

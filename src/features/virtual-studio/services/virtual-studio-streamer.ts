@@ -445,6 +445,10 @@ export class VirtualStudioStreamer {
     this.isPlaying = isPlaying
     this.activeSource = isPlaying ? 'canvas' : 'webcam'
 
+    if (isPlaying && this.audioContext?.state === 'suspended') {
+      void this.audioContext.resume().catch(() => {})
+    }
+
     this.applyInstantAutoReturn()
 
     // Synchronize status with main process
@@ -604,7 +608,13 @@ export class VirtualStudioStreamer {
         this.zeroGainNode.connect(this.audioContext.destination)
       }
 
-      this.wireVideoAudioGraph()
+      if (this.attachedMediaStream) {
+        this.attachMediaStream(this.attachedMediaStream)
+      } else if (this.videoElement) {
+        this.attachVideoElement(this.videoElement)
+      } else {
+        this.wireVideoAudioGraph()
+      }
     } catch (err) {
       console.warn('[VirtualStudioStreamer] Error building Web Audio graph:', err)
     }
@@ -646,9 +656,7 @@ export class VirtualStudioStreamer {
     this.micSourceNode = null
     this.micGainNode = null
     this.mediaStreamSourceNode = null
-    this.attachedMediaStream = null
     this.videoSourceNode = null
-    this.videoElement = null
     this.videoToVirtualMicGain = null
     this.localMonitoringGain = null
     this.virtualMicMasterNode = null

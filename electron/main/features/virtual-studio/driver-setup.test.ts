@@ -283,6 +283,7 @@ describe('driver-setup', () => {
             'video_nr=10',
             'card_label=DemoThat Virtual Camera',
             'exclusive_caps=1',
+            'max_buffers=4',
           ])
           cb(null, '', '')
         } else {

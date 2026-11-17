@@ -188,7 +188,7 @@ export async function installLinuxDriver(): Promise<{ success: boolean; error?: 
     // Attempt loading v4l2loopback and configuring passwordless sudoers rule for dynamic unload on app exit
     const sudoersRule =
       'ALL ALL=(root) NOPASSWD: /usr/sbin/modprobe -r v4l2loopback, /usr/sbin/modprobe v4l2loopback *, /sbin/modprobe -r v4l2loopback, /sbin/modprobe v4l2loopback *'
-    const script = `modprobe v4l2loopback video_nr=10 card_label="DemoThat Virtual Camera" exclusive_caps=1 && echo "${sudoersRule}" > /etc/sudoers.d/demothat-v4l2 && chmod 0440 /etc/sudoers.d/demothat-v4l2`
+    const script = `modprobe v4l2loopback video_nr=10 card_label="DemoThat Virtual Camera" exclusive_caps=1 max_buffers=4 && echo "${sudoersRule}" > /etc/sudoers.d/demothat-v4l2 && chmod 0440 /etc/sudoers.d/demothat-v4l2`
 
     let { code, stderr } = await execPromise('pkexec', ['sh', '-c', script], { timeout: 30000 })
 
@@ -196,7 +196,14 @@ export async function installLinuxDriver(): Promise<{ success: boolean; error?: 
       // Fallback to simple modprobe without sudoers write if restricted
       const fallback = await execPromise(
         'pkexec',
-        ['modprobe', 'v4l2loopback', 'video_nr=10', 'card_label=DemoThat Virtual Camera', 'exclusive_caps=1'],
+        [
+          'modprobe',
+          'v4l2loopback',
+          'video_nr=10',
+          'card_label=DemoThat Virtual Camera',
+          'exclusive_caps=1',
+          'max_buffers=4',
+        ],
         { timeout: 30000 },
       )
       code = fallback.code
@@ -232,7 +239,15 @@ export async function ensureLinuxCameraDriver(): Promise<{ success: boolean; err
     }
     const { code, stderr } = await execPromise(
       'sudo',
-      ['-n', 'modprobe', 'v4l2loopback', 'video_nr=10', 'card_label=DemoThat Virtual Camera', 'exclusive_caps=1'],
+      [
+        '-n',
+        'modprobe',
+        'v4l2loopback',
+        'video_nr=10',
+        'card_label=DemoThat Virtual Camera',
+        'exclusive_caps=1',
+        'max_buffers=4',
+      ],
       { timeout: 5000 },
     )
     if (code === 0) {

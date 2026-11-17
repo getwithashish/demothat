@@ -84,7 +84,13 @@ describe('setHasAudioTrack audio track fallback', () => {
   })
 
   it('does not replace manifest tracks when audioTracksFromManifest is true and audioTracks is non-empty', () => {
-    const manifestTrack = { id: 'manifest-track', label: 'Screen Audio', kind: 'screen' as const, volume: 1, muted: false }
+    const manifestTrack = {
+      id: 'manifest-track',
+      label: 'Screen Audio',
+      kind: 'screen' as const,
+      volume: 1,
+      muted: false,
+    }
     useEditorStore.setState((state) => {
       Object.assign(state, {
         audioTracksFromManifest: true,

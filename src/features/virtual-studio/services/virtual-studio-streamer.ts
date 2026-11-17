@@ -14,7 +14,7 @@ export interface VirtualStudioIPC {
   installDriver: () => Promise<VirtualStudioActionResult>
   start: (config: VirtualStudioConfig) => Promise<VirtualStudioActionResult>
   stop: () => Promise<VirtualStudioActionResult>
-  pushFrame: (payload: VirtualFramePayload) => Promise<VirtualStudioActionResult>
+  pushFrame: (payload: VirtualFramePayload) => void
   pushAudio: (buffer: Uint8Array | ArrayBuffer) => Promise<VirtualStudioActionResult>
   triggerAction: (action: TrayQuickAction) => Promise<VirtualStudioActionResult>
   updateStatus: (patch: Partial<VirtualStudioStatus>) => void
@@ -61,8 +61,9 @@ export const defaultIpcBridge: VirtualStudioIPC = {
   installDriver: () => getVirtualStudioAPI()?.installDriver() ?? Promise.resolve({ success: true }),
   start: (config: VirtualStudioConfig) => getVirtualStudioAPI()?.start(config) ?? Promise.resolve({ success: true }),
   stop: () => getVirtualStudioAPI()?.stop() ?? Promise.resolve({ success: true }),
-  pushFrame: (payload: VirtualFramePayload) =>
-    getVirtualStudioAPI()?.pushFrame(payload) ?? Promise.resolve({ success: true }),
+  pushFrame: (payload: VirtualFramePayload) => {
+    getVirtualStudioAPI()?.pushFrame(payload)
+  },
   pushAudio: (buffer: Uint8Array | ArrayBuffer) =>
     getVirtualStudioAPI()?.pushAudio(buffer) ?? Promise.resolve({ success: true }),
   triggerAction: (action: TrayQuickAction) =>
@@ -118,7 +119,9 @@ export class VirtualStudioStreamer {
     ...DEFAULT_VIRTUAL_STUDIO_RESOLUTION,
   }
   private lastThumbnailTime = 0
-  private isPushingFrame = false
+  private transferBuffer: Uint8Array | null = null
+  private isMiniHudVisible = true
+  private nextFrameTime = 0
 
   // Dependency Injections
   private audioContext: AudioContext | null = null
@@ -135,7 +138,7 @@ export class VirtualStudioStreamer {
   private scratchCtx: CanvasRenderingContext2D | null = null
   private hudThumbnailCanvas: HTMLCanvasElement | null = null
   private hudThumbnailCtx: CanvasRenderingContext2D | null = null
-  private frameTimer: ReturnType<typeof setInterval> | null = null
+  private frameTimer: ReturnType<typeof setTimeout> | null = null
   private previewListeners: Set<PreviewFrameCallback> = new Set()
 
   // Dual-Output Audio Graph State
@@ -213,6 +216,14 @@ export class VirtualStudioStreamer {
     if (this.active) {
       this.ipcBridge.updateStatus({ isMirrored: mirrored } as Partial<VirtualStudioStatus>)
     }
+  }
+
+  public isHudVisible(): boolean {
+    return this.isMiniHudVisible
+  }
+
+  public setMiniHudVisible(visible: boolean): void {
+    this.isMiniHudVisible = visible
   }
 
   public getPreviewCanvas(): HTMLCanvasElement | null {
@@ -360,9 +371,12 @@ export class VirtualStudioStreamer {
     if (config.localMonitoringVolume !== undefined) {
       this.localMonitoringVolume = Math.max(0, Math.min(1, config.localMonitoringVolume))
     }
-    const configAny = config as unknown as { isMirrored?: boolean }
+    const configAny = config as unknown as { isMirrored?: boolean; isMiniHudVisible?: boolean }
     if (configAny.isMirrored !== undefined) {
       this.isMirrored = configAny.isMirrored
+    }
+    if (configAny.isMiniHudVisible !== undefined) {
+      this.isMiniHudVisible = configAny.isMiniHudVisible
     }
 
     this.active = true
@@ -429,6 +443,8 @@ export class VirtualStudioStreamer {
     this.teardownAudioGraph()
     this.hudThumbnailCanvas = null
     this.hudThumbnailCtx = null
+    this.transferBuffer = null
+    this.lastThumbnailTime = 0
 
     // Notify IPC main process
     const result = await this.ipcBridge.stop()
@@ -800,15 +816,32 @@ export class VirtualStudioStreamer {
 
   private startFrameLoop(): void {
     this.stopFrameLoop()
-    const intervalMs = Math.round(1000 / (this.outputResolution.fps || 30))
-    this.frameTimer = setInterval(() => {
+    const fps =
+      Number.isFinite(this.outputResolution.fps) && this.outputResolution.fps > 0 ? this.outputResolution.fps : 30
+    const frameInterval = 1000 / fps
+    this.nextFrameTime = performance.now() + frameInterval
+
+    const scheduleNext = () => {
+      if (!this.active) return
       this.captureTick()
-    }, intervalMs)
+
+      this.nextFrameTime += frameInterval
+      const now = performance.now()
+      if (now - this.nextFrameTime > frameInterval * 2) {
+        this.nextFrameTime = now + frameInterval
+      }
+
+      const delay = Math.max(0, this.nextFrameTime - performance.now())
+      this.frameTimer = setTimeout(scheduleNext, delay)
+    }
+
+    const initialDelay = Math.max(0, Math.round(frameInterval))
+    this.frameTimer = setTimeout(scheduleNext, initialDelay)
   }
 
   private stopFrameLoop(): void {
     if (this.frameTimer) {
-      clearInterval(this.frameTimer)
+      clearTimeout(this.frameTimer)
       this.frameTimer = null
     }
   }
@@ -843,11 +876,6 @@ export class VirtualStudioStreamer {
    */
   public captureTick(): void {
     if (!this.active || !this.scratchCanvas || !this.scratchCtx) return
-
-    // Drop frame if previous IPC push is still in-flight, preventing IPC queue buildup
-    if (this.isPushingFrame) {
-      return
-    }
 
     const { width, height } = this.outputResolution
     if (width <= 0 || height <= 0) return
@@ -890,49 +918,53 @@ export class VirtualStudioStreamer {
     }
 
     try {
-      // Extract frame pixels
+      // Extract frame pixels into pre-allocated transfer buffer
       const imgData = this.scratchCtx.getImageData(0, 0, width, height)
-      this.isPushingFrame = true
-      void this.ipcBridge
-        .pushFrame({
-          data: new Uint8Array(imgData.data.buffer, imgData.data.byteOffset, imgData.data.byteLength),
-          width,
-          height,
-          format: 'rgba',
-          timestamp: performance.now(),
-        })
-        .finally(() => {
-          this.isPushingFrame = false
-        })
+      const byteLength = width * height * 4
+      if (!this.transferBuffer || this.transferBuffer.byteLength !== byteLength) {
+        this.transferBuffer = new Uint8Array(byteLength)
+      }
+      this.transferBuffer.set(imgData.data)
+
+      this.ipcBridge.pushFrame({
+        data: this.transferBuffer,
+        width,
+        height,
+        format: 'rgba',
+        timestamp: performance.now(),
+      })
     } catch (err) {
-      this.isPushingFrame = false
       console.warn('[VirtualStudioStreamer] Error extracting or pushing frame:', err)
     }
 
     // Broadcast live thumbnail frame to IPC for the standalone desktop Mini-HUD window.
     // Rendered into cached 320x180 thumbnail canvas to reduce JPEG compression overhead by 36x (<0.5ms) and eliminate UI stutter.
-    const now = performance.now()
-    if (now - this.lastThumbnailTime >= 100) {
-      this.lastThumbnailTime = now
-      try {
-        if (!this.hudThumbnailCanvas) {
-          this.hudThumbnailCanvas = this.createCanvas()
-          this.hudThumbnailCanvas.width = 320
-          this.hudThumbnailCanvas.height = 180
-          this.hudThumbnailCtx = this.hudThumbnailCanvas.getContext?.('2d') ?? null
-        }
-        if (this.hudThumbnailCtx && typeof this.hudThumbnailCtx.drawImage === 'function') {
-          this.hudThumbnailCtx.drawImage(this.scratchCanvas, 0, 0, 320, 180)
-          if (typeof this.hudThumbnailCanvas.toDataURL === 'function') {
-            const thumbnail = this.hudThumbnailCanvas.toDataURL('image/jpeg', 0.5)
+    // Only generate and push Mini-HUD preview thumbnails if Mini-HUD is active/listening.
+    const isHudActive = this.isMiniHudVisible || this.previewListeners.size > 0
+    if (isHudActive) {
+      const now = performance.now()
+      if (this.lastThumbnailTime === 0 || now - this.lastThumbnailTime >= 100) {
+        this.lastThumbnailTime = now
+        try {
+          if (!this.hudThumbnailCanvas) {
+            this.hudThumbnailCanvas = this.createCanvas()
+            this.hudThumbnailCanvas.width = 320
+            this.hudThumbnailCanvas.height = 180
+            this.hudThumbnailCtx = this.hudThumbnailCanvas.getContext?.('2d') ?? null
+          }
+          if (this.hudThumbnailCtx && typeof this.hudThumbnailCtx.drawImage === 'function') {
+            this.hudThumbnailCtx.drawImage(this.scratchCanvas, 0, 0, 320, 180)
+            if (typeof this.hudThumbnailCanvas.toDataURL === 'function') {
+              const thumbnail = this.hudThumbnailCanvas.toDataURL('image/jpeg', 0.5)
+              this.ipcBridge.pushPreviewFrame?.(thumbnail)
+            }
+          } else if (typeof this.scratchCanvas.toDataURL === 'function') {
+            const thumbnail = this.scratchCanvas.toDataURL('image/jpeg', 0.5)
             this.ipcBridge.pushPreviewFrame?.(thumbnail)
           }
-        } else if (typeof this.scratchCanvas.toDataURL === 'function') {
-          const thumbnail = this.scratchCanvas.toDataURL('image/jpeg', 0.5)
-          this.ipcBridge.pushPreviewFrame?.(thumbnail)
+        } catch {
+          // Ignore canvas read/data URL errors
         }
-      } catch {
-        // Ignore canvas read/data URL errors
       }
     }
 
@@ -975,10 +1007,13 @@ export class VirtualStudioStreamer {
       if (state.selectedMicId !== prevState.selectedMicId) {
         void this.setSelectedMic(state.selectedMicId)
       }
-      const stateAny = state as unknown as { isMirrored?: boolean }
-      const prevStateAny = prevState as unknown as { isMirrored?: boolean }
+      const stateAny = state as unknown as { isMirrored?: boolean; isMiniHudVisible?: boolean }
+      const prevStateAny = prevState as unknown as { isMirrored?: boolean; isMiniHudVisible?: boolean }
       if (stateAny.isMirrored !== undefined && stateAny.isMirrored !== prevStateAny.isMirrored) {
         this.setMirrored(stateAny.isMirrored)
+      }
+      if (stateAny.isMiniHudVisible !== undefined && stateAny.isMiniHudVisible !== prevStateAny.isMiniHudVisible) {
+        this.setMiniHudVisible(stateAny.isMiniHudVisible)
       }
       if (state.isVirtualStudioActive !== prevState.isVirtualStudioActive) {
         if (state.isVirtualStudioActive) {
@@ -990,6 +1025,7 @@ export class VirtualStudioStreamer {
             enableLocalAudioMonitoring: state.isLocalAudioMonitoringEnabled,
             localMonitoringVolume: state.localMonitoringVolume,
             isMirrored: stateAny.isMirrored ?? false,
+            isMiniHudVisible: stateAny.isMiniHudVisible ?? true,
           } as Partial<VirtualStudioConfig>)
         } else {
           void this.stop()
@@ -1003,6 +1039,9 @@ export class VirtualStudioStreamer {
 
     const unsubStatus = this.ipcBridge.onStatusChange?.((status) => {
       useEditorStore.getState().setVirtualStudioStatus(status)
+      if (status.isMiniHudVisible !== undefined) {
+        this.setMiniHudVisible(status.isMiniHudVisible)
+      }
     })
 
     return () => {

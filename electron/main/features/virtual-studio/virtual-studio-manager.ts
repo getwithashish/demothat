@@ -232,9 +232,18 @@ export class VirtualStudioManager {
     if (!this.status.isStreaming) {
       return { success: false, error: 'Virtual Studio is not streaming' }
     }
+    if (!payload || !payload.data) {
+      return { success: false, error: 'Invalid frame payload' }
+    }
 
-    const ok = await this.cameraSink.pushFrame(payload)
-    return { success: ok }
+    try {
+      const ok = await this.cameraSink.pushFrame(payload)
+      return { success: ok }
+    } catch (err: unknown) {
+      const error = err instanceof Error ? err.message : String(err)
+      log.warn('[VirtualStudioManager] pushFrame error:', error)
+      return { success: false, error }
+    }
   }
 
   /**

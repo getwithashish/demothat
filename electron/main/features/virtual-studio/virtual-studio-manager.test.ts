@@ -497,6 +497,37 @@ describe('VirtualStudioManager', () => {
       expect(audioRes.success).toBe(false)
     })
 
+    it('handles pushFrame with invalid or missing payload data gracefully', async () => {
+      await manager.start(defaultConfig)
+
+      const nullPayloadRes = await manager.pushFrame(
+        null as unknown as { data: Uint8Array; width: number; height: number },
+      )
+      expect(nullPayloadRes.success).toBe(false)
+      expect(nullPayloadRes.error).toBe('Invalid frame payload')
+
+      const missingDataRes = await manager.pushFrame({
+        data: null as unknown as Uint8Array,
+        width: 1280,
+        height: 720,
+      })
+      expect(missingDataRes.success).toBe(false)
+      expect(missingDataRes.error).toBe('Invalid frame payload')
+    })
+
+    it('handles cameraSink.pushFrame rejection without throwing unhandled exceptions', async () => {
+      await manager.start(defaultConfig)
+
+      mockCameraSink.pushFrame.mockRejectedValueOnce(new Error('Hardware sink pipe broken'))
+      const frameRes = await manager.pushFrame({
+        data: new Uint8Array([1, 2, 3]),
+        width: 1280,
+        height: 720,
+      })
+      expect(frameRes.success).toBe(false)
+      expect(frameRes.error).toBe('Hardware sink pipe broken')
+    })
+
     it('broadcasts preview frame to non-destroyed windows', () => {
       manager.pushPreviewFrame('data:image/jpeg;base64,sample')
       expect(mockWindow.webContents.send).toHaveBeenCalledWith(

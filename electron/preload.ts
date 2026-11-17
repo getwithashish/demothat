@@ -735,8 +735,7 @@ export const electronAPI = {
     start: (config: VirtualStudioConfig): Promise<VirtualStudioActionResult> =>
       ipcRenderer.invoke('virtual-studio:start', config),
     stop: (): Promise<VirtualStudioActionResult> => ipcRenderer.invoke('virtual-studio:stop'),
-    pushFrame: (payload: VirtualFramePayload): Promise<VirtualStudioActionResult> =>
-      ipcRenderer.invoke('virtual-studio:push-frame', payload),
+    pushFrame: (payload: VirtualFramePayload): void => ipcRenderer.send('virtual-studio:push-frame', payload),
     pushAudio: (buffer: Uint8Array | ArrayBuffer): Promise<VirtualStudioActionResult> =>
       ipcRenderer.invoke('virtual-studio:push-audio', buffer),
     triggerAction: (action: TrayQuickAction): Promise<VirtualStudioActionResult> =>

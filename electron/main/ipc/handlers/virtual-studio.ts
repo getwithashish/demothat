@@ -1,4 +1,5 @@
 import { ipcMain } from 'electron'
+import log from 'electron-log/main'
 import type {
   VirtualStudioConfig,
   VirtualFramePayload,
@@ -25,8 +26,10 @@ export function registerVirtualStudioHandlers(): void {
     return virtualStudioManager.stop()
   })
 
-  ipcMain.handle('virtual-studio:push-frame', async (_event, payload: VirtualFramePayload) => {
-    return virtualStudioManager.pushFrame(payload)
+  ipcMain.on('virtual-studio:push-frame', (_event, payload: VirtualFramePayload) => {
+    void virtualStudioManager.pushFrame(payload).catch((err) => {
+      log.warn('[VirtualStudioIPC] Error pushing frame:', err)
+    })
   })
 
   ipcMain.handle('virtual-studio:push-audio', async (_event, buffer: Uint8Array | ArrayBuffer) => {

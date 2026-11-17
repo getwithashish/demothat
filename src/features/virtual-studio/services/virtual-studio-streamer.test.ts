@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { VirtualStudioStreamer, type VirtualStudioIPC, type StreamerDependencies } from './virtual-studio-streamer'
+import type { VirtualStudioConfig } from '../../../../shared/virtual-camera-types'
 import { useEditorStore } from '../../../store/editorStore'
 
 class MockAudioParam {
@@ -81,7 +82,7 @@ describe('VirtualStudioStreamer', () => {
   }
 
   beforeEach(() => {
-    vi.useFakeTimers()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date', 'performance'] })
 
     mockContext = new MockAudioContext()
 
@@ -104,7 +105,7 @@ describe('VirtualStudioStreamer', () => {
       installDriver: vi.fn().mockResolvedValue({ success: true }),
       start: vi.fn().mockResolvedValue({ success: true }),
       stop: vi.fn().mockResolvedValue({ success: true }),
-      pushFrame: vi.fn().mockResolvedValue({ success: true }),
+      pushFrame: vi.fn(),
       pushAudio: vi.fn().mockResolvedValue({ success: true }),
       triggerAction: vi.fn().mockResolvedValue({ success: true }),
       updateStatus: vi.fn(),
@@ -363,30 +364,82 @@ describe('VirtualStudioStreamer', () => {
       expect(mockIpc.pushFrame).toHaveBeenCalled()
     })
 
-    it('drops frame tick if previous pushFrame is still in-flight to prevent queue buildup', async () => {
-      let resolvePush: (value: { success: boolean }) => void = () => {}
-      mockIpc.pushFrame = vi.fn().mockImplementation(
-        () =>
-          new Promise((resolve) => {
-            resolvePush = resolve
-          }),
-      )
-
+    it('pushes frames unidirectionally on each captureTick without blocking or dropping frames', async () => {
       await streamer.start()
       streamer.captureTick()
       expect(mockIpc.pushFrame).toHaveBeenCalledTimes(1)
 
-      // Subsequent tick while first push is still unresolved
-      streamer.captureTick()
-      expect(mockIpc.pushFrame).toHaveBeenCalledTimes(1) // Dropped!
-
-      // Resolve the first push
-      resolvePush({ success: true })
-      await Promise.resolve()
-
-      // Now next tick is allowed
+      // Subsequent tick pushes immediately without waiting or dropping
       streamer.captureTick()
       expect(mockIpc.pushFrame).toHaveBeenCalledTimes(2)
+
+      streamer.captureTick()
+      expect(mockIpc.pushFrame).toHaveBeenCalledTimes(3)
+    })
+
+    it('reuses the same pre-allocated transfer buffer across capture ticks to eliminate GC churn', async () => {
+      await streamer.start()
+      streamer.captureTick()
+      const firstPayload = mockIpc.pushFrame.mock.calls[0][0]
+
+      streamer.captureTick()
+      const secondPayload = mockIpc.pushFrame.mock.calls[1][0]
+
+      expect(firstPayload.data).toBe(secondPayload.data)
+      expect(firstPayload.data.byteLength).toBe(1280 * 720 * 4)
+    })
+
+    it('only generates and pushes Mini-HUD preview thumbnails when Mini-HUD is visible or has listeners', async () => {
+      await streamer.start({ isMiniHudVisible: false } as unknown as Partial<VirtualStudioConfig>)
+      mockIpc.pushPreviewFrame.mockClear()
+
+      streamer.captureTick()
+      expect(mockIpc.pushFrame).toHaveBeenCalled()
+      expect(mockIpc.pushPreviewFrame).not.toHaveBeenCalled()
+
+      // When Mini-HUD becomes visible
+      streamer.setMiniHudVisible(true)
+      // Advance by 100ms so thumbnail throttling interval passes
+      vi.advanceTimersByTime(100)
+      streamer.captureTick()
+      expect(mockIpc.pushPreviewFrame).toHaveBeenCalled()
+    })
+
+    it('runs frame loop with drift compensation at target FPS', async () => {
+      await streamer.start({ outputResolution: { width: 1280, height: 720, fps: 30 } })
+      mockIpc.pushFrame.mockClear()
+
+      // Advance by 1 second (1000ms)
+      vi.advanceTimersByTime(1000)
+      // Should have captured 30 frames over 1000ms
+      expect(mockIpc.pushFrame.mock.calls.length).toBeGreaterThanOrEqual(29)
+      expect(mockIpc.pushFrame.mock.calls.length).toBeLessThanOrEqual(31)
+    })
+
+    it('maintains steady cadence without double-firing on initial frames', async () => {
+      await streamer.start({ outputResolution: { width: 1280, height: 720, fps: 30 } })
+      mockIpc.pushFrame.mockClear()
+
+      // Advance by 34ms (first frame interval: 1000/30 = 33.3ms)
+      vi.advanceTimersByTime(34)
+      expect(mockIpc.pushFrame).toHaveBeenCalledTimes(1)
+
+      // Advance by another 33ms (total 67ms -> second frame should fire)
+      vi.advanceTimersByTime(33)
+      expect(mockIpc.pushFrame).toHaveBeenCalledTimes(2)
+
+      // Advance by another 33ms (total 100ms -> third frame should fire)
+      vi.advanceTimersByTime(33)
+      expect(mockIpc.pushFrame).toHaveBeenCalledTimes(3)
+    })
+
+    it('falls back to 30 FPS when fps is zero, negative, or invalid', async () => {
+      await streamer.start({ outputResolution: { width: 1280, height: 720, fps: 0 } })
+      mockIpc.pushFrame.mockClear()
+
+      vi.advanceTimersByTime(1000)
+      expect(mockIpc.pushFrame.mock.calls.length).toBeGreaterThanOrEqual(29)
+      expect(mockIpc.pushFrame.mock.calls.length).toBeLessThanOrEqual(31)
     })
 
     it('notifies registered preview listeners with the outgoing scratch canvas', async () => {

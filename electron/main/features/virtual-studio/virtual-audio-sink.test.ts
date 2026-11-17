@@ -46,12 +46,12 @@ describe('VirtualAudioSink', () => {
     sink = new VirtualAudioSink()
   })
 
-  it('spawns pacat on Linux with correct audio parameters and registers error handlers', async () => {
+  it('spawns pacat on Linux with default demothat_sink when deviceSinkName is omitted', async () => {
     const originalPlatform = process.platform
     Object.defineProperty(process, 'platform', { value: 'linux', configurable: true })
 
     try {
-      const result = await sink.start({ sampleRate: 48000, channels: 2, deviceSinkName: 'demothat_mic' })
+      const result = await sink.start({ sampleRate: 48000, channels: 2 })
       expect(result.success).toBe(true)
       expect(sink.isActive()).toBe(true)
 
@@ -60,12 +60,33 @@ describe('VirtualAudioSink', () => {
         '--format=s16le',
         '--rate=48000',
         '--channels=2',
-        '--device=demothat_mic',
+        '--device=demothat_sink',
       ])
 
       // Verify pacat process error handler is attached
       mockProc.emit('error', new Error('pacat runtime failure'))
       expect(log.error).toHaveBeenCalledWith('[VirtualAudioSink] pacat process error:', expect.any(Error))
+    } finally {
+      Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true })
+    }
+  })
+
+  it('spawns pacat on Linux with explicit deviceSinkName', async () => {
+    const originalPlatform = process.platform
+    Object.defineProperty(process, 'platform', { value: 'linux', configurable: true })
+
+    try {
+      const result = await sink.start({ sampleRate: 48000, channels: 2, deviceSinkName: 'custom_sink' })
+      expect(result.success).toBe(true)
+      expect(sink.isActive()).toBe(true)
+
+      expect(spawn).toHaveBeenCalledWith('pacat', [
+        '--playback',
+        '--format=s16le',
+        '--rate=48000',
+        '--channels=2',
+        '--device=custom_sink',
+      ])
     } finally {
       Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true })
     }

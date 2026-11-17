@@ -1149,12 +1149,11 @@ export async function stopRecording() {
     }
   }
 
-  // Step 2b: Process and save metadata (after video file is complete)
-  await processAndSaveMetadata(finalizedSession)
-
-  // Step 2c: Linux/Windows — if we captured system audio separately, mux it
-  // into the (already-existing) screen mp4. Skipped on macOS because the
-  // system audio is already inside the webm and folded in by muxMacScreenWebm.
+  // Step 2b: Linux/Windows — if we captured system audio separately, mux it
+  // into the (already-existing) screen mp4 BEFORE metadata processing so that
+  // probeAudioTracks probes the final container with all audio tracks present.
+  // Skipped on macOS because the system audio is already inside the webm and
+  // folded in by muxMacScreenWebm.
   if (finalizedSession.systemAudioPath) {
     try {
       await muxSystemAudio(finalizedSession)
@@ -1165,6 +1164,9 @@ export async function stopRecording() {
       finalizedSession.systemAudioPath = undefined
     }
   }
+
+  // Step 2c: Process and save metadata (after video and audio tracks are complete)
+  await processAndSaveMetadata(finalizedSession)
 
   // Step 3: Validate file
   const isValid = await validateRecordingFiles(finalizedSession)

@@ -566,7 +566,7 @@ export class VirtualStudioStreamer {
     this.scratchCtx = this.scratchCanvas.getContext?.('2d') ?? null
     if (this.scratchCtx) {
       this.scratchCtx.imageSmoothingEnabled = true
-      this.scratchCtx.imageSmoothingQuality = 'high'
+      this.scratchCtx.imageSmoothingQuality = 'medium'
     }
 
     // Initialize HUD thumbnail canvas (320x180) to reduce JPEG encoding overhead by 36x
@@ -1168,6 +1168,7 @@ export class VirtualStudioStreamer {
         if (cw === width && ch === height) {
           // Native 1080p 1:1 canvas extraction without 0.6667x fractional scaling downsample blur.
           // Direct draw without redundant fillRect when dimensions match exactly.
+          this.scratchCtx.imageSmoothingEnabled = false
           this.scratchCtx.drawImage(this.sourceCanvas, 0, 0, width, height)
           return
         }
@@ -1201,7 +1202,7 @@ export class VirtualStudioStreamer {
     if (width <= 0 || height <= 0) return
 
     this.scratchCtx.imageSmoothingEnabled = true
-    this.scratchCtx.imageSmoothingQuality = 'high'
+    this.scratchCtx.imageSmoothingQuality = 'medium'
 
     if (this.isMirrored && typeof this.scratchCtx.save === 'function') {
       this.scratchCtx.save()

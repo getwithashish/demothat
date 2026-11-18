@@ -604,19 +604,19 @@ describe('VirtualStudioStreamer', () => {
       expect(mockCtx.drawImage).toHaveBeenCalledWith(squareCanvas, 420, 0, 1080, 1080)
     })
 
-    it('enables high-quality image smoothing on scratchCtx for crisp HD video scaling', async () => {
+    it('enables medium-quality image smoothing on scratchCtx for high-performance HD video scaling', async () => {
       mockCtx.imageSmoothingEnabled = false
       mockCtx.imageSmoothingQuality = 'low'
 
       await streamer.start()
       expect(mockCtx.imageSmoothingEnabled).toBe(true)
-      expect(mockCtx.imageSmoothingQuality).toBe('high')
+      expect(mockCtx.imageSmoothingQuality).toBe('medium')
 
       mockCtx.imageSmoothingEnabled = false
       mockCtx.imageSmoothingQuality = 'low'
       streamer.captureTick()
       expect(mockCtx.imageSmoothingEnabled).toBe(true)
-      expect(mockCtx.imageSmoothingQuality).toBe('high')
+      expect(mockCtx.imageSmoothingQuality).toBe('medium')
     })
 
     it('downscales live preview thumbnail to 320x180 before JPEG compression for zero UI stutter', async () => {

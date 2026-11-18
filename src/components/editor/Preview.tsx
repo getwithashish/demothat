@@ -113,6 +113,7 @@ export const Preview = memo(
     const clipVideoRefs = useRef<Map<string, HTMLVideoElement>>(new Map())
     const animationFrameId = useRef<number>()
     const studioTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const rvfcHandleRef = useRef<number | null>(null)
     const nextFrameTimeRef = useRef<number>(0)
     const renderCanvasRef = useRef<() => Promise<void>>()
     const drawInFlight = useRef(false)
@@ -606,6 +607,16 @@ export const Preview = memo(
     )
 
     const cancelScheduledRender = useCallback(() => {
+      if (rvfcHandleRef.current !== null && videoRef.current && 'cancelVideoFrameCallback' in videoRef.current) {
+        try {
+          ;(
+            videoRef.current as HTMLVideoElement & { cancelVideoFrameCallback: (handle: number) => void }
+          ).cancelVideoFrameCallback(rvfcHandleRef.current)
+        } catch {
+          // Ignore
+        }
+        rvfcHandleRef.current = null
+      }
       if (animationFrameId.current !== undefined) {
         cancelAnimationFrame(animationFrameId.current)
         animationFrameId.current = undefined
@@ -614,10 +625,29 @@ export const Preview = memo(
         clearTimeout(studioTimerRef.current)
         studioTimerRef.current = null
       }
-    }, [])
+    }, [videoRef])
 
     const scheduleNextRender = useCallback(() => {
       cancelScheduledRender()
+      const video = videoRef.current
+      if (
+        video &&
+        'requestVideoFrameCallback' in video &&
+        typeof (video as HTMLVideoElement & { requestVideoFrameCallback?: unknown }).requestVideoFrameCallback ===
+          'function' &&
+        !video.paused
+      ) {
+        rvfcHandleRef.current = (
+          video as HTMLVideoElement & {
+            requestVideoFrameCallback: (callback: (now: number, metadata: unknown) => void) => number
+          }
+        ).requestVideoFrameCallback(() => {
+          rvfcHandleRef.current = null
+          void renderCanvasRef.current?.()
+        })
+        return
+      }
+
       if (isVirtualStudioActive) {
         // High-precision setTimeout loop running at 30 FPS with drift compensation,
         // decoupled from requestAnimationFrame so frames continue rendering and
@@ -641,7 +671,7 @@ export const Preview = memo(
           void renderCanvasRef.current?.()
         })
       }
-    }, [isVirtualStudioActive, cancelScheduledRender])
+    }, [isVirtualStudioActive, cancelScheduledRender, videoRef])
 
     const renderCanvas = useCallback(async () => {
       // While playing, drop a frame instead of queueing one when the previous
@@ -707,7 +737,6 @@ export const Preview = memo(
     }, [
       isPlaying,
       isVirtualStudioActive,
-      currentTime,
       renderCanvas,
       scheduleNextRender,
       cancelScheduledRender,
@@ -723,6 +752,13 @@ export const Preview = memo(
       cursorBitmapsToRender,
       videoClips,
     ])
+
+    // Dedicated effect for instant still-frame rendering when scrubbing/seeking while paused
+    useEffect(() => {
+      if (!isPlaying) {
+        void renderCanvasRef.current?.()
+      }
+    }, [isPlaying, currentTime])
 
     useEffect(() => {
       const video = videoRef.current
@@ -786,7 +822,10 @@ export const Preview = memo(
         video.pause()
       }
       if (webcamVideoRef.current) {
-        webcamVideoRef.current.currentTime = newTime
+        const drift = Math.abs(webcamVideoRef.current.currentTime - newTime)
+        if (drift > 0.15) {
+          webcamVideoRef.current.currentTime = newTime
+        }
         webcamVideoRef.current.playbackRate = video.playbackRate // Sync webcam speed
       }
       setCurrentTime(newTime)

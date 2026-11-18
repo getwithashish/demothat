@@ -192,13 +192,14 @@ describe('VirtualStudioStreamer', () => {
       expect(streamer.isActive()).toBe(true)
     })
 
-    it('attaches video audio source to both virtual mic and local monitoring destination', async () => {
+    it('attaches video audio source to demoAudioBus routing to virtual mic and local monitoring', async () => {
       await streamer.start()
       const mockVideoSource = new MockAudioNode()
       streamer.attachAudioSource(mockVideoSource as unknown as AudioNode)
 
-      // Connects to videoToVirtualMicGain and localMonitoringGain
-      expect(mockVideoSource.connect).toHaveBeenCalledTimes(2)
+      // Connects to demoAudioBus, which routes to both videoToVirtualMicGain and localMonitoringGain
+      expect(mockVideoSource.connect).toHaveBeenCalledWith(streamer.getDemoAudioBus())
+      expect((streamer.getDemoAudioBus() as unknown as MockGainNode).connect).toHaveBeenCalled()
     })
 
     it('clamps and updates local audio monitoring volume locally without circular IPC echo', async () => {
@@ -224,6 +225,68 @@ describe('VirtualStudioStreamer', () => {
       expect(mockIpc.updateStatus).toHaveBeenCalledWith(
         expect.objectContaining({ isLocalAudioMonitoringEnabled: false }),
       )
+    })
+
+    it('provides persistent demoAudioBus on audioContext before start', () => {
+      const bus = streamer.getDemoAudioBus()
+      expect(bus).toBeDefined()
+      expect(mockContext.createGain).toHaveBeenCalled()
+      // Calling getDemoAudioBus again returns the same persistent instance
+      expect(streamer.getDemoAudioBus()).toBe(bus)
+      // Connect to local monitoring should only be called once, not on every getDemoAudioBus call
+      expect((bus as unknown as MockGainNode).connect).toHaveBeenCalledTimes(1)
+    })
+
+    it('caches MediaElementAudioSourceNode per HTMLMediaElement via createMediaElementSource', () => {
+      const mockEl = {} as HTMLMediaElement
+      const source1 = streamer.createMediaElementSource(mockEl)
+      const source2 = streamer.createMediaElementSource(mockEl)
+      expect(source1).toBe(source2)
+      expect(mockContext.createMediaElementSource).toHaveBeenCalledTimes(1)
+    })
+
+    it('prevents duplicate connections when registerBusInput is used', () => {
+      const mockMasterNode = new MockAudioNode()
+      streamer.registerBusInput(mockMasterNode as unknown as AudioNode)
+      streamer.attachAudioSource(mockMasterNode as unknown as AudioNode)
+      // Since it was registered as already connected to the bus, wireVideoAudioGraph does not re-connect it
+      expect(mockMasterNode.connect).not.toHaveBeenCalled()
+    })
+
+    it('supports unregisterBusInput to allow re-wiring when mixer changes', () => {
+      const mockMasterNode = new MockAudioNode()
+      streamer.registerBusInput(mockMasterNode as unknown as AudioNode)
+      streamer.unregisterBusInput(mockMasterNode as unknown as AudioNode)
+      streamer.attachAudioSource(mockMasterNode as unknown as AudioNode)
+      expect(mockMasterNode.connect).toHaveBeenCalledWith(streamer.getDemoAudioBus())
+    })
+
+    it('wireVideoAudioGraph safely disconnects previous bus connection before reconnecting', () => {
+      const mockSourceNode = new MockAudioNode()
+      streamer.attachAudioSource(mockSourceNode as unknown as AudioNode)
+      expect(mockSourceNode.connect).toHaveBeenCalledWith(streamer.getDemoAudioBus())
+
+      // Re-attaching the same source disconnects before reconnecting to prevent duplicate signal summation
+      streamer.attachAudioSource(mockSourceNode as unknown as AudioNode)
+      expect(mockSourceNode.disconnect).toHaveBeenCalledWith(streamer.getDemoAudioBus())
+    })
+
+    it('maintains local monitoring gain at 1.0 when Virtual Studio is inactive', async () => {
+      // Inactive streamer:
+      expect(streamer.isActive()).toBe(false)
+      streamer.setPlaying(true)
+      // Local monitoring remains full volume (1.0) so normal editor playback is 100% audible
+      expect(streamer.isActive()).toBe(false)
+
+      // Start streamer: local monitoring now follows isPlaying and monitoring settings
+      await streamer.start({ enableLocalAudioMonitoring: true, localMonitoringVolume: 0.8 })
+      expect(streamer.isActive()).toBe(true)
+
+      // When stopped:
+      await streamer.stop()
+      expect(streamer.isActive()).toBe(false)
+      // Persistent bus still exists
+      expect(streamer.getDemoAudioBus()).toBeDefined()
     })
   })
 

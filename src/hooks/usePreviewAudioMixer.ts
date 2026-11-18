@@ -13,6 +13,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useEditorStore } from '../store/editorStore'
 import { PreviewAudioMixer, type MediaLike, type PreviewTrackSource } from '../lib/preview-audio-mixer'
+import { virtualStudioStreamer } from '../features/virtual-studio'
 
 export interface UsePreviewAudioMixerOptions {
   videoRef: React.RefObject<HTMLVideoElement | null>
@@ -20,6 +21,8 @@ export interface UsePreviewAudioMixerOptions {
   isPlaying: boolean
   /** Optional shared AudioContext (e.g. from VirtualStudioStreamer) to avoid inter-context media stream failures. */
   audioContext?: AudioContext
+  /** Optional output AudioNode (defaults to virtualStudioStreamer.getDemoAudioBus()) */
+  output?: AudioNode
 }
 
 export interface PreviewAudioState {
@@ -43,7 +46,7 @@ export interface PreviewAudioState {
 const asMedia = (element: HTMLAudioElement): MediaLike => element as unknown as MediaLike
 
 export function usePreviewAudioMixer(options: UsePreviewAudioMixerOptions): PreviewAudioState {
-  const { videoRef, isPlaying, audioContext } = options
+  const { videoRef, isPlaying, audioContext, output } = options
   const audioTracks = useEditorStore((state) => state.audioTracks)
   const videoPath = useEditorStore((state) => state.videoPath)
   const volume = useEditorStore((state) => state.volume)
@@ -115,9 +118,11 @@ export function usePreviewAudioMixer(options: UsePreviewAudioMixerOptions): Prev
         context = new AudioContext({ sampleRate: 48000 })
         ownsContext = true
       }
+      const outputBus = output ?? virtualStudioStreamer.getDemoAudioBus()
       mixer = new PreviewAudioMixer({
         context,
         video: video as unknown as MediaLike,
+        output: outputBus,
         createElement: (url) => {
           const element = new Audio(url)
           element.crossOrigin = 'anonymous'
@@ -125,6 +130,10 @@ export function usePreviewAudioMixer(options: UsePreviewAudioMixerOptions): Prev
           return asMedia(element)
         },
       })
+      const isUsingDemoBus = outputBus === virtualStudioStreamer.getDemoAudioBus()
+      if (isUsingDemoBus) {
+        virtualStudioStreamer.registerBusInput(mixer.getMasterNode())
+      }
       mixer.attach(sources)
       setOutputStream(typeof mixer.getMediaStream === 'function' ? mixer.getMediaStream() : null)
       setMasterNode(typeof mixer.getMasterNode === 'function' ? mixer.getMasterNode() : null)
@@ -140,6 +149,7 @@ export function usePreviewAudioMixer(options: UsePreviewAudioMixerOptions): Prev
     mixerRef.current = mixer
 
     return () => {
+      virtualStudioStreamer.unregisterBusInput(mixer.getMasterNode())
       mixer.dispose()
       mixerRef.current = null
       setOutputStream(null)
@@ -148,7 +158,7 @@ export function usePreviewAudioMixer(options: UsePreviewAudioMixerOptions): Prev
         void context.close().catch(() => undefined)
       }
     }
-  }, [sources, videoRef, audioContext])
+  }, [sources, videoRef, audioContext, output])
 
   // --- Follow the transport -----------------------------------------------------
   //

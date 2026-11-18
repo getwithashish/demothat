@@ -151,12 +151,15 @@ export class VirtualStudioStreamer {
   private mediaStreamSourceNode: MediaStreamAudioSourceNode | AudioNode | null = null
   private attachedMediaStream: MediaStream | null = null
   private videoElement: HTMLMediaElement | null = null
+  private demoAudioBus: GainNode | null = null
   private videoToVirtualMicGain: GainNode | null = null
   private localMonitoringGain: GainNode | null = null
   private virtualMicMasterNode: GainNode | null = null
   private scriptProcessorNode: ScriptProcessorNode | AudioNode | null = null
   private zeroGainNode: GainNode | null = null
   private elementSourceMap: WeakMap<HTMLMediaElement, MediaElementAudioSourceNode> = new WeakMap()
+  private registeredBusInputs: WeakSet<AudioNode> = new WeakSet()
+  private isDemoBusConnectedToMonitoring = false
 
   constructor(deps: StreamerDependencies = {}) {
     this.audioContext = deps.audioContext ?? null
@@ -269,22 +272,14 @@ export class VirtualStudioStreamer {
     if (!this.audioContext) return
 
     try {
-      let sourceNode = this.elementSourceMap.get(video)
-      if (!sourceNode) {
-        sourceNode = this.audioContext.createMediaElementSource(video)
-        this.elementSourceMap.set(video, sourceNode)
-      }
-      if (this.videoSourceNode && this.videoSourceNode !== sourceNode) {
+      const sourceNode = this.createMediaElementSource(video)
+      if (this.videoSourceNode && this.videoSourceNode !== sourceNode && this.demoAudioBus) {
         try {
-          if (this.videoToVirtualMicGain) {
-            this.videoSourceNode.disconnect(this.videoToVirtualMicGain)
-          }
-          if (this.localMonitoringGain) {
-            this.videoSourceNode.disconnect(this.localMonitoringGain)
-          }
+          this.videoSourceNode.disconnect(this.demoAudioBus)
         } catch {
           // Ignore disconnect errors
         }
+        this.registeredBusInputs.delete(this.videoSourceNode)
       }
       this.videoSourceNode = sourceNode
       this.wireVideoAudioGraph()
@@ -310,21 +305,18 @@ export class VirtualStudioStreamer {
         } catch {
           // Ignore disconnect errors
         }
+        this.registeredBusInputs.delete(this.mediaStreamSourceNode)
         this.mediaStreamSourceNode = null
       }
       const sourceNode = this.audioContext.createMediaStreamSource(stream)
       this.mediaStreamSourceNode = sourceNode
-      if (this.videoSourceNode && this.videoSourceNode !== sourceNode) {
+      if (this.videoSourceNode && this.videoSourceNode !== sourceNode && this.demoAudioBus) {
         try {
-          if (this.videoToVirtualMicGain) {
-            this.videoSourceNode.disconnect(this.videoToVirtualMicGain)
-          }
-          if (this.localMonitoringGain) {
-            this.videoSourceNode.disconnect(this.localMonitoringGain)
-          }
+          this.videoSourceNode.disconnect(this.demoAudioBus)
         } catch {
           // Ignore disconnect errors
         }
+        this.registeredBusInputs.delete(this.videoSourceNode)
       }
       this.videoSourceNode = sourceNode
       this.wireVideoAudioGraph()
@@ -341,6 +333,7 @@ export class VirtualStudioStreamer {
       } catch {
         // Disconnect can throw if already disconnected
       }
+      this.registeredBusInputs.delete(this.mediaStreamSourceNode)
       this.mediaStreamSourceNode = null
     }
     if (this.customAudioSourceNode) {
@@ -354,27 +347,122 @@ export class VirtualStudioStreamer {
   }
 
   /**
-   * Attaches an AudioNode or MediaStream to the Dual-Output Audio Graph.
+   * Attaches an AudioNode to the Dual-Output Audio Graph.
    */
   public attachAudioSource(source: AudioNode): void {
     if (!this.audioContext) {
       this.initAudioContext()
     }
-    if (this.videoSourceNode && this.videoSourceNode !== source) {
+    if (this.videoSourceNode && this.videoSourceNode !== source && this.demoAudioBus) {
       try {
-        if (this.videoToVirtualMicGain) {
-          this.videoSourceNode.disconnect(this.videoToVirtualMicGain)
-        }
-        if (this.localMonitoringGain) {
-          this.videoSourceNode.disconnect(this.localMonitoringGain)
-        }
+        this.videoSourceNode.disconnect(this.demoAudioBus)
       } catch {
         // Ignore disconnect errors
       }
+      this.registeredBusInputs.delete(this.videoSourceNode)
     }
     this.customAudioSourceNode = source
     this.videoSourceNode = source
     this.wireVideoAudioGraph()
+  }
+
+  /**
+   * Registers an AudioNode as already feeding into the demoAudioBus (e.g. from PreviewAudioMixer).
+   * Prevents duplicate summing connections.
+   */
+  public registerBusInput(node: AudioNode | null | undefined): void {
+    if (node) {
+      this.registeredBusInputs.add(node)
+    }
+  }
+
+  /**
+   * Unregisters an AudioNode when detached or disposed.
+   */
+  public unregisterBusInput(node: AudioNode | null | undefined): void {
+    if (node) {
+      this.registeredBusInputs.delete(node)
+    }
+  }
+
+  /**
+   * Reusable, cached MediaElementAudioSourceNode factory per HTMLMediaElement.
+   * Avoids "MediaElementAudioSourceNode already created" DOM exceptions.
+   */
+  public createMediaElementSource(element: HTMLMediaElement): MediaElementAudioSourceNode {
+    const ctx = this.getAudioContext()
+    let sourceNode = this.elementSourceMap.get(element)
+    if (!sourceNode) {
+      sourceNode = ctx.createMediaElementSource(element)
+      this.elementSourceMap.set(element, sourceNode)
+    }
+    return sourceNode
+  }
+
+  /**
+   * Returns the persistent demoAudioBus GainNode. All editor timeline playback,
+   * background music clips, and sound effects feed into this bus.
+   */
+  public getDemoAudioBus(): GainNode {
+    return this.ensureDemoAudioBus()
+  }
+
+  private ensureDemoAudioBus(): GainNode {
+    if (!this.audioContext) {
+      this.initAudioContext()
+    }
+    if (!this.audioContext) {
+      return {} as GainNode
+    }
+    if (!this.demoAudioBus) {
+      if (typeof this.audioContext.createGain === 'function') {
+        this.demoAudioBus = this.audioContext.createGain()
+        this.demoAudioBus.gain.value = 1.0
+      } else {
+        this.demoAudioBus = {
+          gain: { value: 1.0, setValueAtTime: () => {}, setTargetAtTime: () => {} },
+          connect: () => {},
+          disconnect: () => {},
+        } as unknown as GainNode
+      }
+    }
+    if (!this.localMonitoringGain) {
+      if (typeof this.audioContext.createGain === 'function') {
+        this.localMonitoringGain = this.audioContext.createGain()
+        this.localMonitoringGain.gain.value = this.active
+          ? this.isLocalAudioMonitoringEnabled
+            ? this.localMonitoringVolume
+            : 0.0
+          : 1.0
+        if (this.audioContext.destination) {
+          try {
+            this.localMonitoringGain.connect(this.audioContext.destination)
+          } catch {
+            // Ignore in test mocks
+          }
+        }
+      } else {
+        this.localMonitoringGain = {
+          gain: { value: 1.0, setValueAtTime: () => {}, setTargetAtTime: () => {} },
+          connect: () => {},
+          disconnect: () => {},
+        } as unknown as GainNode
+      }
+    }
+    if (
+      !this.isDemoBusConnectedToMonitoring &&
+      this.demoAudioBus &&
+      this.localMonitoringGain &&
+      typeof this.demoAudioBus.connect === 'function'
+    ) {
+      try {
+        this.demoAudioBus.connect(this.localMonitoringGain)
+        this.isDemoBusConnectedToMonitoring = true
+      } catch {
+        // Ignore if already connected
+      }
+    }
+    return this.demoAudioBus
   }
 
   public getAudioContext(): AudioContext {
@@ -387,32 +475,26 @@ export class VirtualStudioStreamer {
   public detachVideoElement(): void {
     this.videoElement = null
     if (this.videoSourceNode && !this.customAudioSourceNode && !this.mediaStreamSourceNode) {
-      try {
-        if (this.videoToVirtualMicGain) {
-          this.videoSourceNode.disconnect(this.videoToVirtualMicGain)
+      if (this.demoAudioBus) {
+        try {
+          this.videoSourceNode.disconnect(this.demoAudioBus)
+        } catch {
+          // Disconnect can throw if already disconnected
         }
-        if (this.localMonitoringGain) {
-          this.videoSourceNode.disconnect(this.localMonitoringGain)
-        }
-      } catch {
-        // Disconnect can throw if already disconnected
       }
+      this.registeredBusInputs.delete(this.videoSourceNode)
       this.videoSourceNode = null
     }
   }
 
   public detachAudioSource(): void {
-    if (this.videoSourceNode) {
+    if (this.videoSourceNode && this.demoAudioBus) {
       try {
-        if (this.videoToVirtualMicGain) {
-          this.videoSourceNode.disconnect(this.videoToVirtualMicGain)
-        }
-        if (this.localMonitoringGain) {
-          this.videoSourceNode.disconnect(this.localMonitoringGain)
-        }
+        this.videoSourceNode.disconnect(this.demoAudioBus)
       } catch {
         // Ignore disconnect errors
       }
+      this.registeredBusInputs.delete(this.videoSourceNode)
     }
     this.customAudioSourceNode = null
     this.videoSourceNode = null
@@ -671,17 +753,24 @@ export class VirtualStudioStreamer {
       this.micGainNode.gain.value = 1.0
       this.micGainNode.connect(this.virtualMicMasterNode)
 
-      // 3. Video Audio to Virtual Mic Gain Node
+      // 3. Demo Audio to Virtual Mic Gain Node
       this.videoToVirtualMicGain = this.audioContext.createGain()
       this.videoToVirtualMicGain.gain.value = 0.0
       this.videoToVirtualMicGain.connect(this.virtualMicMasterNode)
 
-      // 4. Video Audio Local Monitoring Gain Node -> local destination (speakers)
-      this.localMonitoringGain = this.audioContext.createGain()
-      this.localMonitoringGain.gain.value = 0.0
-      this.localMonitoringGain.connect(this.audioContext.destination)
+      // 4. Ensure persistent demoAudioBus and localMonitoringGain exist and are routed
+      this.ensureDemoAudioBus()
 
-      // 5. Virtual Mic Sink Audio Processor Node (pushes PCM via IPC)
+      // Connect persistent demoAudioBus to videoToVirtualMicGain
+      if (this.demoAudioBus && typeof this.demoAudioBus.connect === 'function') {
+        try {
+          this.demoAudioBus.connect(this.videoToVirtualMicGain)
+        } catch {
+          // Ignore in mock environments
+        }
+      }
+
+      // 4. Virtual Mic Sink Audio Processor Node (pushes PCM via IPC)
       if (typeof this.audioContext.createScriptProcessor === 'function') {
         const processor = this.audioContext.createScriptProcessor(4096, 2, 2)
         let lastDiagnosticTime = 0
@@ -736,11 +825,16 @@ export class VirtualStudioStreamer {
   private wireVideoAudioGraph(): void {
     if (!this.videoSourceNode) return
     try {
-      if (this.videoToVirtualMicGain) {
-        this.videoSourceNode.connect(this.videoToVirtualMicGain)
-      }
-      if (this.localMonitoringGain) {
-        this.videoSourceNode.connect(this.localMonitoringGain)
+      const bus = this.getDemoAudioBus()
+      if (bus && typeof this.videoSourceNode.connect === 'function') {
+        if (!this.registeredBusInputs.has(this.videoSourceNode)) {
+          try {
+            this.videoSourceNode.disconnect(bus)
+          } catch {
+            // Ignore if not connected
+          }
+          this.videoSourceNode.connect(bus)
+        }
       }
     } catch (err) {
       console.warn('[VirtualStudioStreamer] Error connecting video source to graph:', err)
@@ -752,24 +846,23 @@ export class VirtualStudioStreamer {
       this.micSourceNode?.disconnect()
       this.micGainNode?.disconnect()
       this.mediaStreamSourceNode?.disconnect()
-      if (this.videoSourceNode) {
-        if (this.videoToVirtualMicGain) {
+      if (this.demoAudioBus && this.videoToVirtualMicGain && typeof this.demoAudioBus.disconnect === 'function') {
+        try {
+          this.demoAudioBus.disconnect(this.videoToVirtualMicGain)
+        } catch {
           try {
-            this.videoSourceNode.disconnect(this.videoToVirtualMicGain)
+            this.demoAudioBus.disconnect()
+            this.isDemoBusConnectedToMonitoring = false
+            if (this.localMonitoringGain && typeof this.demoAudioBus.connect === 'function') {
+              this.demoAudioBus.connect(this.localMonitoringGain)
+              this.isDemoBusConnectedToMonitoring = true
+            }
           } catch {
-            // Ignore disconnect errors
-          }
-        }
-        if (this.localMonitoringGain) {
-          try {
-            this.videoSourceNode.disconnect(this.localMonitoringGain)
-          } catch {
-            // Ignore disconnect errors
+            // Ignore
           }
         }
       }
       this.videoToVirtualMicGain?.disconnect()
-      this.localMonitoringGain?.disconnect()
       this.virtualMicMasterNode?.disconnect()
       if (this.scriptProcessorNode && 'onaudioprocess' in this.scriptProcessorNode) {
         ;(this.scriptProcessorNode as ScriptProcessorNode).onaudioprocess = null
@@ -786,16 +879,26 @@ export class VirtualStudioStreamer {
     this.mediaStreamSourceNode = null
     // Keep this.customAudioSourceNode and this.videoSourceNode references if attached so buildAudioGraph() can re-wire them
     this.videoToVirtualMicGain = null
-    this.localMonitoringGain = null
     this.virtualMicMasterNode = null
     this.scriptProcessorNode = null
     this.zeroGainNode = null
+
+    // Ensure persistent demoAudioBus remains connected to localMonitoringGain at 1.0 volume for editor playback
+    if (this.localMonitoringGain) {
+      const time = this.audioContext?.currentTime ?? 0
+      if (typeof this.localMonitoringGain.gain.setValueAtTime === 'function') {
+        this.localMonitoringGain.gain.setValueAtTime(1.0, time)
+      } else {
+        this.localMonitoringGain.gain.value = 1.0
+      }
+    }
   }
 
   /**
    * Applies Instant Auto-Return rules to the Dual-Output Audio Graph:
    * - When isPlaying: Video plays to virtual mic AND local speakers; physical mic is muted.
    * - When paused: Video audio is 0; physical mic is unmuted (unless user muted mic).
+   * - When inactive (!this.active): Video audio to local monitoring is 1.0 so normal editor playback works.
    * Uses exponential cross-fade transitions (15ms) via setTargetAtTime to prevent clicks.
    */
   private applyInstantAutoReturn(): void {
@@ -806,9 +909,20 @@ export class VirtualStudioStreamer {
       if (!node) return
       if (typeof node.gain.setTargetAtTime === 'function') {
         node.gain.setTargetAtTime(targetVal, time, timeConstant)
-      } else {
+      } else if (typeof node.gain.setValueAtTime === 'function') {
         node.gain.setValueAtTime(targetVal, time)
+      } else {
+        node.gain.value = targetVal
       }
+    }
+
+    if (!this.active) {
+      // Virtual Studio inactive: videoToVirtualMicGain is muted (0.0), localMonitoringGain is 1.0
+      // so normal editor playback remains 100% audible when Virtual Studio is stopped!
+      setParam(this.videoToVirtualMicGain, 0.0)
+      setParam(this.localMonitoringGain, 1.0)
+      setParam(this.micGainNode, 0.0)
+      return
     }
 
     if (this.isPlaying) {

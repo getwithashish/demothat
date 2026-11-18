@@ -45,6 +45,8 @@ initAudioLoopback({ forceCoreAudioTap: true })
 app.commandLine.appendSwitch('disable-renderer-backgrounding')
 app.commandLine.appendSwitch('disable-background-timer-throttling')
 app.commandLine.appendSwitch('disable-backgrounding-occluded-windows')
+// Allow Web Audio graph and media playback without requiring window click gestures
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
 
 // --- Single instance ---
 // A second launch (for example from a `.dthat` file association) must hand the

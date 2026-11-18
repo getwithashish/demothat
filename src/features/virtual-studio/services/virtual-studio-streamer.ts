@@ -341,6 +341,13 @@ export class VirtualStudioStreamer {
     this.wireVideoAudioGraph()
   }
 
+  public getAudioContext(): AudioContext {
+    if (!this.audioContext) {
+      this.initAudioContext()
+    }
+    return this.audioContext!
+  }
+
   public detachVideoElement(): void {
     this.videoElement = null
     if (this.videoSourceNode) {
@@ -348,6 +355,17 @@ export class VirtualStudioStreamer {
         this.videoSourceNode.disconnect()
       } catch {
         // Disconnect can throw if already disconnected
+      }
+      this.videoSourceNode = null
+    }
+  }
+
+  public detachAudioSource(): void {
+    if (this.videoSourceNode) {
+      try {
+        this.videoSourceNode.disconnect()
+      } catch {
+        // Ignore disconnect errors
       }
       this.videoSourceNode = null
     }
@@ -686,7 +704,7 @@ export class VirtualStudioStreamer {
     this.micSourceNode = null
     this.micGainNode = null
     this.mediaStreamSourceNode = null
-    this.videoSourceNode = null
+    // Keep this.videoSourceNode reference if attached so buildAudioGraph() can re-wire it
     this.videoToVirtualMicGain = null
     this.localMonitoringGain = null
     this.virtualMicMasterNode = null

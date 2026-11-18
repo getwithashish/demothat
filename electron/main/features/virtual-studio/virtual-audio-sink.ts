@@ -91,7 +91,7 @@ export class VirtualAudioSink {
    * Starts Linux PulseAudio/PipeWire audio sink via pacat or ffmpeg.
    */
   private async startLinuxSink(options: AudioSinkOptions): Promise<{ success: boolean; error?: string }> {
-    const sinkName = options.deviceSinkName || 'demothat_sink'
+    const sinkName = options.deviceSinkName || 'demothat_mic'
     try {
       // First try pacat directly
       const proc = spawn('pacat', [

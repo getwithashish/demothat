@@ -18,6 +18,8 @@ export interface UsePreviewAudioMixerOptions {
   videoRef: React.RefObject<HTMLVideoElement | null>
   /** The editor's transport state; the mixer follows it. */
   isPlaying: boolean
+  /** Optional shared AudioContext (e.g. from VirtualStudioStreamer) to avoid inter-context media stream failures. */
+  audioContext?: AudioContext
 }
 
 export interface PreviewAudioState {
@@ -31,12 +33,17 @@ export interface PreviewAudioState {
    * Mixed audio MediaStream suitable for routing into Virtual Studio or virtual mic sinks.
    */
   outputStream: MediaStream | null
+  /**
+   * Direct Master GainNode for routing into unified Web Audio graphs (e.g. Virtual Studio).
+   */
+  masterNode: GainNode | null
 }
 
 /** An `HTMLAudioElement` is a `MediaLike`; the cast lives here rather than at each use. */
 const asMedia = (element: HTMLAudioElement): MediaLike => element as unknown as MediaLike
 
-export function usePreviewAudioMixer({ videoRef, isPlaying }: UsePreviewAudioMixerOptions): PreviewAudioState {
+export function usePreviewAudioMixer(options: UsePreviewAudioMixerOptions): PreviewAudioState {
+  const { videoRef, isPlaying, audioContext } = options
   const audioTracks = useEditorStore((state) => state.audioTracks)
   const videoPath = useEditorStore((state) => state.videoPath)
   const volume = useEditorStore((state) => state.volume)
@@ -44,6 +51,7 @@ export function usePreviewAudioMixer({ videoRef, isPlaying }: UsePreviewAudioMix
 
   const [sources, setSources] = useState<PreviewTrackSource[]>([])
   const [outputStream, setOutputStream] = useState<MediaStream | null>(null)
+  const [masterNode, setMasterNode] = useState<GainNode | null>(null)
   const mixerRef = useRef<PreviewAudioMixer | null>(null)
   /** Which extraction attempt is current, so a slow one cannot overwrite a newer. */
   const extractToken = useRef(0)
@@ -98,8 +106,15 @@ export function usePreviewAudioMixer({ videoRef, isPlaying }: UsePreviewAudioMix
 
     let context: AudioContext
     let mixer: PreviewAudioMixer
+    let ownsContext = false
     try {
-      context = new AudioContext({ sampleRate: 48000 })
+      if (audioContext) {
+        context = audioContext
+        ownsContext = false
+      } else {
+        context = new AudioContext({ sampleRate: 48000 })
+        ownsContext = true
+      }
       mixer = new PreviewAudioMixer({
         context,
         video: video as unknown as MediaLike,
@@ -111,13 +126,15 @@ export function usePreviewAudioMixer({ videoRef, isPlaying }: UsePreviewAudioMix
         },
       })
       mixer.attach(sources)
-      setOutputStream(mixer.getMediaStream())
+      setOutputStream(typeof mixer.getMediaStream === 'function' ? mixer.getMediaStream() : null)
+      setMasterNode(typeof mixer.getMasterNode === 'function' ? mixer.getMasterNode() : null)
     } catch (error) {
       // Silence would be the worst outcome: falling back to the element's own audio
       // gives the user a recording they can hear, just without per-track control.
       console.warn('[PreviewAudio] Could not build the preview mix; using the element’s audio:', error)
       setSources([])
       setOutputStream(null)
+      setMasterNode(null)
       return
     }
     mixerRef.current = mixer
@@ -126,9 +143,12 @@ export function usePreviewAudioMixer({ videoRef, isPlaying }: UsePreviewAudioMix
       mixer.dispose()
       mixerRef.current = null
       setOutputStream(null)
-      void context.close().catch(() => undefined)
+      setMasterNode(null)
+      if (ownsContext) {
+        void context.close().catch(() => undefined)
+      }
     }
-  }, [sources, videoRef])
+  }, [sources, videoRef, audioContext])
 
   // --- Follow the transport -----------------------------------------------------
   //
@@ -176,5 +196,5 @@ export function usePreviewAudioMixer({ videoRef, isPlaying }: UsePreviewAudioMix
     }
   }, [volume, isMuted, audioTracks, mixerOwnsAudio])
 
-  return { mixerOwnsAudio, outputStream }
+  return { mixerOwnsAudio, outputStream, masterNode }
 }

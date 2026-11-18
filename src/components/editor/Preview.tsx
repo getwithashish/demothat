@@ -88,7 +88,14 @@ export const Preview = memo(
     // The recording's audio tracks, mixed separately from the video element so each
     // source can be muted and balanced on its own. While the mixer is carrying the
     // audio the element is silenced — see the volume effect below.
-    const { mixerOwnsAudio, outputStream } = usePreviewAudioMixer({ videoRef, isPlaying })
+    // We pass virtualStudioStreamer.getAudioContext() so the mixer shares the exact same
+    // audio context as Virtual Studio, enabling direct AudioNode piping without cross-context
+    // MediaStream silence glitches.
+    const { mixerOwnsAudio, masterNode } = usePreviewAudioMixer({
+      videoRef,
+      isPlaying,
+      audioContext: virtualStudioStreamer.getAudioContext(),
+    })
 
     const [bgImage, setBgImage] = useState<HTMLImageElement | null>(null)
     const canvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -422,25 +429,26 @@ export const Preview = memo(
       }
     }, [canvasDimensions, isPreviewFullScreen, videoUrl])
 
-    // Attach active video element to Virtual Studio streamer
+    // Wire audio sources to Virtual Studio streamer:
+    // 1. When mixer carries multi-track recording audio, wire masterNode directly as AudioNode
     useEffect(() => {
-      if (videoRef.current) {
-        virtualStudioStreamer.attachVideoElement(videoRef.current)
-      }
-      return () => {
-        virtualStudioStreamer.detachVideoElement()
-      }
-    }, [videoRef, videoUrl])
-
-    // Attach multi-track mixed audio stream to Virtual Studio streamer when mixer is active
-    useEffect(() => {
-      if (outputStream) {
-        virtualStudioStreamer.attachMediaStream(outputStream)
+      if (mixerOwnsAudio && masterNode) {
+        virtualStudioStreamer.attachAudioSource(masterNode)
         return () => {
-          virtualStudioStreamer.detachMediaStream()
+          virtualStudioStreamer.detachAudioSource()
         }
       }
-    }, [outputStream])
+    }, [mixerOwnsAudio, masterNode])
+
+    // 2. When mixer does not own audio, wire raw HTML5 <video> element to Virtual Studio
+    useEffect(() => {
+      if (!mixerOwnsAudio && videoRef.current) {
+        virtualStudioStreamer.attachVideoElement(videoRef.current)
+        return () => {
+          virtualStudioStreamer.detachVideoElement()
+        }
+      }
+    }, [mixerOwnsAudio, videoRef, videoUrl])
 
     const hasSizedRef = useRef(false)
 

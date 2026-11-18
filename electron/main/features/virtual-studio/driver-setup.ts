@@ -88,7 +88,9 @@ export async function checkLinuxAudioSink(): Promise<boolean> {
   try {
     const { stdout: sourcesOut } = await execPromise('pactl', ['list', 'short', 'sources'])
     const { stdout: sinksOut } = await execPromise('pactl', ['list', 'short', 'sinks'])
-    return sourcesOut.includes('demothat_mic') && sinksOut.includes('demothat_sink')
+    return (
+      sourcesOut.includes('demothat_mic') && (sinksOut.includes('demothat_mic') || sinksOut.includes('demothat_sink'))
+    )
   } catch {
     return false
   }
@@ -264,14 +266,13 @@ export async function ensureLinuxCameraDriver(): Promise<{ success: boolean; err
 export async function ensureLinuxAudioSink(): Promise<{ success: boolean; error?: string }> {
   try {
     const { stdout: sinksOut } = await execPromise('pactl', ['list', 'short', 'sinks'])
-    const { stdout: sourcesOut } = await execPromise('pactl', ['list', 'short', 'sources'])
 
-    if (!sinksOut.includes('demothat_sink')) {
+    if (!sinksOut.includes('demothat_mic')) {
       const loadSink = await execPromise('pactl', [
         'load-module',
         'module-null-sink',
-        'sink_name=demothat_sink',
-        'sink_properties=device.description=DemoThat_Virtual_Audio_Backend',
+        'sink_name=demothat_mic',
+        'sink_properties=device.description=DemoThat_Virtual_Microphone',
       ])
       if (loadSink.code !== 0) {
         log.warn(`[DriverSetup] Failed to load module-null-sink: ${loadSink.stderr}`)
@@ -279,25 +280,14 @@ export async function ensureLinuxAudioSink(): Promise<{ success: boolean; error?
       }
     }
 
-    if (!sourcesOut.includes('demothat_mic')) {
-      const loadSource = await execPromise('pactl', [
-        'load-module',
-        'module-remap-source',
-        'master=demothat_sink.monitor',
-        'source_name=demothat_mic',
-        'source_properties=device.description=DemoThat_Virtual_Microphone',
-      ])
-      if (loadSource.code !== 0) {
-        log.warn(`[DriverSetup] Failed to load module-remap-source: ${loadSource.stderr}`)
-        return { success: false, error: loadSource.stderr || 'Failed to load module-remap-source' }
-      }
-    }
-
-    // Enforce unmute & 100% volume on both sink & source every time ensureLinuxAudioSink() runs:
-    await execPromise('pactl', ['set-source-mute', 'demothat_mic', '0'])
-    await execPromise('pactl', ['set-source-volume', 'demothat_mic', '65536'])
-    await execPromise('pactl', ['set-sink-mute', 'demothat_sink', '0'])
-    await execPromise('pactl', ['set-sink-volume', 'demothat_sink', '65536'])
+    // Enforce unmute & 100% volume on both sink & monitor source:
+    await execPromise('pactl', ['set-sink-mute', 'demothat_mic', '0']).catch(() => {})
+    await execPromise('pactl', ['set-sink-volume', 'demothat_mic', '65536']).catch(() => {})
+    await execPromise('pactl', ['set-source-mute', 'demothat_mic.monitor', '0']).catch(() => {})
+    await execPromise('pactl', ['set-source-volume', 'demothat_mic.monitor', '65536']).catch(() => {})
+    // Also ensure legacy names if previously loaded:
+    await execPromise('pactl', ['set-source-mute', 'demothat_mic', '0']).catch(() => {})
+    await execPromise('pactl', ['set-source-volume', 'demothat_mic', '65536']).catch(() => {})
 
     return { success: true }
   } catch (err: unknown) {

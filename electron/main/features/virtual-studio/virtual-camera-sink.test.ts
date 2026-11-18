@@ -56,7 +56,7 @@ describe('VirtualCameraSink', () => {
     sink = new VirtualCameraSink()
   })
 
-  it('standardizes resolution to DEFAULT_VIRTUAL_STUDIO_RESOLUTION and passes BT.709 Lanczos unsharp scale flags on Linux', async () => {
+  it('standardizes resolution to DEFAULT_VIRTUAL_STUDIO_RESOLUTION and passes BT.709 bicubic unsharp scale flags on Linux', async () => {
     const res = await sink.start({ width: 0, height: 0, fps: 0 })
     expect(res.success).toBe(true)
     expect(sink.isActive()).toBe(true)
@@ -76,7 +76,7 @@ describe('VirtualCameraSink', () => {
         '-r',
         '30',
         '-vf',
-        'scale=out_color_matrix=bt709:out_range=full:flags=lanczos+accurate_rnd+full_chroma_int,unsharp=lx=5:ly=5:la=0.6:cx=5:cy=5:ca=0.3',
+        'scale=out_color_matrix=bt709:out_range=pc:flags=bicubic,unsharp=lx=3:ly=3:la=0.5:cx=3:cy=3:ca=0.0',
         '-color_range',
         'pc',
         '-colorspace',
@@ -85,6 +85,8 @@ describe('VirtualCameraSink', () => {
         'bt709',
         '-color_trc',
         'bt709',
+        '-threads',
+        '2',
         '-flush_packets',
         '1',
         '/dev/video10',

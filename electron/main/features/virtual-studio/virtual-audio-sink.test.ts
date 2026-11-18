@@ -46,7 +46,7 @@ describe('VirtualAudioSink', () => {
     sink = new VirtualAudioSink()
   })
 
-  it('spawns pacat on Linux with default demothat_sink when deviceSinkName is omitted', async () => {
+  it('spawns pacat on Linux with default demothat_mic when deviceSinkName is omitted', async () => {
     const originalPlatform = process.platform
     Object.defineProperty(process, 'platform', { value: 'linux', configurable: true })
 
@@ -60,7 +60,7 @@ describe('VirtualAudioSink', () => {
         '--format=s16le',
         '--rate=48000',
         '--channels=2',
-        '--device=demothat_sink',
+        '--device=demothat_mic',
       ])
 
       // Verify pacat process error handler is attached

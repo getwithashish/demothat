@@ -114,6 +114,11 @@ export class PreviewAudioMixer {
     return this.mediaStreamDestination?.stream ?? null
   }
 
+  /** Gets the master GainNode for direct Web Audio graph piping into Virtual Studio. */
+  getMasterNode(): GainNode {
+    return this.master
+  }
+
   /** Replace the set of tracks. Existing elements are torn down first. */
   attach(sources: PreviewTrackSource[]): void {
     if (this.disposed) return

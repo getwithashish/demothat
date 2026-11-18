@@ -56,7 +56,7 @@ describe('VirtualCameraSink', () => {
     sink = new VirtualCameraSink()
   })
 
-  it('standardizes resolution to DEFAULT_VIRTUAL_STUDIO_RESOLUTION and passes BT.709 bicubic unsharp scale flags on Linux', async () => {
+  it('standardizes resolution to DEFAULT_VIRTUAL_STUDIO_RESOLUTION and passes BT.709 bicubic scale flags on Linux', async () => {
     const res = await sink.start({ width: 0, height: 0, fps: 0 })
     expect(res.success).toBe(true)
     expect(sink.isActive()).toBe(true)
@@ -76,7 +76,7 @@ describe('VirtualCameraSink', () => {
         '-r',
         '30',
         '-vf',
-        'scale=out_color_matrix=bt709:out_range=pc:flags=bicubic,unsharp=lx=3:ly=3:la=0.5:cx=3:cy=3:ca=0.0',
+        'scale=out_color_matrix=bt709:out_range=pc:flags=bicubic',
         '-color_range',
         'pc',
         '-colorspace',
@@ -152,11 +152,12 @@ describe('VirtualCameraSink', () => {
     expect(sink.isActive()).toBe(true)
 
     // Simulate close on proc after SIGTERM
-    const stopPromise = sink.stop()
+    const stopPromise = sink.stop({ fallbackToStandby: false })
     mockProc.emit('close', 0)
     await stopPromise
 
     expect(sink.isActive()).toBe(false)
+    expect(sink.isStandbyActive()).toBe(false)
     expect(mockStdin.end).toHaveBeenCalled()
     expect(mockProc.kill).toHaveBeenCalledWith('SIGTERM')
   })

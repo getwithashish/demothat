@@ -263,7 +263,7 @@ export class VirtualCameraSink {
         '-i',
         'pipe:0',
         '-vf',
-        'scale=out_color_matrix=bt709:out_range=pc:flags=bicubic,unsharp=lx=3:ly=3:la=0.5:cx=3:cy=3:ca=0.0',
+        'scale=out_color_matrix=bt709:out_range=pc:flags=bicubic',
         '-color_range',
         'pc',
         '-colorspace',
@@ -432,6 +432,9 @@ export class VirtualCameraSink {
             resolve()
           }
         }, 1500)
+        if (typeof timer.unref === 'function') {
+          timer.unref()
+        }
 
         proc.once('close', () => {
           if (!resolved) {

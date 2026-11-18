@@ -183,7 +183,7 @@ export class VirtualStudioManager {
     log.info('[VirtualStudioManager] Stopping Virtual Studio')
 
     try {
-      await this.cameraSink.stop({ fallbackToStandby: true })
+      await this.cameraSink.stop({ fallbackToStandby: false })
       await this.audioSink.stop()
       this.tray.destroy()
       hideHudWindow()

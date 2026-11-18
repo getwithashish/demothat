@@ -225,4 +225,51 @@ describe('MiniHudPage', () => {
     expect(img).not.toBeNull()
     expect(img.src).toBe('data:image/jpeg;base64,mockframedata')
   })
+
+  it('does not invoke getUserMedia when main editor window is active and streaming', async () => {
+    const mockGetUserMedia = vi.fn().mockResolvedValue({ getTracks: () => [] })
+    Object.defineProperty(navigator, 'mediaDevices', {
+      value: { getUserMedia: mockGetUserMedia },
+      configurable: true,
+      writable: true,
+    })
+
+    await renderAsync(<MiniHudPage />)
+    expect(mockGetUserMedia).not.toHaveBeenCalled()
+  })
+
+  it('invokes getUserMedia only when main editor window is inactive and not streaming', async () => {
+    const mockTrack = { stop: vi.fn() }
+    const mockStream = { getTracks: vi.fn(() => [mockTrack]) }
+    const mockGetUserMedia = vi.fn().mockResolvedValue(mockStream)
+    Object.defineProperty(navigator, 'mediaDevices', {
+      value: { getUserMedia: mockGetUserMedia },
+      configurable: true,
+      writable: true,
+    })
+
+    mockVirtualStudio.getStatus.mockResolvedValueOnce({
+      cameraDriverInstalled: true,
+      micDriverInstalled: true,
+      isStreaming: false,
+      isCameraActive: true,
+      isMicActive: true,
+      activeSource: 'webcam',
+      webcamDeviceId: 'test-cam',
+      micDeviceId: null,
+      isMicMuted: false,
+      isPlaying: false,
+      isLocalAudioMonitoringEnabled: true,
+      localMonitoringVolume: 1.0,
+      isMirrored: false,
+      isMiniHudVisible: true,
+      error: null,
+    })
+
+    await renderAsync(<MiniHudPage />)
+    expect(mockGetUserMedia).toHaveBeenCalledWith({
+      video: { deviceId: { exact: 'test-cam' } },
+      audio: false,
+    })
+  })
 })

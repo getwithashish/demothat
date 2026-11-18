@@ -20,7 +20,7 @@ import type { VirtualStudioStatus } from '../../shared/virtual-camera-types'
 
 export function MiniHudPage() {
   const [status, setStatus] = useState<Partial<VirtualStudioStatus>>({
-    isStreaming: false,
+    isStreaming: true,
     activeSource: 'webcam',
     isMicMuted: false,
     isPlaying: false,
@@ -78,13 +78,15 @@ export function MiniHudPage() {
   const isWebcam = status.activeSource === 'webcam'
   const isCameraActive = status.isCameraActive ?? true
   const webcamDeviceId = status.webcamDeviceId
+  // Avoid duplicate USB camera capture if main editor window is actively streaming or providing preview frames
+  const isMainEditorActive = Boolean(status.isStreaming || thumbnailDataUrl)
 
-  // Manage physical webcam feed when source is webcam
+  // Manage physical webcam feed when source is webcam and main editor is not capturing it
   useEffect(() => {
     let localStream: MediaStream | null = null
     const videoEl = webcamVideoRef.current
 
-    if (isWebcam && isCameraActive) {
+    if (isWebcam && isCameraActive && !isMainEditorActive) {
       const constraints: MediaStreamConstraints = {
         video: webcamDeviceId ? { deviceId: { exact: webcamDeviceId } } : true,
         audio: false,
@@ -112,7 +114,7 @@ export function MiniHudPage() {
         videoEl.srcObject = null
       }
     }
-  }, [isWebcam, isCameraActive, webcamDeviceId])
+  }, [isWebcam, isCameraActive, webcamDeviceId, isMainEditorActive])
 
   // Minimize HUD window action
   const handleMinimize = useCallback(async () => {
@@ -237,15 +239,13 @@ export function MiniHudPage() {
                 muted
                 className={cn('h-full w-full object-cover', isMirrored && '-scale-x-100')}
               />
-              {cameraStreamError && (
+              {(cameraStreamError || isMainEditorActive) && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-stage text-muted">
                   <Video size={ICON_SIZE} strokeWidth={ICON_STROKE} />
                   <span className="text-[11px]">Webcam Feed</span>
                 </div>
               )}
             </>
-          ) : thumbnailDataUrl ? (
-            <img src={thumbnailDataUrl} alt="Outgoing Canvas Preview" className="h-full w-full object-cover" />
           ) : (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-stage p-1.5 text-center">
               <Broadcast size={20} strokeWidth={ICON_STROKE} className="text-accent animate-pulse" />

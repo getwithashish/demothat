@@ -185,7 +185,7 @@ describe('VirtualStudioManager', () => {
     const stopResult = await manager.stop()
     expect(stopResult.success).toBe(true)
 
-    expect(mockCameraSink.stop).toHaveBeenCalled()
+    expect(mockCameraSink.stop).toHaveBeenCalledWith({ fallbackToStandby: false })
     expect(mockAudioSink.stop).toHaveBeenCalled()
     expect(mockTray.destroy).toHaveBeenCalled()
     expect(hideHudWindow).toHaveBeenCalled()

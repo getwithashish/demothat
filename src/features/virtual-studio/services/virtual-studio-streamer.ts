@@ -8,6 +8,10 @@ import {
   type VirtualStudioActionResult,
 } from '../../../../shared/virtual-camera-types'
 import { useEditorStore } from '../../../store/editorStore'
+import {
+  VIRTUAL_STUDIO_AUDIO_PROCESSOR_NAME,
+  createAudioWorkletBlobUrl,
+} from '../workers/virtual-studio-audio-processor.worklet'
 
 export interface VirtualStudioIPC {
   getStatus: () => Promise<VirtualStudioStatus>
@@ -15,7 +19,7 @@ export interface VirtualStudioIPC {
   start: (config: VirtualStudioConfig) => Promise<VirtualStudioActionResult>
   stop: () => Promise<VirtualStudioActionResult>
   pushFrame: (payload: VirtualFramePayload) => void
-  pushAudio: (buffer: Uint8Array | ArrayBuffer) => Promise<VirtualStudioActionResult>
+  pushAudio: (buffer: Uint8Array | ArrayBuffer) => void
   triggerAction: (action: TrayQuickAction) => Promise<VirtualStudioActionResult>
   updateStatus: (patch: Partial<VirtualStudioStatus>) => void
   pushPreviewFrame?: (dataUrl: string) => void
@@ -64,8 +68,9 @@ export const defaultIpcBridge: VirtualStudioIPC = {
   pushFrame: (payload: VirtualFramePayload) => {
     getVirtualStudioAPI()?.pushFrame(payload)
   },
-  pushAudio: (buffer: Uint8Array | ArrayBuffer) =>
-    getVirtualStudioAPI()?.pushAudio(buffer) ?? Promise.resolve({ success: true }),
+  pushAudio: (buffer: Uint8Array | ArrayBuffer) => {
+    getVirtualStudioAPI()?.pushAudio(buffer)
+  },
   triggerAction: (action: TrayQuickAction) =>
     getVirtualStudioAPI()?.triggerAction(action) ?? Promise.resolve({ success: true }),
   updateStatus: (patch: Partial<VirtualStudioStatus>) => {
@@ -95,6 +100,7 @@ export interface StreamerDependencies {
   ipcBridge?: VirtualStudioIPC
   createCanvas?: () => HTMLCanvasElement
   createVideo?: () => HTMLVideoElement
+  audioWorkletUrl?: string
 }
 
 export type PreviewFrameCallback = (canvas: HTMLCanvasElement) => void
@@ -120,7 +126,6 @@ export class VirtualStudioStreamer {
     ...DEFAULT_VIRTUAL_STUDIO_RESOLUTION,
   }
   private lastThumbnailTime = 0
-  private transferBuffer: Uint8Array | null = null
   private isMiniHudVisible = true
   private nextFrameTime = 0
 
@@ -155,7 +160,10 @@ export class VirtualStudioStreamer {
   private videoToVirtualMicGain: GainNode | null = null
   private localMonitoringGain: GainNode | null = null
   private virtualMicMasterNode: GainNode | null = null
+  private audioWorkletNode: AudioWorkletNode | null = null
   private scriptProcessorNode: ScriptProcessorNode | AudioNode | null = null
+  private audioWorkletBlobUrl: string | null = null
+  private audioWorkletUrl?: string
   private zeroGainNode: GainNode | null = null
   private elementSourceMap: WeakMap<HTMLMediaElement, MediaElementAudioSourceNode> = new WeakMap()
   private registeredBusInputs: WeakSet<AudioNode> = new WeakSet()
@@ -165,6 +173,7 @@ export class VirtualStudioStreamer {
     this.audioContext = deps.audioContext ?? null
     this.mediaDevices = deps.mediaDevices ?? (typeof navigator !== 'undefined' ? navigator.mediaDevices : null)
     this.ipcBridge = deps.ipcBridge ?? defaultIpcBridge
+    this.audioWorkletUrl = deps.audioWorkletUrl
     this.createCanvas =
       deps.createCanvas ??
       (() => {
@@ -177,6 +186,14 @@ export class VirtualStudioStreamer {
         if (typeof document !== 'undefined') return document.createElement('video')
         return {} as HTMLVideoElement
       })
+  }
+
+  public getAudioWorkletNode(): AudioWorkletNode | null {
+    return this.audioWorkletNode
+  }
+
+  public getScriptProcessorNode(): ScriptProcessorNode | AudioNode | null {
+    return this.scriptProcessorNode
   }
 
   public setIpcBridge(ipc: VirtualStudioIPC): void {
@@ -542,12 +559,6 @@ export class VirtualStudioStreamer {
       this.scratchCtx.imageSmoothingQuality = 'high'
     }
 
-    // Pre-allocate transfer buffer for native 1080p RGBA frames (1920x1080x4 = 8,294,400 bytes)
-    const byteLength = this.outputResolution.width * this.outputResolution.height * 4
-    if (!this.transferBuffer || this.transferBuffer.byteLength !== byteLength) {
-      this.transferBuffer = new Uint8Array(byteLength)
-    }
-
     // Initialize HUD thumbnail canvas (320x180) to reduce JPEG encoding overhead by 36x
     this.hudThumbnailCanvas = this.createCanvas()
     this.hudThumbnailCanvas.width = 320
@@ -556,7 +567,7 @@ export class VirtualStudioStreamer {
 
     // Initialize Audio Graph
     this.initAudioContext()
-    this.buildAudioGraph()
+    await this.buildAudioGraph()
 
     // Initialize Devices
     if (this.enableCamera) {
@@ -597,7 +608,6 @@ export class VirtualStudioStreamer {
     this.teardownAudioGraph()
     this.hudThumbnailCanvas = null
     this.hudThumbnailCtx = null
-    this.transferBuffer = null
     this.lastThumbnailTime = 0
 
     // Notify IPC main process
@@ -736,7 +746,7 @@ export class VirtualStudioStreamer {
     }
   }
 
-  private buildAudioGraph(): void {
+  private async buildAudioGraph(): Promise<void> {
     if (!this.audioContext) return
 
     try {
@@ -770,8 +780,44 @@ export class VirtualStudioStreamer {
         }
       }
 
-      // 4. Virtual Mic Sink Audio Processor Node (pushes PCM via IPC)
-      if (typeof this.audioContext.createScriptProcessor === 'function') {
+      // 5. Virtual Mic Sink Audio Node (AudioWorklet with graceful ScriptProcessor fallback)
+      let workletConnected = false
+      if (
+        this.audioContext.audioWorklet &&
+        typeof this.audioContext.audioWorklet.addModule === 'function' &&
+        typeof AudioWorkletNode !== 'undefined'
+      ) {
+        try {
+          if (!this.audioWorkletBlobUrl && !this.audioWorkletUrl) {
+            this.audioWorkletBlobUrl = createAudioWorkletBlobUrl()
+          }
+          const moduleUrl = this.audioWorkletUrl || this.audioWorkletBlobUrl
+          if (moduleUrl) {
+            await this.audioContext.audioWorklet.addModule(moduleUrl)
+            const workletNode = new AudioWorkletNode(this.audioContext, VIRTUAL_STUDIO_AUDIO_PROCESSOR_NAME)
+            workletNode.port.onmessage = (event: MessageEvent<ArrayBuffer>) => {
+              if (!this.active) return
+              this.ipcBridge.pushAudio(event.data)
+            }
+            this.audioWorkletNode = workletNode
+            this.virtualMicMasterNode.connect(workletNode)
+
+            // Connect processor to destination through zero gain so Chromium schedules buffer callbacks
+            this.zeroGainNode = this.audioContext.createGain()
+            this.zeroGainNode.gain.value = 0.0
+            workletNode.connect(this.zeroGainNode)
+            this.zeroGainNode.connect(this.audioContext.destination)
+            workletConnected = true
+          }
+        } catch (err) {
+          console.warn(
+            '[VirtualStudioStreamer] AudioWorklet initialization failed, falling back to ScriptProcessor:',
+            err,
+          )
+        }
+      }
+
+      if (!workletConnected && typeof this.audioContext.createScriptProcessor === 'function') {
         const processor = this.audioContext.createScriptProcessor(4096, 2, 2)
         let lastDiagnosticTime = 0
         processor.onaudioprocess = (event: AudioProcessingEvent) => {
@@ -781,7 +827,7 @@ export class VirtualStudioStreamer {
           const right = input.numberOfChannels > 1 ? input.getChannelData(1) : left
 
           const pcmBytes = this.interleaveFloatTo16BitPCM(left, right)
-          void this.ipcBridge.pushAudio(pcmBytes)
+          this.ipcBridge.pushAudio(pcmBytes)
 
           // Periodic active audio diagnostic logging (every 4 seconds during playback)
           const now = Date.now()
@@ -864,6 +910,15 @@ export class VirtualStudioStreamer {
       }
       this.videoToVirtualMicGain?.disconnect()
       this.virtualMicMasterNode?.disconnect()
+      if (this.audioWorkletNode) {
+        if (this.audioWorkletNode.port) {
+          this.audioWorkletNode.port.onmessage = null
+          if (typeof this.audioWorkletNode.port.close === 'function') {
+            this.audioWorkletNode.port.close()
+          }
+        }
+        this.audioWorkletNode.disconnect()
+      }
       if (this.scriptProcessorNode && 'onaudioprocess' in this.scriptProcessorNode) {
         ;(this.scriptProcessorNode as ScriptProcessorNode).onaudioprocess = null
         this.scriptProcessorNode.disconnect()
@@ -873,6 +928,17 @@ export class VirtualStudioStreamer {
       // Ignore disconnect errors
     }
 
+    if (this.audioWorkletBlobUrl) {
+      if (typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') {
+        try {
+          URL.revokeObjectURL(this.audioWorkletBlobUrl)
+        } catch {
+          // Ignore in environments where revokeObjectURL is not supported
+        }
+      }
+      this.audioWorkletBlobUrl = null
+    }
+
     this.micStream = null
     this.micSourceNode = null
     this.micGainNode = null
@@ -880,6 +946,7 @@ export class VirtualStudioStreamer {
     // Keep this.customAudioSourceNode and this.videoSourceNode references if attached so buildAudioGraph() can re-wire them
     this.videoToVirtualMicGain = null
     this.virtualMicMasterNode = null
+    this.audioWorkletNode = null
     this.scriptProcessorNode = null
     this.zeroGainNode = null
 
@@ -1153,16 +1220,10 @@ export class VirtualStudioStreamer {
     }
 
     try {
-      // Extract frame pixels into pre-allocated transfer buffer
+      // Extract frame pixels and push directly without redundant memcpy
       const imgData = this.scratchCtx.getImageData(0, 0, width, height)
-      const byteLength = width * height * 4
-      if (!this.transferBuffer || this.transferBuffer.byteLength !== byteLength) {
-        this.transferBuffer = new Uint8Array(byteLength)
-      }
-      this.transferBuffer.set(imgData.data)
-
       this.ipcBridge.pushFrame({
-        data: this.transferBuffer,
+        data: new Uint8Array(imgData.data.buffer),
         width,
         height,
         format: 'rgba',

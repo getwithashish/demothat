@@ -2,6 +2,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { VirtualStudioStreamer, type VirtualStudioIPC, type StreamerDependencies } from './virtual-studio-streamer'
 import type { VirtualStudioConfig } from '../../../../shared/virtual-camera-types'
 import { useEditorStore } from '../../../store/editorStore'
+import {
+  VirtualStudioAudioProcessor,
+  VIRTUAL_STUDIO_AUDIO_PROCESSOR_NAME,
+  createAudioWorkletBlobUrl,
+} from '../workers/virtual-studio-audio-processor.worklet'
 
 class MockAudioParam {
   value = 1.0
@@ -26,10 +31,21 @@ class MockScriptProcessorNode extends MockAudioNode {
   onaudioprocess: ((event: AudioProcessingEvent) => void) | null = null
 }
 
+class MockAudioWorkletPort {
+  onmessage: ((event: { data: ArrayBuffer }) => void) | null = null
+  postMessage = vi.fn()
+  close = vi.fn()
+}
+
+class MockAudioWorkletNode extends MockAudioNode {
+  port = new MockAudioWorkletPort()
+}
+
 class MockAudioContext {
   currentTime = 0
   state = 'running'
   destination = new MockAudioNode()
+  audioWorklet?: AudioWorklet
   createGain = vi.fn(() => new MockGainNode())
   createScriptProcessor = vi.fn(() => new MockScriptProcessorNode())
   createMediaElementSource = vi.fn(() => new MockAudioNode())
@@ -494,7 +510,7 @@ describe('VirtualStudioStreamer', () => {
       expect(mockIpc.pushFrame).toHaveBeenCalledTimes(3)
     })
 
-    it('reuses the same pre-allocated transfer buffer across capture ticks to eliminate GC churn', async () => {
+    it('pushes frame buffer directly from ImageData without redundant memcpy', async () => {
       await streamer.start()
       streamer.captureTick()
       const firstPayload = mockIpc.pushFrame.mock.calls[0][0]
@@ -502,8 +518,10 @@ describe('VirtualStudioStreamer', () => {
       streamer.captureTick()
       const secondPayload = mockIpc.pushFrame.mock.calls[1][0]
 
-      expect(firstPayload.data).toBe(secondPayload.data)
       expect(firstPayload.data.byteLength).toBe(1920 * 1080 * 4)
+      expect(secondPayload.data.byteLength).toBe(1920 * 1080 * 4)
+      expect(firstPayload.data).toBeInstanceOf(Uint8Array)
+      expect(secondPayload.data).toBeInstanceOf(Uint8Array)
     })
 
     it('only generates and pushes Mini-HUD preview thumbnails when Mini-HUD is visible or has listeners', async () => {
@@ -1005,5 +1023,189 @@ describe('VirtualStudioStreamer', () => {
       expect(mockCtx.fillRect).toHaveBeenCalled()
       expect(mockIpc.pushFrame).toHaveBeenCalled()
     })
+
+    it('connects virtualMicMasterNode to AudioWorkletNode and forwards worklet port messages to ipcBridge.pushAudio', async () => {
+      const mockWorklet = {
+        addModule: vi.fn().mockResolvedValue(undefined),
+      }
+      mockContext.audioWorklet = mockWorklet as unknown as AudioWorklet
+      const originalAudioWorkletNode = (global as Record<string, unknown>).AudioWorkletNode
+      ;(global as Record<string, unknown>).AudioWorkletNode = MockAudioWorkletNode
+
+      try {
+        await streamer.start()
+
+        expect(mockWorklet.addModule).toHaveBeenCalled()
+        const workletNode = streamer.getAudioWorkletNode() as unknown as MockAudioWorkletNode | null
+        expect(workletNode).not.toBeNull()
+        expect(workletNode).toBeInstanceOf(MockAudioWorkletNode)
+
+        // Verify virtualMicMasterNode connects to workletNode
+        expect(workletNode?.connect).toHaveBeenCalled()
+
+        // Verify worklet port messages are routed directly to ipcBridge.pushAudio
+        const fakeBuffer = new ArrayBuffer(256)
+        workletNode!.port.onmessage!({ data: fakeBuffer })
+        expect(mockIpc.pushAudio).toHaveBeenCalledWith(fakeBuffer)
+      } finally {
+        if (originalAudioWorkletNode) {
+          ;(global as Record<string, unknown>).AudioWorkletNode = originalAudioWorkletNode
+        } else {
+          delete (global as Record<string, unknown>).AudioWorkletNode
+        }
+      }
+    })
+
+    it('falls back gracefully to ScriptProcessorNode when AudioWorklet is unsupported or addModule throws', async () => {
+      const mockWorklet = {
+        addModule: vi.fn().mockRejectedValue(new Error('Module load error in test environment')),
+      }
+      mockContext.audioWorklet = mockWorklet as unknown as AudioWorklet
+      const originalAudioWorkletNode = (global as Record<string, unknown>).AudioWorkletNode
+      ;(global as Record<string, unknown>).AudioWorkletNode = MockAudioWorkletNode
+
+      try {
+        await streamer.start()
+
+        expect(streamer.getAudioWorkletNode()).toBeNull()
+        const scriptProcessor = streamer.getScriptProcessorNode()
+        expect(scriptProcessor).not.toBeNull()
+
+        // Fallback ScriptProcessor pushes audio to IPC
+        const fakeAudioEvent = {
+          inputBuffer: {
+            numberOfChannels: 2,
+            getChannelData: (ch: number) =>
+              ch === 0 ? new Float32Array([0.5, -0.5]) : new Float32Array([0.25, -0.25]),
+          },
+        }
+        ;(scriptProcessor as unknown as MockScriptProcessorNode).onaudioprocess!(
+          fakeAudioEvent as unknown as AudioProcessingEvent,
+        )
+        expect(mockIpc.pushAudio).toHaveBeenCalledWith(expect.any(Uint8Array))
+      } finally {
+        if (originalAudioWorkletNode) {
+          ;(global as Record<string, unknown>).AudioWorkletNode = originalAudioWorkletNode
+        } else {
+          delete (global as Record<string, unknown>).AudioWorkletNode
+        }
+      }
+    })
+
+    it('cleans up AudioWorkletNode, closes port, and tears down graph on stop', async () => {
+      const mockWorklet = {
+        addModule: vi.fn().mockResolvedValue(undefined),
+      }
+      mockContext.audioWorklet = mockWorklet as unknown as AudioWorklet
+      const originalAudioWorkletNode = (global as Record<string, unknown>).AudioWorkletNode
+      ;(global as Record<string, unknown>).AudioWorkletNode = MockAudioWorkletNode
+
+      try {
+        await streamer.start()
+        const workletNode = streamer.getAudioWorkletNode() as unknown as MockAudioWorkletNode | null
+        expect(workletNode).not.toBeNull()
+
+        await streamer.stop()
+
+        expect(workletNode?.port.close).toHaveBeenCalled()
+        expect(workletNode?.port.onmessage).toBeNull()
+        expect(workletNode?.disconnect).toHaveBeenCalled()
+        expect(streamer.getAudioWorkletNode()).toBeNull()
+      } finally {
+        if (originalAudioWorkletNode) {
+          ;(global as Record<string, unknown>).AudioWorkletNode = originalAudioWorkletNode
+        } else {
+          delete (global as Record<string, unknown>).AudioWorkletNode
+        }
+      }
+    })
+  })
+})
+
+describe('VirtualStudioAudioProcessor', () => {
+  it('converts stereo Float32Array [-1, 1] quantums to Int16Array [-32768, 32767] PCM chunks and posts transferable ArrayBuffer', () => {
+    const processor = new VirtualStudioAudioProcessor()
+    const postedBuffers: unknown[] = []
+    const postedTransfers: unknown[] = []
+    processor.port.postMessage = vi.fn((data, transfer) => {
+      postedBuffers.push(data)
+      postedTransfers.push(transfer)
+    })
+
+    const left = new Float32Array([0.0, 0.5, -0.5, 1.0, -1.0])
+    const right = new Float32Array([0.0, 0.25, -0.25, 1.0, -1.0])
+
+    const keepAlive = processor.process([[left, right]], [], {})
+    expect(keepAlive).toBe(true)
+    expect(processor.port.postMessage).toHaveBeenCalledTimes(1)
+
+    const buffer = postedBuffers[0] as ArrayBuffer
+    expect(buffer).toBeInstanceOf(ArrayBuffer)
+    expect(postedTransfers[0]).toEqual([buffer])
+
+    const int16 = new Int16Array(buffer)
+    expect(int16.length).toBe(10)
+    expect(int16[0]).toBe(0)
+    expect(int16[1]).toBe(0)
+    expect(int16[2]).toBe(16383)
+    expect(int16[3]).toBe(8191)
+    expect(int16[4]).toBe(-16384)
+    expect(int16[5]).toBe(-8192)
+    expect(int16[6]).toBe(32767)
+    expect(int16[7]).toBe(32767)
+    expect(int16[8]).toBe(-32768)
+    expect(int16[9]).toBe(-32768)
+  })
+
+  it('handles mono input by duplicating to stereo interleaved PCM', () => {
+    const processor = new VirtualStudioAudioProcessor()
+    const postedBuffers: unknown[] = []
+    processor.port.postMessage = vi.fn((data) => {
+      postedBuffers.push(data)
+    })
+
+    const mono = new Float32Array([0.5, -0.5])
+    const keepAlive = processor.process([[mono]], [], {})
+    expect(keepAlive).toBe(true)
+
+    const int16 = new Int16Array(postedBuffers[0] as ArrayBuffer)
+    expect(int16.length).toBe(4)
+    expect(int16[0]).toBe(16383)
+    expect(int16[1]).toBe(16383)
+    expect(int16[2]).toBe(-16384)
+    expect(int16[3]).toBe(-16384)
+  })
+
+  it('clamps out-of-bounds float values to [-32768, 32767]', () => {
+    const processor = new VirtualStudioAudioProcessor()
+    const postedBuffers: unknown[] = []
+    processor.port.postMessage = vi.fn((data) => {
+      postedBuffers.push(data)
+    })
+
+    const overblown = new Float32Array([2.5, -3.0])
+    processor.process([[overblown]], [], {})
+
+    const int16 = new Int16Array(postedBuffers[0] as ArrayBuffer)
+    expect(int16[0]).toBe(32767)
+    expect(int16[1]).toBe(32767)
+    expect(int16[2]).toBe(-32768)
+    expect(int16[3]).toBe(-32768)
+  })
+
+  it('returns true without posting when input is empty or channels are missing', () => {
+    const processor = new VirtualStudioAudioProcessor()
+    processor.port.postMessage = vi.fn()
+
+    expect(processor.process([], [], {})).toBe(true)
+    expect(processor.process([[]], [], {})).toBe(true)
+    expect(processor.process([[new Float32Array(0)]], [], {})).toBe(true)
+    expect(processor.port.postMessage).not.toHaveBeenCalled()
+  })
+
+  it('verifies processor name and createAudioWorkletBlobUrl helper', () => {
+    expect(VIRTUAL_STUDIO_AUDIO_PROCESSOR_NAME).toBe('virtual-studio-audio-processor')
+    const blobUrl = createAudioWorkletBlobUrl()
+    expect(typeof blobUrl).toBe('string')
   })
 })

@@ -32,8 +32,10 @@ export function registerVirtualStudioHandlers(): void {
     })
   })
 
-  ipcMain.handle('virtual-studio:push-audio', async (_event, buffer: Uint8Array | ArrayBuffer) => {
-    return virtualStudioManager.pushAudio(buffer)
+  ipcMain.on('virtual-studio:push-audio', (_event, buffer: Uint8Array | ArrayBuffer) => {
+    void virtualStudioManager.pushAudio(buffer).catch((err) => {
+      log.warn('[VirtualStudioIPC] Error pushing audio:', err)
+    })
   })
 
   ipcMain.handle('virtual-studio:trigger-action', async (_event, action: TrayQuickAction) => {

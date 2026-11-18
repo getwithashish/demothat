@@ -160,13 +160,15 @@ describe('driver-setup', () => {
     })
 
     describe('ensureLinuxAudioSink', () => {
-      it('enforces unmute & 100% volume when demothat_mic sink already exists', async () => {
+      it('enforces unmute & 100% volume when demothat_mic sink and demothat_source already exist', async () => {
         const executedCommands: string[][] = []
         mockExecFile.mockImplementation((file: string, args: string[], _opts: unknown, cb: ExecFileCallback) => {
           expect(file).toBe('pactl')
           executedCommands.push(args)
           if (args[0] === 'list' && args[2] === 'sinks') {
             cb(null, '8883\tdemothat_mic\tPipeWire\n', '')
+          } else if (args[0] === 'list' && args[2] === 'sources') {
+            cb(null, '8884\tdemothat_source\tPipeWire\n', '')
           } else if (
             (args[0] === 'set-source-mute' && args[2] === '0') ||
             (args[0] === 'set-source-volume' && args[2] === '65536') ||
@@ -182,23 +184,35 @@ describe('driver-setup', () => {
         const res = await ensureLinuxAudioSink()
         expect(res.success).toBe(true)
         expect(executedCommands[0]).toEqual(['list', 'short', 'sinks'])
+        expect(executedCommands[1]).toEqual(['list', 'short', 'sources'])
       })
 
-      it('creates module-null-sink demothat_mic when sink is missing', async () => {
+      it('creates module-null-sink demothat_mic and module-remap-source demothat_source when missing', async () => {
         const executedCommands: string[][] = []
         mockExecFile.mockImplementation((file: string, args: string[], _opts: unknown, cb: ExecFileCallback) => {
           expect(file).toBe('pactl')
           executedCommands.push(args)
           if (args[0] === 'list' && args[2] === 'sinks') {
             cb(null, '51\tdefault_sink\n', '')
+          } else if (args[0] === 'list' && args[2] === 'sources') {
+            cb(null, '52\tdefault_source\n', '')
           } else if (args[0] === 'load-module' && args[1] === 'module-null-sink') {
             expect(args).toEqual([
               'load-module',
               'module-null-sink',
               'sink_name=demothat_mic',
-              'sink_properties=device.description=DemoThat_Virtual_Microphone',
+              'sink_properties=device.description=DemoThat_Virtual_Audio_Backend',
             ])
             cb(null, '101\n', '')
+          } else if (args[0] === 'load-module' && args[1] === 'module-remap-source') {
+            expect(args).toEqual([
+              'load-module',
+              'module-remap-source',
+              'master=demothat_mic.monitor',
+              'source_name=demothat_source',
+              'source_properties=device.description=DemoThat_Virtual_Microphone',
+            ])
+            cb(null, '102\n', '')
           } else if (
             (args[0] === 'set-source-mute' && args[2] === '0') ||
             (args[0] === 'set-source-volume' && args[2] === '65536') ||
@@ -214,12 +228,16 @@ describe('driver-setup', () => {
         const res = await ensureLinuxAudioSink()
         expect(res.success).toBe(true)
         expect(executedCommands[0]).toEqual(['list', 'short', 'sinks'])
-        expect(executedCommands[1][1]).toBe('module-null-sink')
+        expect(executedCommands[1]).toEqual(['list', 'short', 'sources'])
+        expect(executedCommands[2][1]).toBe('module-null-sink')
+        expect(executedCommands[3][1]).toBe('module-remap-source')
       })
 
       it('returns error if loading module-null-sink fails', async () => {
         mockExecFile.mockImplementation((_file: string, args: string[], _opts: unknown, cb: ExecFileCallback) => {
           if (args[0] === 'list' && args[2] === 'sinks') {
+            cb(null, '', '')
+          } else if (args[0] === 'list' && args[2] === 'sources') {
             cb(null, '', '')
           } else if (args[0] === 'load-module' && args[1] === 'module-null-sink') {
             const err = new Error('load failed') as Error & { code?: number }

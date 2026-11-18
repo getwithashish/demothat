@@ -89,7 +89,8 @@ export async function checkLinuxAudioSink(): Promise<boolean> {
     const { stdout: sourcesOut } = await execPromise('pactl', ['list', 'short', 'sources'])
     const { stdout: sinksOut } = await execPromise('pactl', ['list', 'short', 'sinks'])
     return (
-      sourcesOut.includes('demothat_mic') && (sinksOut.includes('demothat_mic') || sinksOut.includes('demothat_sink'))
+      (sourcesOut.includes('demothat_source') || sourcesOut.includes('demothat_mic')) &&
+      (sinksOut.includes('demothat_mic') || sinksOut.includes('demothat_sink'))
     )
   } catch {
     return false
@@ -266,13 +267,14 @@ export async function ensureLinuxCameraDriver(): Promise<{ success: boolean; err
 export async function ensureLinuxAudioSink(): Promise<{ success: boolean; error?: string }> {
   try {
     const { stdout: sinksOut } = await execPromise('pactl', ['list', 'short', 'sinks'])
+    const { stdout: sourcesOut } = await execPromise('pactl', ['list', 'short', 'sources'])
 
     if (!sinksOut.includes('demothat_mic')) {
       const loadSink = await execPromise('pactl', [
         'load-module',
         'module-null-sink',
         'sink_name=demothat_mic',
-        'sink_properties=device.description=DemoThat_Virtual_Microphone',
+        'sink_properties=device.description=DemoThat_Virtual_Audio_Backend',
       ])
       if (loadSink.code !== 0) {
         log.warn(`[DriverSetup] Failed to load module-null-sink: ${loadSink.stderr}`)
@@ -280,14 +282,26 @@ export async function ensureLinuxAudioSink(): Promise<{ success: boolean; error?
       }
     }
 
-    // Enforce unmute & 100% volume on both sink & monitor source:
+    if (!sourcesOut.includes('demothat_source')) {
+      const loadSource = await execPromise('pactl', [
+        'load-module',
+        'module-remap-source',
+        'master=demothat_mic.monitor',
+        'source_name=demothat_source',
+        'source_properties=device.description=DemoThat_Virtual_Microphone',
+      ])
+      if (loadSource.code !== 0) {
+        log.debug(`[DriverSetup] module-remap-source load notice: ${loadSource.stderr}`)
+      }
+    }
+
+    // Enforce unmute & 100% volume on sink, monitor, and remap source:
     await execPromise('pactl', ['set-sink-mute', 'demothat_mic', '0']).catch(() => {})
     await execPromise('pactl', ['set-sink-volume', 'demothat_mic', '65536']).catch(() => {})
     await execPromise('pactl', ['set-source-mute', 'demothat_mic.monitor', '0']).catch(() => {})
     await execPromise('pactl', ['set-source-volume', 'demothat_mic.monitor', '65536']).catch(() => {})
-    // Also ensure legacy names if previously loaded:
-    await execPromise('pactl', ['set-source-mute', 'demothat_mic', '0']).catch(() => {})
-    await execPromise('pactl', ['set-source-volume', 'demothat_mic', '65536']).catch(() => {})
+    await execPromise('pactl', ['set-source-mute', 'demothat_source', '0']).catch(() => {})
+    await execPromise('pactl', ['set-source-volume', 'demothat_source', '65536']).catch(() => {})
 
     return { success: true }
   } catch (err: unknown) {
@@ -314,16 +328,16 @@ export async function teardownLinuxCameraDriver(): Promise<{ success: boolean; e
 }
 
 /**
- * Dynamically unloads PulseAudio modules matching demothat_sink and demothat_mic so devices disappear when app exits.
+ * Dynamically unloads PulseAudio modules matching demothat_sink, demothat_mic, and demothat_source so devices disappear when app exits.
  */
 export async function teardownLinuxAudioSink(): Promise<{ success: boolean; error?: string }> {
   try {
-    log.info('[DriverSetup] Teardown Linux audio virtual devices (demothat_sink and demothat_mic)')
+    log.info('[DriverSetup] Teardown Linux audio virtual devices (demothat_mic and demothat_source)')
     const { stdout } = await execPromise('pactl', ['list', 'short', 'modules'], { timeout: 5000 })
     const lines = stdout.split('\n')
     const seenIds = new Set<string>()
     for (const line of lines) {
-      if (line.includes('demothat_sink') || line.includes('demothat_mic')) {
+      if (line.includes('demothat_sink') || line.includes('demothat_mic') || line.includes('demothat_source')) {
         const moduleId = line.trim().split(/\s+/)[0]
         if (moduleId && !isNaN(Number(moduleId)) && !seenIds.has(moduleId)) {
           seenIds.add(moduleId)

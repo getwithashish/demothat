@@ -147,6 +147,7 @@ export class VirtualStudioStreamer {
   private micSourceNode: MediaStreamAudioSourceNode | AudioNode | null = null
   private micGainNode: GainNode | null = null
   private videoSourceNode: MediaElementAudioSourceNode | MediaStreamAudioSourceNode | AudioNode | null = null
+  private customAudioSourceNode: AudioNode | null = null
   private mediaStreamSourceNode: MediaStreamAudioSourceNode | AudioNode | null = null
   private attachedMediaStream: MediaStream | null = null
   private videoElement: HTMLMediaElement | null = null
@@ -258,8 +259,8 @@ export class VirtualStudioStreamer {
    */
   public attachVideoElement(video: HTMLMediaElement): void {
     this.videoElement = video
-    if (this.attachedMediaStream) {
-      // Multi-track mixer stream takes precedence over raw video element
+    if (this.customAudioSourceNode || this.attachedMediaStream) {
+      // Dedicated audio source or multi-track stream takes precedence over raw video element
       return
     }
     if (!this.audioContext) {
@@ -273,7 +274,20 @@ export class VirtualStudioStreamer {
         sourceNode = this.audioContext.createMediaElementSource(video)
         this.elementSourceMap.set(video, sourceNode)
       }
-      this.attachAudioSource(sourceNode)
+      if (this.videoSourceNode && this.videoSourceNode !== sourceNode) {
+        try {
+          if (this.videoToVirtualMicGain) {
+            this.videoSourceNode.disconnect(this.videoToVirtualMicGain)
+          }
+          if (this.localMonitoringGain) {
+            this.videoSourceNode.disconnect(this.localMonitoringGain)
+          }
+        } catch {
+          // Ignore disconnect errors
+        }
+      }
+      this.videoSourceNode = sourceNode
+      this.wireVideoAudioGraph()
     } catch (err) {
       console.warn('[VirtualStudioStreamer] Failed to attach video element to audio graph:', err)
     }
@@ -300,7 +314,20 @@ export class VirtualStudioStreamer {
       }
       const sourceNode = this.audioContext.createMediaStreamSource(stream)
       this.mediaStreamSourceNode = sourceNode
-      this.attachAudioSource(sourceNode)
+      if (this.videoSourceNode && this.videoSourceNode !== sourceNode) {
+        try {
+          if (this.videoToVirtualMicGain) {
+            this.videoSourceNode.disconnect(this.videoToVirtualMicGain)
+          }
+          if (this.localMonitoringGain) {
+            this.videoSourceNode.disconnect(this.localMonitoringGain)
+          }
+        } catch {
+          // Ignore disconnect errors
+        }
+      }
+      this.videoSourceNode = sourceNode
+      this.wireVideoAudioGraph()
     } catch (err) {
       console.warn('[VirtualStudioStreamer] Failed to attach media stream to audio graph:', err)
     }
@@ -316,7 +343,10 @@ export class VirtualStudioStreamer {
       }
       this.mediaStreamSourceNode = null
     }
-    if (this.videoElement) {
+    if (this.customAudioSourceNode) {
+      this.videoSourceNode = this.customAudioSourceNode
+      this.wireVideoAudioGraph()
+    } else if (this.videoElement) {
       this.attachVideoElement(this.videoElement)
     } else {
       this.detachVideoElement()
@@ -332,11 +362,17 @@ export class VirtualStudioStreamer {
     }
     if (this.videoSourceNode && this.videoSourceNode !== source) {
       try {
-        this.videoSourceNode.disconnect()
+        if (this.videoToVirtualMicGain) {
+          this.videoSourceNode.disconnect(this.videoToVirtualMicGain)
+        }
+        if (this.localMonitoringGain) {
+          this.videoSourceNode.disconnect(this.localMonitoringGain)
+        }
       } catch {
         // Ignore disconnect errors
       }
     }
+    this.customAudioSourceNode = source
     this.videoSourceNode = source
     this.wireVideoAudioGraph()
   }
@@ -350,9 +386,14 @@ export class VirtualStudioStreamer {
 
   public detachVideoElement(): void {
     this.videoElement = null
-    if (this.videoSourceNode) {
+    if (this.videoSourceNode && !this.customAudioSourceNode && !this.mediaStreamSourceNode) {
       try {
-        this.videoSourceNode.disconnect()
+        if (this.videoToVirtualMicGain) {
+          this.videoSourceNode.disconnect(this.videoToVirtualMicGain)
+        }
+        if (this.localMonitoringGain) {
+          this.videoSourceNode.disconnect(this.localMonitoringGain)
+        }
       } catch {
         // Disconnect can throw if already disconnected
       }
@@ -363,12 +404,18 @@ export class VirtualStudioStreamer {
   public detachAudioSource(): void {
     if (this.videoSourceNode) {
       try {
-        this.videoSourceNode.disconnect()
+        if (this.videoToVirtualMicGain) {
+          this.videoSourceNode.disconnect(this.videoToVirtualMicGain)
+        }
+        if (this.localMonitoringGain) {
+          this.videoSourceNode.disconnect(this.localMonitoringGain)
+        }
       } catch {
         // Ignore disconnect errors
       }
-      this.videoSourceNode = null
     }
+    this.customAudioSourceNode = null
+    this.videoSourceNode = null
   }
 
   /**
@@ -637,6 +684,7 @@ export class VirtualStudioStreamer {
       // 5. Virtual Mic Sink Audio Processor Node (pushes PCM via IPC)
       if (typeof this.audioContext.createScriptProcessor === 'function') {
         const processor = this.audioContext.createScriptProcessor(4096, 2, 2)
+        let lastDiagnosticTime = 0
         processor.onaudioprocess = (event: AudioProcessingEvent) => {
           if (!this.active) return
           const input = event.inputBuffer
@@ -645,6 +693,20 @@ export class VirtualStudioStreamer {
 
           const pcmBytes = this.interleaveFloatTo16BitPCM(left, right)
           void this.ipcBridge.pushAudio(pcmBytes)
+
+          // Periodic active audio diagnostic logging (every 4 seconds during playback)
+          const now = Date.now()
+          if (this.isPlaying && now - lastDiagnosticTime > 4000) {
+            lastDiagnosticTime = now
+            let sumSq = 0
+            for (let i = 0; i < left.length; i += 16) {
+              sumSq += left[i] * left[i]
+            }
+            const rms = Math.sqrt(sumSq / (left.length / 16))
+            if (rms > 0.005) {
+              console.log(`[VirtualStudioStreamer] Active audio streaming to virtual mic (RMS: ${rms.toFixed(3)})`)
+            }
+          }
         }
         this.scriptProcessorNode = processor
         this.virtualMicMasterNode.connect(processor)
@@ -656,7 +718,10 @@ export class VirtualStudioStreamer {
         this.zeroGainNode.connect(this.audioContext.destination)
       }
 
-      if (this.attachedMediaStream) {
+      if (this.customAudioSourceNode) {
+        this.videoSourceNode = this.customAudioSourceNode
+        this.wireVideoAudioGraph()
+      } else if (this.attachedMediaStream) {
         this.attachMediaStream(this.attachedMediaStream)
       } else if (this.videoElement) {
         this.attachVideoElement(this.videoElement)
@@ -687,7 +752,22 @@ export class VirtualStudioStreamer {
       this.micSourceNode?.disconnect()
       this.micGainNode?.disconnect()
       this.mediaStreamSourceNode?.disconnect()
-      this.videoSourceNode?.disconnect()
+      if (this.videoSourceNode) {
+        if (this.videoToVirtualMicGain) {
+          try {
+            this.videoSourceNode.disconnect(this.videoToVirtualMicGain)
+          } catch {
+            // Ignore disconnect errors
+          }
+        }
+        if (this.localMonitoringGain) {
+          try {
+            this.videoSourceNode.disconnect(this.localMonitoringGain)
+          } catch {
+            // Ignore disconnect errors
+          }
+        }
+      }
       this.videoToVirtualMicGain?.disconnect()
       this.localMonitoringGain?.disconnect()
       this.virtualMicMasterNode?.disconnect()
@@ -704,7 +784,7 @@ export class VirtualStudioStreamer {
     this.micSourceNode = null
     this.micGainNode = null
     this.mediaStreamSourceNode = null
-    // Keep this.videoSourceNode reference if attached so buildAudioGraph() can re-wire it
+    // Keep this.customAudioSourceNode and this.videoSourceNode references if attached so buildAudioGraph() can re-wire them
     this.videoToVirtualMicGain = null
     this.localMonitoringGain = null
     this.virtualMicMasterNode = null

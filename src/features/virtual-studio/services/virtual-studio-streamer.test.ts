@@ -654,6 +654,23 @@ describe('VirtualStudioStreamer', () => {
       // Web Audio caches MediaElementSourceNode per element; verify it was reconnected to the graph
       expect(firstSource.connect).toHaveBeenCalled()
     })
+
+    it('preserves attached AudioNode (masterNode) across stop and re-wires on start without videoElement override', async () => {
+      const mockMasterNode = new MockAudioNode()
+      const mockEl = {} as HTMLVideoElement
+      streamer.attachVideoElement(mockEl)
+      streamer.attachAudioSource(mockMasterNode as unknown as AudioNode)
+
+      await streamer.start()
+      expect(mockMasterNode.connect).toHaveBeenCalled()
+
+      await streamer.stop()
+      mockMasterNode.connect.mockClear()
+
+      await streamer.start()
+      // Custom audio source node must be preserved and reconnected, taking precedence over videoElement
+      expect(mockMasterNode.connect).toHaveBeenCalled()
+    })
   })
 
   describe('Dynamic Camera & Microphone Enable Toggles', () => {

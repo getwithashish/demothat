@@ -629,6 +629,136 @@ describe('VirtualStudioStreamer', () => {
     })
   })
 
+  describe('Event-Driven Frame Delivery (pushRenderedCanvas) & FPS Optimization', () => {
+    it('pushes frame immediately with timestamp when active and activeSource is canvas', async () => {
+      await streamer.start()
+      streamer.setPlaying(true) // activeSource = 'canvas'
+      mockIpc.pushFrame.mockClear()
+
+      const testCanvas = { width: 1920, height: 1080 } as HTMLCanvasElement
+      streamer.pushRenderedCanvas(testCanvas, 42.5)
+
+      expect(mockIpc.pushFrame).toHaveBeenCalledTimes(1)
+      expect(mockIpc.pushFrame).toHaveBeenCalledWith(
+        expect.objectContaining({
+          width: 1920,
+          height: 1080,
+          format: 'rgba',
+          timestamp: 42.5,
+        }),
+      )
+    })
+
+    it('ignores pushRenderedCanvas when activeSource is webcam', async () => {
+      await streamer.start()
+      streamer.setPlaying(false) // activeSource = 'webcam'
+      mockIpc.pushFrame.mockClear()
+
+      const testCanvas = { width: 1920, height: 1080 } as HTMLCanvasElement
+      streamer.pushRenderedCanvas(testCanvas)
+
+      expect(mockIpc.pushFrame).not.toHaveBeenCalled()
+    })
+
+    it('ignores pushRenderedCanvas when streamer is inactive or stopped', async () => {
+      await streamer.start()
+      streamer.setPlaying(true)
+      await streamer.stop()
+      mockIpc.pushFrame.mockClear()
+
+      const testCanvas = { width: 1920, height: 1080 } as HTMLCanvasElement
+      streamer.pushRenderedCanvas(testCanvas)
+
+      expect(mockIpc.pushFrame).not.toHaveBeenCalled()
+    })
+
+    it('performs 1:1 direct blitting without redundant fillRect when source canvas matches output dimensions', async () => {
+      await streamer.start()
+      streamer.setPlaying(true)
+      mockCtx.fillRect.mockClear()
+      mockCtx.drawImage.mockClear()
+
+      const testCanvas = { width: 1920, height: 1080 } as HTMLCanvasElement
+      streamer.pushRenderedCanvas(testCanvas)
+
+      // 1:1 direct blit: no fillRect call, direct drawImage
+      expect(mockCtx.fillRect).not.toHaveBeenCalled()
+      expect(mockCtx.drawImage).toHaveBeenCalledWith(testCanvas, 0, 0, 1920, 1080)
+    })
+
+    it('falls back to letterboxing fillRect when source canvas dimensions do not match output resolution', async () => {
+      await streamer.start()
+      streamer.setPlaying(true)
+      mockCtx.fillRect.mockClear()
+      mockCtx.drawImage.mockClear()
+
+      const oddCanvas = { width: 1000, height: 1000 } as HTMLCanvasElement
+      streamer.pushRenderedCanvas(oddCanvas)
+
+      // Aspect fit letterboxing requires background fillRect
+      expect(mockCtx.fillRect).toHaveBeenCalledWith(0, 0, 1920, 1080)
+      expect(mockCtx.drawImage).toHaveBeenCalledWith(oddCanvas, 420, 0, 1080, 1080)
+    })
+
+    it('preserves horizontal mirroring during 1:1 direct blit when isMirrored is true', async () => {
+      await streamer.start()
+      streamer.setPlaying(true)
+      streamer.setMirrored(true)
+      mockCtx.fillRect.mockClear()
+      mockCtx.drawImage.mockClear()
+      mockCtx.save.mockClear()
+      mockCtx.translate.mockClear()
+      mockCtx.scale.mockClear()
+      mockCtx.restore.mockClear()
+
+      const testCanvas = { width: 1920, height: 1080 } as HTMLCanvasElement
+      streamer.pushRenderedCanvas(testCanvas)
+
+      expect(mockCtx.fillRect).not.toHaveBeenCalled()
+      expect(mockCtx.save).toHaveBeenCalled()
+      expect(mockCtx.translate).toHaveBeenCalledWith(1920, 0)
+      expect(mockCtx.scale).toHaveBeenCalledWith(-1, 1)
+      expect(mockCtx.drawImage).toHaveBeenCalledWith(testCanvas, 0, 0, 1920, 1080)
+      expect(mockCtx.restore).toHaveBeenCalled()
+    })
+
+    it('does not run the uncoordinated timer loop when activeSource is canvas, but runs it when activeSource is webcam', async () => {
+      await streamer.start()
+      streamer.setPlaying(true) // activeSource = 'canvas'
+      mockIpc.pushFrame.mockClear()
+
+      // When canvas is active, polling timer loop must be dormant
+      vi.advanceTimersByTime(1000)
+      expect(mockIpc.pushFrame).not.toHaveBeenCalled()
+
+      // When switched back to webcam, polling timer loop resumes at target FPS
+      streamer.setPlaying(false) // activeSource = 'webcam'
+      mockIpc.pushFrame.mockClear()
+      vi.advanceTimersByTime(1000)
+      expect(mockIpc.pushFrame.mock.calls.length).toBeGreaterThanOrEqual(29)
+    })
+
+    it('throttles Mini-HUD thumbnail generation to 350 ms', async () => {
+      await streamer.start({ isMiniHudVisible: true } as unknown as Partial<VirtualStudioConfig>)
+      streamer.setPlaying(true)
+      // Initial frame thumbnail was pushed during setPlaying(true)
+      expect(mockIpc.pushPreviewFrame).toHaveBeenCalledTimes(1)
+      mockIpc.pushPreviewFrame.mockClear()
+
+      const testCanvas = { width: 1920, height: 1080 } as HTMLCanvasElement
+
+      // Subsequent tick within 200ms (< 350ms) is throttled
+      vi.advanceTimersByTime(200)
+      streamer.pushRenderedCanvas(testCanvas)
+      expect(mockIpc.pushPreviewFrame).not.toHaveBeenCalled()
+
+      // After passing 350ms (advance another 160ms -> total 360ms), thumbnail is pushed
+      vi.advanceTimersByTime(160)
+      streamer.pushRenderedCanvas(testCanvas)
+      expect(mockIpc.pushPreviewFrame).toHaveBeenCalledTimes(1)
+    })
+  })
+
   describe('Video Mirroring', () => {
     it('initializes with mirroring disabled and updates state and IPC on toggle', async () => {
       await streamer.start()

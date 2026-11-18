@@ -125,7 +125,7 @@ export class VirtualStudioStreamer {
   private outputResolution: { width: number; height: number; fps: number } = {
     ...DEFAULT_VIRTUAL_STUDIO_RESOLUTION,
   }
-  private lastThumbnailTime = 0
+  private lastThumbnailTime = -1
   private isMiniHudVisible = true
   private nextFrameTime = 0
 
@@ -272,6 +272,16 @@ export class VirtualStudioStreamer {
 
   public detachCanvas(): void {
     this.sourceCanvas = null
+  }
+
+  /**
+   * Pushes a newly rendered editor canvas frame immediately without waiting for a timer loop.
+   * Delivers frames directly to IPC when Virtual Studio is active and activeSource is 'canvas'.
+   */
+  public pushRenderedCanvas(sourceCanvas: HTMLCanvasElement, timestamp?: number): void {
+    if (!this.active || this.activeSource !== 'canvas') return
+    this.sourceCanvas = sourceCanvas
+    this.captureTick(timestamp)
   }
 
   /**
@@ -608,7 +618,7 @@ export class VirtualStudioStreamer {
     this.teardownAudioGraph()
     this.hudThumbnailCanvas = null
     this.hudThumbnailCtx = null
-    this.lastThumbnailTime = 0
+    this.lastThumbnailTime = -1
 
     // Notify IPC main process
     const result = await this.ipcBridge.stop()
@@ -641,6 +651,11 @@ export class VirtualStudioStreamer {
       activeSource: this.activeSource,
       isMicMuted: this.isMicMuted,
     })
+
+    // Manage frame timer loop according to activeSource:
+    // When canvas: do not poll timer loop; frames are delivered event-driven by pushRenderedCanvas.
+    // When webcam: keep timer loop running at target FPS.
+    this.startFrameLoop()
 
     // Immediately trigger a frame render
     this.captureTick()
@@ -1109,13 +1124,17 @@ export class VirtualStudioStreamer {
 
   private startFrameLoop(): void {
     this.stopFrameLoop()
+    if (this.activeSource === 'canvas') {
+      return
+    }
+
     const fps =
       Number.isFinite(this.outputResolution.fps) && this.outputResolution.fps > 0 ? this.outputResolution.fps : 30
     const frameInterval = 1000 / fps
     this.nextFrameTime = performance.now() + frameInterval
 
     const scheduleNext = () => {
-      if (!this.active) return
+      if (!this.active || this.activeSource === 'canvas') return
       this.captureTick()
 
       this.nextFrameTime += frameInterval
@@ -1147,9 +1166,8 @@ export class VirtualStudioStreamer {
         const ch = this.sourceCanvas.height
 
         if (cw === width && ch === height) {
-          // Native 1080p 1:1 canvas extraction without 0.6667x fractional scaling downsample blur
-          this.scratchCtx.fillStyle = DEFAULT_VIRTUAL_STUDIO_FALLBACK_COLOR
-          this.scratchCtx.fillRect(0, 0, width, height)
+          // Native 1080p 1:1 canvas extraction without 0.6667x fractional scaling downsample blur.
+          // Direct draw without redundant fillRect when dimensions match exactly.
           this.scratchCtx.drawImage(this.sourceCanvas, 0, 0, width, height)
           return
         }
@@ -1176,7 +1194,7 @@ export class VirtualStudioStreamer {
   /**
    * Captures a single frame from the active source and delivers to the virtual camera sink.
    */
-  public captureTick(): void {
+  public captureTick(timestamp?: number): void {
     if (!this.active || !this.scratchCanvas || !this.scratchCtx) return
 
     const { width, height } = this.outputResolution
@@ -1227,7 +1245,7 @@ export class VirtualStudioStreamer {
         width,
         height,
         format: 'rgba',
-        timestamp: performance.now(),
+        timestamp: timestamp ?? performance.now(),
       })
     } catch (err) {
       console.warn('[VirtualStudioStreamer] Error extracting or pushing frame:', err)
@@ -1239,7 +1257,7 @@ export class VirtualStudioStreamer {
     const isHudActive = this.isMiniHudVisible || this.previewListeners.size > 0
     if (isHudActive) {
       const now = performance.now()
-      if (this.lastThumbnailTime === 0 || now - this.lastThumbnailTime >= 100) {
+      if (this.lastThumbnailTime < 0 || now - this.lastThumbnailTime >= 350) {
         this.lastThumbnailTime = now
         try {
           if (!this.hudThumbnailCanvas) {

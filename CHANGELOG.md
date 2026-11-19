@@ -1,3 +1,9 @@
+## [1.21.0-beta.18](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.17...v1.21.0-beta.18) (2026-11-19)
+
+### Performance Improvements
+
+* **virtual-studio:** eliminate audio delay and implement av lip sync ([676b963](https://github.com/getwithashish/DemoThat/commit/676b963be46b571b9c660e30dfa7ad5d321cdbaf))
+
 ## [1.21.0-beta.17](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.16...v1.21.0-beta.17) (2026-11-19)
 
 ### Performance Improvements

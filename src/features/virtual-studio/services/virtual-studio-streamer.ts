@@ -15,7 +15,7 @@ import {
 } from '../workers/virtual-studio-audio-processor.worklet'
 import { createVirtualCameraCanvasWorkerUrl } from '../workers/virtual-camera-canvas.worker'
 
-export const CANVAS_WORKER_POOL_SIZE = 2
+export const CANVAS_WORKER_POOL_SIZE = 3
 
 const logger = createScopedLogger('VirtualStudioStreamer')
 

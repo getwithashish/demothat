@@ -2,6 +2,8 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import log from 'electron-log/main'
 import { getFFmpegPath } from '../../lib/utils'
 
+export const AUDIO_SINK_MAX_QUEUE_BYTES = 64 * 1024
+
 export interface AudioSinkOptions {
   sampleRate?: number
   channels?: number
@@ -21,6 +23,7 @@ export class VirtualAudioSink {
   private overflowCount = 0
   private totalWriteLatencyMs = 0
   private lastChunkTime = 0
+  private lastOverflowLogTime = 0
   private silenceTimer: NodeJS.Timeout | null = null
   private silenceBuffer: Buffer | null = null
   private metricsTimer: NodeJS.Timeout | null = null
@@ -127,7 +130,13 @@ export class VirtualAudioSink {
     this.stopSilenceKeepAlive()
     // Watchdog checking every 60ms; if no audio chunk has arrived for >=120ms, write silence
     this.silenceTimer = setInterval(() => {
-      if (!this.active || this.muted || !this.audioProcess || !this.audioProcess.stdin.writable) {
+      if (
+        !this.active ||
+        this.muted ||
+        !this.audioProcess ||
+        !this.audioProcess.stdin.writable ||
+        (this.audioProcess.stdin.writableLength ?? 0) >= AUDIO_SINK_MAX_QUEUE_BYTES / 2
+      ) {
         return
       }
       const now = Date.now()
@@ -190,6 +199,7 @@ export class VirtualAudioSink {
     this.overflowCount = 0
     this.totalWriteLatencyMs = 0
     this.lastChunkTime = 0
+    this.lastOverflowLogTime = 0
 
     log.info(
       `[VirtualAudioSink] Starting audio sink (sampleRate: ${targetSampleRate}Hz, channels: ${targetChannels}, deviceSinkName: ${options.deviceSinkName || 'demothat_mic'})`,
@@ -240,6 +250,9 @@ export class VirtualAudioSink {
         `--rate=${this.sampleRate}`,
         `--channels=${this.channels}`,
         `--device=${sinkName}`,
+        '--latency-msec=25',
+        '--process-time-msec=10',
+        '--raw',
       ])
 
       proc.stdin.on('error', (err) => {
@@ -356,11 +369,16 @@ export class VirtualAudioSink {
 
       if (this.audioProcess && this.audioProcess.stdin.writable) {
         const queueDepth = this.audioProcess.stdin.writableLength ?? 0
-        if (queueDepth > 64 * 1024) {
+        if (queueDepth >= AUDIO_SINK_MAX_QUEUE_BYTES) {
           this.overflowCount++
-          log.warn(
-            `[VirtualAudioSink] Audio queue overflow/backpressure: stdin buffer length ${queueDepth} bytes > 64KB (overflow #${this.overflowCount})`,
-          )
+          const nowMs = Date.now()
+          if (nowMs - this.lastOverflowLogTime >= 3000) {
+            log.warn(
+              `[VirtualAudioSink] Audio queue backpressure: stdin buffer length ${queueDepth} bytes >= 64KB (overflow events: ${this.overflowCount}). Dropping real-time chunk to prevent latency drift.`,
+            )
+            this.lastOverflowLogTime = nowMs
+          }
+          return false
         }
 
         const writeStart = performance.now()

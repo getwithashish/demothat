@@ -29,6 +29,7 @@ interface FakeMixer {
   setTrack: ReturnType<typeof vi.fn>
   setMaster: ReturnType<typeof vi.fn>
   dispose: ReturnType<typeof vi.fn>
+  getMasterNode: ReturnType<typeof vi.fn>
 }
 
 vi.mock('../lib/preview-audio-mixer', () => ({
@@ -41,6 +42,8 @@ vi.mock('../lib/preview-audio-mixer', () => ({
     setTrack = vi.fn()
     setMaster = vi.fn()
     dispose = vi.fn()
+    getMediaStream = vi.fn().mockReturnValue(null)
+    getMasterNode = vi.fn().mockReturnValue(null)
     constructor(public options: FakeMixer['options']) {
       mixers.push(this as unknown as FakeMixer)
     }

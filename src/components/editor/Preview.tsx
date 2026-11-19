@@ -19,6 +19,7 @@ import type { VisualEffectRegion } from '../../types'
 import { usePreviewAudioMixer } from '../../hooks/usePreviewAudioMixer'
 import { mapSourceTimeToExportTime } from '../../lib/utils'
 import { mediaUrl } from '../../../shared/media-url'
+import { virtualStudioStreamer } from '../../features/virtual-studio'
 
 export const Preview = memo(
   ({
@@ -82,17 +83,39 @@ export const Preview = memo(
 
     const { setPlaying, setDuration, setVideoDimensions, setHasAudioTrack } = useEditorStore.getState()
     const { isPlaying, isCurrentlyCut } = usePlaybackState()
+    const isVirtualStudioActive = useEditorStore((state) => state.isVirtualStudioActive)
 
     // The recording's audio tracks, mixed separately from the video element so each
     // source can be muted and balanced on its own. While the mixer is carrying the
     // audio the element is silenced — see the volume effect below.
-    const { mixerOwnsAudio } = usePreviewAudioMixer({ videoRef, isPlaying })
+    // We pass virtualStudioStreamer.getAudioContext() so the mixer shares the exact same
+    // audio context as Virtual Studio, enabling direct AudioNode piping without cross-context
+    // MediaStream silence glitches.
+    const { mixerOwnsAudio, masterNode } = usePreviewAudioMixer({
+      videoRef,
+      isPlaying,
+      audioContext: virtualStudioStreamer.getAudioContext(),
+    })
 
     const [bgImage, setBgImage] = useState<HTMLImageElement | null>(null)
-    const canvasRef = useRef<HTMLCanvasElement>(null)
+    const canvasRef = useRef<HTMLCanvasElement | null>(null)
+
+    // Reactive callback ref to immediately attach/detach canvas with Virtual Studio streamer
+    const setCanvasRef = useCallback((el: HTMLCanvasElement | null) => {
+      canvasRef.current = el
+      if (el) {
+        virtualStudioStreamer.attachCanvas(el)
+      } else {
+        virtualStudioStreamer.detachCanvas()
+      }
+    }, [])
     const webcamVideoRef = useRef<HTMLVideoElement>(null)
     const clipVideoRefs = useRef<Map<string, HTMLVideoElement>>(new Map())
     const animationFrameId = useRef<number>()
+    const studioTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const rvfcHandleRef = useRef<number | null>(null)
+    const nextFrameTimeRef = useRef<number>(0)
+    const renderCanvasRef = useRef<() => Promise<void>>()
     const drawInFlight = useRef(false)
     // Preview backing store, sized to the DISPLAYED area (×dpr), NOT the 1080p
     // source: drawing a 1920×1080 scene to show ~900px burns ~4× the pixels per
@@ -407,6 +430,27 @@ export const Preview = memo(
       }
     }, [canvasDimensions, isPreviewFullScreen, videoUrl])
 
+    // Wire audio sources to Virtual Studio streamer:
+    // 1. When mixer carries multi-track recording audio, wire masterNode directly as AudioNode
+    useEffect(() => {
+      if (mixerOwnsAudio && masterNode) {
+        virtualStudioStreamer.attachAudioSource(masterNode)
+        return () => {
+          virtualStudioStreamer.detachAudioSource()
+        }
+      }
+    }, [mixerOwnsAudio, masterNode])
+
+    // 2. When mixer does not own audio, wire raw HTML5 <video> element to Virtual Studio
+    useEffect(() => {
+      if (!mixerOwnsAudio && videoRef.current) {
+        virtualStudioStreamer.attachVideoElement(videoRef.current)
+        return () => {
+          virtualStudioStreamer.detachVideoElement()
+        }
+      }
+    }, [mixerOwnsAudio, videoRef, videoUrl])
+
     const hasSizedRef = useRef(false)
 
     // Size the canvas backing store to the DISPLAYED preview box (×dpr, aspect
@@ -436,8 +480,22 @@ export const Preview = memo(
           const fitW = w * dpr
           const fitH = h * dpr
           const maxScale = Math.min(1, srcW / fitW, srcH / fitH)
-          const nextW = Math.max(1, Math.round(fitW * maxScale))
-          const nextH = Math.max(1, Math.round(fitH * maxScale))
+          let nextW = Math.max(1, Math.round(fitW * maxScale))
+          let nextH = Math.max(1, Math.round(fitH * maxScale))
+
+          // When Virtual Studio is active, clamp backing store to native 1080p Full HD (SSAA supersampling)
+          // preserving aspect ratio so canvas drawing is rendered with 2.25x pixel detail for crisp text and code
+          if (isVirtualStudioActive) {
+            const targetW = 1920
+            const targetH = 1080
+            nextW = targetW
+            nextH = targetH
+            if (aspect >= 1) {
+              nextW = Math.round(nextH * aspect)
+            } else {
+              nextH = Math.round(nextW / aspect)
+            }
+          }
 
           const applySize = () => {
             hasSizedRef.current = true
@@ -467,7 +525,7 @@ export const Preview = memo(
         cancelAnimationFrame(raf)
         if (resizeTimer !== null) window.clearTimeout(resizeTimer)
       }
-    }, [canvasDimensions, isPreviewFullScreen])
+    }, [canvasDimensions, isPreviewFullScreen, isVirtualStudioActive])
 
     const beginEffectTransform = (event: React.MouseEvent, effect: VisualEffectRegion, mode: 'move' | 'resize') => {
       event.preventDefault()
@@ -548,6 +606,95 @@ export const Preview = memo(
       [videoClips],
     )
 
+    const cancelScheduledRender = useCallback(() => {
+      if (rvfcHandleRef.current !== null && videoRef.current && 'cancelVideoFrameCallback' in videoRef.current) {
+        try {
+          ;(
+            videoRef.current as HTMLVideoElement & { cancelVideoFrameCallback: (handle: number) => void }
+          ).cancelVideoFrameCallback(rvfcHandleRef.current)
+        } catch {
+          // Ignore
+        }
+        rvfcHandleRef.current = null
+      }
+      if (animationFrameId.current !== undefined) {
+        cancelAnimationFrame(animationFrameId.current)
+        animationFrameId.current = undefined
+      }
+      if (studioTimerRef.current !== null) {
+        clearTimeout(studioTimerRef.current)
+        studioTimerRef.current = null
+      }
+    }, [videoRef])
+
+    const scheduleNextRender = useCallback(() => {
+      cancelScheduledRender()
+      const video = videoRef.current
+      if (
+        video &&
+        'requestVideoFrameCallback' in video &&
+        typeof (video as HTMLVideoElement & { requestVideoFrameCallback?: unknown }).requestVideoFrameCallback ===
+          'function' &&
+        !video.paused
+      ) {
+        // Hardware-synced rVFC
+        rvfcHandleRef.current = (
+          video as HTMLVideoElement & {
+            requestVideoFrameCallback: (callback: (now: number, metadata: unknown) => void) => number
+          }
+        ).requestVideoFrameCallback(() => {
+          rvfcHandleRef.current = null
+          if (studioTimerRef.current !== null) {
+            clearTimeout(studioTimerRef.current)
+            studioTimerRef.current = null
+          }
+          void renderCanvasRef.current?.()
+        })
+
+        // Safety watchdog: if rVFC does not fire within 45ms (~22 FPS minimum floor),
+        // execute render anyway to prevent frame drops caused by decoder jitter or window occlusion.
+        studioTimerRef.current = setTimeout(() => {
+          studioTimerRef.current = null
+          if (rvfcHandleRef.current !== null && video && 'cancelVideoFrameCallback' in video) {
+            try {
+              ;(
+                video as HTMLVideoElement & { cancelVideoFrameCallback: (handle: number) => void }
+              ).cancelVideoFrameCallback(rvfcHandleRef.current)
+            } catch {
+              // Ignore
+            }
+            rvfcHandleRef.current = null
+          }
+          void renderCanvasRef.current?.()
+        }, 45)
+        return
+      }
+
+      if (isVirtualStudioActive) {
+        // High-precision setTimeout loop running at 30 FPS with drift compensation,
+        // decoupled from requestAnimationFrame so frames continue rendering and
+        // extracting at 30 FPS even when DemoThat is minimized or occluded by a fullscreen window.
+        const fps = 30
+        const frameInterval = 1000 / fps
+        const now = performance.now()
+        if (!nextFrameTimeRef.current || now - nextFrameTimeRef.current > frameInterval * 2) {
+          nextFrameTimeRef.current = now + frameInterval
+        } else {
+          nextFrameTimeRef.current += frameInterval
+        }
+        const delay = Math.max(0, nextFrameTimeRef.current - performance.now())
+        studioTimerRef.current = setTimeout(() => {
+          studioTimerRef.current = null
+          void renderCanvasRef.current?.()
+        }, delay)
+      } else {
+        animationFrameId.current = requestAnimationFrame(() => {
+          animationFrameId.current = undefined
+          void renderCanvasRef.current?.()
+        })
+      }
+    }, [isVirtualStudioActive, cancelScheduledRender, videoRef])
+
     const renderCanvas = useCallback(async () => {
       // While playing, drop a frame instead of queueing one when the previous
       // draw is still in flight. While paused (seek/scrub), never drop: a
@@ -555,13 +702,12 @@ export const Preview = memo(
       if (drawInFlight.current && useEditorStore.getState().isPlaying) return
       drawInFlight.current = true
       try {
+        const state = useEditorStore.getState()
         const canvas = canvasRef.current
         const video = videoRef.current
         const webcamVideo = webcamVideoRef.current
-        const state = useEditorStore.getState()
         const ctx = canvas?.getContext('2d')
         if (!canvas || !video || !ctx || !state.videoDimensions.width) {
-          if (state.isPlaying) animationFrameId.current = requestAnimationFrame(renderCanvas)
           return
         }
         syncClipVideos(state.isPlaying, video.currentTime)
@@ -582,31 +728,39 @@ export const Preview = memo(
           clipLayers,
           // While playing, skip the per-frame soft shadow (the costliest op in
           // the scene, and it never changes) — still frames and export draw it.
-          { livePreview: state.isPlaying },
+          // Enforce high-quality image smoothing when Virtual Studio is active.
+          { livePreview: state.isPlaying, isVirtualStudioActive },
         )
-        if (state.isPlaying) {
-          animationFrameId.current = requestAnimationFrame(renderCanvas)
-        }
       } finally {
         drawInFlight.current = false
+        if (useEditorStore.getState().isPlaying) {
+          scheduleNextRender()
+        }
       }
-    }, [videoRef, bgImage, syncClipVideos])
+      if (isVirtualStudioActive && canvasRef.current) {
+        virtualStudioStreamer.pushRenderedCanvas(canvasRef.current, videoRef.current?.currentTime)
+      }
+    }, [videoRef, bgImage, syncClipVideos, isVirtualStudioActive, scheduleNextRender])
+
+    renderCanvasRef.current = renderCanvas
 
     useEffect(() => {
       if (isPlaying) {
-        animationFrameId.current = requestAnimationFrame(renderCanvas)
+        nextFrameTimeRef.current = performance.now()
+        scheduleNextRender()
       } else {
-        renderCanvas()
+        cancelScheduledRender()
+        void renderCanvas()
       }
       return () => {
-        if (animationFrameId.current) {
-          cancelAnimationFrame(animationFrameId.current)
-        }
+        cancelScheduledRender()
       }
     }, [
       isPlaying,
-      currentTime,
+      isVirtualStudioActive,
       renderCanvas,
+      scheduleNextRender,
+      cancelScheduledRender,
       canvasDimensions,
       backingSize,
       frameStyles,
@@ -620,13 +774,20 @@ export const Preview = memo(
       videoClips,
     ])
 
+    // Dedicated effect for instant still-frame rendering when scrubbing/seeking while paused
+    useEffect(() => {
+      if (!isPlaying) {
+        void renderCanvasRef.current?.()
+      }
+    }, [isPlaying, currentTime])
+
     useEffect(() => {
       const video = videoRef.current
       if (!video) return
       const webcamVideo = webcamVideoRef.current
       if (isPlaying) {
-        video.play().catch(console.error)
-        webcamVideo?.play().catch(console.error)
+        void video.play()?.catch?.(console.error)
+        void webcamVideo?.play()?.catch?.(console.error)
       } else {
         video.pause()
         webcamVideo?.pause()
@@ -682,7 +843,10 @@ export const Preview = memo(
         video.pause()
       }
       if (webcamVideoRef.current) {
-        webcamVideoRef.current.currentTime = newTime
+        const drift = Math.abs(webcamVideoRef.current.currentTime - newTime)
+        if (drift > 0.15) {
+          webcamVideoRef.current.currentTime = newTime
+        }
         webcamVideoRef.current.playbackRate = video.playbackRate // Sync webcam speed
       }
       setCurrentTime(newTime)
@@ -787,7 +951,7 @@ export const Preview = memo(
             {videoUrl ? (
               <>
                 <canvas
-                  ref={canvasRef}
+                  ref={setCanvasRef}
                   width={backingSize?.width ?? canvasDimensions.width}
                   height={backingSize?.height ?? canvasDimensions.height}
                   style={{ width: '100%', height: '100%', objectFit: 'contain' }}
@@ -900,6 +1064,7 @@ export const Preview = memo(
 
         <video
           ref={videoRef}
+          crossOrigin="anonymous"
           src={videoUrl || undefined}
           onTimeUpdate={handleTimeUpdate}
           onLoadedMetadata={handleLoadedMetadata}
@@ -918,19 +1083,17 @@ export const Preview = memo(
             console.error('[Preview] media element failed to load:', mediaError)
             reportMediaHealth(`error code=${mediaError?.code} message=${mediaError?.message ?? ''}`)
           }}
-          // Rendered-but-invisible, NOT `display:none`: the compositor drops
-          // textures for display:none videos, so a GPU-accelerated canvas
-          // drawImage() of them silently draws nothing (black preview while
-          // export works). A 1px off-screen, ~transparent video stays composited
-          // long enough for every backend to keep its frame available.
+          // In-viewport invisible styling ensures Chromium compositor keeps video textures
+          // in the active layer tree without background throttling or occluded rVFC suspension.
           style={{
-            position: 'fixed',
-            top: '-200px',
-            left: '-200px',
-            width: '4px',
-            height: '4px',
-            opacity: 0.01,
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '1px',
+            height: '1px',
+            opacity: 0.001,
             pointerEvents: 'none',
+            zIndex: -1,
           }}
         />
         {webcamVideoUrl && (
@@ -941,13 +1104,14 @@ export const Preview = memo(
             playsInline
             onLoadedMetadata={handleWebcamLoadedMetadata}
             style={{
-              position: 'fixed',
-              top: '-200px',
-              left: '-200px',
-              width: '4px',
-              height: '4px',
-              opacity: 0.01,
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '1px',
+              height: '1px',
+              opacity: 0.001,
               pointerEvents: 'none',
+              zIndex: -1,
             }}
           />
         )}
@@ -964,13 +1128,14 @@ export const Preview = memo(
             playsInline
             preload="auto"
             style={{
-              position: 'fixed',
-              top: '-200px',
-              left: '-200px',
-              width: '4px',
-              height: '4px',
-              opacity: 0.01,
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '1px',
+              height: '1px',
+              opacity: 0.001,
               pointerEvents: 'none',
+              zIndex: -1,
             }}
           />
         ))}

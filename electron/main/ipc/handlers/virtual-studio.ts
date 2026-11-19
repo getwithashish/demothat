@@ -1,0 +1,64 @@
+import { ipcMain } from 'electron'
+import log from 'electron-log/main'
+import type {
+  VirtualStudioConfig,
+  VirtualFramePayload,
+  TrayQuickAction,
+  VirtualStudioStatus,
+} from '../../../../shared/virtual-camera-types'
+import { virtualStudioManager } from '../../features/virtual-studio/virtual-studio-manager'
+import { showHudWindow, hideHudWindow, toggleHudWindow } from '../../windows/hud-window'
+
+export function registerVirtualStudioHandlers(): void {
+  ipcMain.handle('virtual-studio:get-status', async () => {
+    return virtualStudioManager.getStatus()
+  })
+
+  ipcMain.handle('virtual-studio:install-driver', async () => {
+    return virtualStudioManager.installDriver()
+  })
+
+  ipcMain.handle('virtual-studio:start', async (_event, config: VirtualStudioConfig) => {
+    return virtualStudioManager.start(config)
+  })
+
+  ipcMain.handle('virtual-studio:stop', async () => {
+    return virtualStudioManager.stop()
+  })
+
+  ipcMain.on('virtual-studio:push-frame', (_event, payload: VirtualFramePayload) => {
+    void virtualStudioManager.pushFrame(payload).catch((err) => {
+      log.warn('[VirtualStudioIPC] Error pushing frame:', err)
+    })
+  })
+
+  ipcMain.on('virtual-studio:push-audio', (_event, buffer: Uint8Array | ArrayBuffer) => {
+    void virtualStudioManager.pushAudio(buffer).catch((err) => {
+      log.warn('[VirtualStudioIPC] Error pushing audio:', err)
+    })
+  })
+
+  ipcMain.handle('virtual-studio:trigger-action', async (_event, action: TrayQuickAction) => {
+    return virtualStudioManager.triggerAction(action)
+  })
+
+  ipcMain.on('virtual-studio:update-status', (_event, patch: Partial<VirtualStudioStatus>) => {
+    void virtualStudioManager.updateStatus(patch)
+  })
+
+  ipcMain.on('virtual-studio:push-preview-frame', (_event, dataUrl: string) => {
+    virtualStudioManager.pushPreviewFrame(dataUrl)
+  })
+
+  ipcMain.on('virtual-studio:show-hud', () => {
+    showHudWindow()
+  })
+
+  ipcMain.on('virtual-studio:hide-hud', () => {
+    hideHudWindow()
+  })
+
+  ipcMain.on('virtual-studio:toggle-hud', () => {
+    toggleHudWindow()
+  })
+}

@@ -38,6 +38,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { useAIToolDispatcher } from '../components/ai/useAIToolDispatcher'
 import { EdCommandPalette } from '../features/ed/palette/EdCommandPalette'
 import { EdSidebar } from '../features/ed/sidebar/EdSidebar'
+import { VirtualStudioHeaderPill, virtualStudioStreamer } from '../features/virtual-studio'
 
 export function EditorPage() {
   const {
@@ -318,6 +319,14 @@ export function EditorPage() {
     if (currentProjectPath) rememberRecentProject(currentProjectPath)
   }, [currentProjectPath, rememberRecentProject])
 
+  // Synchronize Virtual Studio streamer with store changes and System Tray events
+  useEffect(() => {
+    const cleanup = virtualStudioStreamer.syncWithStore()
+    return () => {
+      cleanup()
+    }
+  }, [])
+
   useKeyboardShortcuts(
     {
       delete: handleDeleteSelectedRegion,
@@ -460,6 +469,7 @@ export function EditorPage() {
           {platform === 'darwin' ? '⌘K' : 'Ctrl+K'}
         </kbd>
       </Button>,
+      <VirtualStudioHeaderPill key="virtual-studio" />,
       <ExportButton key="export" isExporting={isExporting} onClick={openExportModal} disabled={duration <= 0} />,
       <Button
         key="publish"

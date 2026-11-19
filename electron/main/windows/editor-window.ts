@@ -60,6 +60,7 @@ function setupEditorWindow(): BrowserWindow {
     webPreferences: {
       preload: PRELOAD_SCRIPT,
       webSecurity: !VITE_DEV_SERVER_URL,
+      backgroundThrottling: false,
     },
   })
   appState.editorWin = win

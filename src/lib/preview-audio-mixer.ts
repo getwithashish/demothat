@@ -89,6 +89,7 @@ export class PreviewAudioMixer {
   private readonly createElement: (url: string) => MediaLike
   private readonly tolerance: number
   private readonly master: GainNode
+  private readonly mediaStreamDestination?: MediaStreamAudioDestinationNode
   private tracks: AttachedTrack[] = []
   private disposed = false
   private masterVolume = 1
@@ -102,6 +103,20 @@ export class PreviewAudioMixer {
     this.master = this.context.createGain()
     this.master.gain.value = 1
     this.master.connect(options.output ?? this.context.destination)
+    if (typeof this.context.createMediaStreamDestination === 'function') {
+      this.mediaStreamDestination = this.context.createMediaStreamDestination()
+      this.master.connect(this.mediaStreamDestination)
+    }
+  }
+
+  /** Gets the mixed audio MediaStream, e.g. for Virtual Studio / virtual mic sink. */
+  getMediaStream(): MediaStream | null {
+    return this.mediaStreamDestination?.stream ?? null
+  }
+
+  /** Gets the master GainNode for direct Web Audio graph piping into Virtual Studio. */
+  getMasterNode(): GainNode {
+    return this.master
   }
 
   /** Replace the set of tracks. Existing elements are torn down first. */

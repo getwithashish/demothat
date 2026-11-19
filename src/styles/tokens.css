@@ -137,9 +137,10 @@
     font-size: 13px;
     line-height: 1.4;
   }
-  /* The recorder window is transparent and frameless: only the floating dock
+  /* The recorder and mini-HUD windows are transparent and frameless: only the floating dock / hud
      should be visible, never an opaque page background. */
-  html[data-surface='recorder'] body {
+  html[data-surface='recorder'] body,
+  html[data-surface='mini-hud'] body {
     background: transparent;
   }
   :focus-visible {

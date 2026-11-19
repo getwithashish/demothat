@@ -12,6 +12,13 @@ import type { Product } from '../shared/pricing'
 import type { SessionSummary } from '../shared/session'
 import type { components } from '../shared/api-types'
 import type { AIChatRequest, ChatChunk, AIApprovalDecision } from '../shared/ai-types'
+import type {
+  VirtualStudioStatus,
+  VirtualStudioConfig,
+  VirtualFramePayload,
+  TrayQuickAction,
+  VirtualStudioActionResult,
+} from '../shared/virtual-camera-types'
 
 /**
  * Publishing shapes come straight from the vendored contract, so the renderer cannot
@@ -720,6 +727,46 @@ export const electronAPI = {
   },
   aiToolExecutionResult: (payload: { id: string; ok: boolean; result?: unknown; error?: string }): void =>
     ipcRenderer.send('ai:tool-execution-result', payload),
+
+  // --- Virtual Camera & Microphone Studio ---
+  virtualStudio: {
+    getStatus: (): Promise<VirtualStudioStatus> => ipcRenderer.invoke('virtual-studio:get-status'),
+    installDriver: (): Promise<VirtualStudioActionResult> => ipcRenderer.invoke('virtual-studio:install-driver'),
+    start: (config: VirtualStudioConfig): Promise<VirtualStudioActionResult> =>
+      ipcRenderer.invoke('virtual-studio:start', config),
+    stop: (): Promise<VirtualStudioActionResult> => ipcRenderer.invoke('virtual-studio:stop'),
+    pushFrame: (payload: VirtualFramePayload): void => ipcRenderer.send('virtual-studio:push-frame', payload),
+    pushAudio: (buffer: Uint8Array | ArrayBuffer): void => ipcRenderer.send('virtual-studio:push-audio', buffer),
+    triggerAction: (action: TrayQuickAction): Promise<VirtualStudioActionResult> =>
+      ipcRenderer.invoke('virtual-studio:trigger-action', action),
+    updateStatus: (patch: Partial<VirtualStudioStatus>): void =>
+      ipcRenderer.send('virtual-studio:update-status', patch),
+    onStatusChange: (callback: (status: VirtualStudioStatus) => void) => {
+      const listener = (_event: IpcRendererEvent, status: VirtualStudioStatus) => callback(status)
+      ipcRenderer.on('virtual-studio:status-changed', listener)
+      return () => {
+        ipcRenderer.removeListener('virtual-studio:status-changed', listener)
+      }
+    },
+    onTrayAction: (callback: (action: TrayQuickAction) => void) => {
+      const listener = (_event: IpcRendererEvent, action: TrayQuickAction) => callback(action)
+      ipcRenderer.on('virtual-studio:tray-action', listener)
+      return () => {
+        ipcRenderer.removeListener('virtual-studio:tray-action', listener)
+      }
+    },
+    pushPreviewFrame: (dataUrl: string): void => ipcRenderer.send('virtual-studio:push-preview-frame', dataUrl),
+    onPreviewFrame: (callback: (dataUrl: string) => void) => {
+      const listener = (_event: IpcRendererEvent, dataUrl: string) => callback(dataUrl)
+      ipcRenderer.on('virtual-studio:preview-frame', listener)
+      return () => {
+        ipcRenderer.removeListener('virtual-studio:preview-frame', listener)
+      }
+    },
+    showHud: (): void => ipcRenderer.send('virtual-studio:show-hud'),
+    hideHud: (): void => ipcRenderer.send('virtual-studio:hide-hud'),
+    toggleHud: (): void => ipcRenderer.send('virtual-studio:toggle-hud'),
+  },
 }
 
 // Expose API safely

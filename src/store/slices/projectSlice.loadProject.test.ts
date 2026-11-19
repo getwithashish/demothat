@@ -30,6 +30,9 @@ const resetStore = () => {
       screenSize: null,
       currentProjectPath: null,
       isDirty: false,
+      audioTracks: [],
+      audioTracksFromManifest: false,
+      hasAudioTrack: false,
     })
   }, true)
 }
@@ -58,5 +61,76 @@ describe('loadProject video URLs', () => {
 
     const { videoUrl } = useEditorStore.getState()
     expect(videoUrl).toBe('media:///tmp/rec%231/what%3F.mp4')
+  })
+})
+
+describe('setHasAudioTrack audio track fallback', () => {
+  beforeEach(() => {
+    ;(globalThis as unknown as { window: unknown }).window = { electronAPI }
+    vi.clearAllMocks()
+    resetStore()
+  })
+
+  it('populates legacy tracks when audioTracksFromManifest is false and hasAudio is true', () => {
+    useEditorStore.setState((state) => {
+      Object.assign(state, { audioTracksFromManifest: false, audioTracks: [] })
+    }, true)
+
+    useEditorStore.getState().setHasAudioTrack(true)
+
+    const { audioTracks, hasAudioTrack } = useEditorStore.getState()
+    expect(hasAudioTrack).toBe(true)
+    expect(audioTracks.length).toBeGreaterThan(0)
+  })
+
+  it('does not replace manifest tracks when audioTracksFromManifest is true and audioTracks is non-empty', () => {
+    const manifestTrack = {
+      id: 'manifest-track',
+      label: 'Screen Audio',
+      kind: 'screen' as const,
+      volume: 1,
+      muted: false,
+    }
+    useEditorStore.setState((state) => {
+      Object.assign(state, {
+        audioTracksFromManifest: true,
+        audioTracks: [manifestTrack],
+        hasAudioTrack: true,
+      })
+    }, true)
+
+    useEditorStore.getState().setHasAudioTrack(true)
+
+    const { audioTracks } = useEditorStore.getState()
+    // Manifest tracks must not be overwritten
+    expect(audioTracks).toEqual([manifestTrack])
+  })
+
+  it('populates legacy tracks when audioTracksFromManifest is true but audioTracks is empty', () => {
+    useEditorStore.setState((state) => {
+      Object.assign(state, {
+        audioTracksFromManifest: true,
+        audioTracks: [],
+        hasAudioTrack: false,
+      })
+    }, true)
+
+    useEditorStore.getState().setHasAudioTrack(true)
+
+    const { audioTracks, hasAudioTrack } = useEditorStore.getState()
+    expect(hasAudioTrack).toBe(true)
+    expect(audioTracks.length).toBeGreaterThan(0)
+  })
+
+  it('does not add tracks when hasAudio is false', () => {
+    useEditorStore.setState((state) => {
+      Object.assign(state, { audioTracksFromManifest: false, audioTracks: [] })
+    }, true)
+
+    useEditorStore.getState().setHasAudioTrack(false)
+
+    const { audioTracks, hasAudioTrack } = useEditorStore.getState()
+    expect(hasAudioTrack).toBe(false)
+    expect(audioTracks.length).toBe(0)
   })
 })

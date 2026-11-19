@@ -15,6 +15,7 @@ import { registerRecordingShortcuts, unregisterRecordingShortcuts } from './feat
 import { findProjectArg, markAppReadyForProjects, promptOpenProject, requestOpenProject } from './features/project-open'
 import { initializeMouseTrackerDependencies } from './features/mouse-tracker'
 import { confirmReplaceSession, isQuitApproved, markQuitApproved } from './features/session-guard'
+import { virtualStudioManager } from './features/virtual-studio/virtual-studio-manager'
 import { appState } from './state'
 import { detectSession, WAYLAND_CHROMIUM_FEATURES } from '../../shared/session'
 
@@ -25,8 +26,11 @@ import { detectSession, WAYLAND_CHROMIUM_FEATURES } from '../../shared/session'
 // +faststart). Without range support the video element stalls forever at
 // readyState 0 with NO error event: a black preview while ffmpeg-based export
 // still works. (`stream` enables ranged/streaming responses; `secure` keeps
-// media loadable from the renderer's context.)
-protocol.registerSchemesAsPrivileged([{ scheme: 'media', privileges: { stream: true, secure: true } }])
+// media loadable from the renderer's context; `corsEnabled` lets Web Audio
+// nodes tap into media:// audio sources without security restrictions.)
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'media', privileges: { stream: true, secure: true, corsEnabled: true } },
+])
 
 // --- Initialization ---
 setupLogging()
@@ -41,6 +45,8 @@ initAudioLoopback({ forceCoreAudioTap: true })
 app.commandLine.appendSwitch('disable-renderer-backgrounding')
 app.commandLine.appendSwitch('disable-background-timer-throttling')
 app.commandLine.appendSwitch('disable-backgrounding-occluded-windows')
+// Allow Web Audio graph and media playback without requiring window click gestures
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
 
 // --- Single instance ---
 // A second launch (for example from a `.dthat` file association) must hand the
@@ -146,6 +152,9 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', onAppQuit)
+app.on('before-quit', () => {
+  void virtualStudioManager.cleanupOnExit()
+})
 
 // Quitting is the other data-loss point. The guard runs once per quit; the
 // window's own close handler then lets the window go without asking again.
@@ -165,6 +174,7 @@ app.on('before-quit', (event) => {
 app.on('will-quit', () => {
   // Release the global recording shortcuts before the process goes away.
   unregisterRecordingShortcuts()
+  void virtualStudioManager.cleanupOnExit()
 })
 
 app.on('activate', () => {
@@ -291,7 +301,13 @@ app.whenReady().then(async () => {
       '.webp': 'image/webp',
     }
     const contentType = MIME[path.extname(filePath).toLowerCase()] ?? 'application/octet-stream'
-    const baseHeaders: Record<string, string> = { 'Content-Type': contentType, 'Accept-Ranges': 'bytes' }
+    const baseHeaders: Record<string, string> = {
+      'Content-Type': contentType,
+      'Accept-Ranges': 'bytes',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+      'Access-Control-Allow-Headers': 'Range, Origin, Content-Type, Accept',
+    }
 
     try {
       const size = fsSync.statSync(filePath).size

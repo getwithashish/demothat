@@ -1,3 +1,9 @@
+## [1.21.0-beta.14](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.13...v1.21.0-beta.14) (2026-11-19)
+
+### Features
+
+* **logging:** add systemwide environment-aware logging, IPC instrumentation, and performance telemetry ([9193011](https://github.com/getwithashish/DemoThat/commit/9193011b958a054be7dd47bc3ec3055fa5652001))
+
 ## [1.21.0-beta.13](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.12...v1.21.0-beta.13) (2026-11-19)
 
 ### Features

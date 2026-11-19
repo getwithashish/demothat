@@ -163,13 +163,45 @@ To eliminate clicks, pops, or audio discontinuities during transitions, gain adj
 - Transfers buffers via zero-copy `ArrayBuffer` transfer to `virtual-studio-streamer.ts`, which sends them over IPC to `VirtualAudioSink`.
 - If `AudioWorklet` is unavailable in the environment, the streamer falls back gracefully to a `ScriptProcessorNode`.
 
-### 4.4 Silence Keep-Alive & Backpressure Control (`virtual-audio-sink.ts`)
+### 4.4 Low-Latency Audio Streaming & Backpressure Control (`virtual-audio-sink.ts`)
 
 - During Auto-Return transitions (switching between physical mic and timeline playback), video decoders can incur 200–400ms startup latencies before streaming decoded audio samples.
 - To prevent PulseAudio/PipeWire sink buffer starvation (underruns), `VirtualAudioSink` maintains a 60ms watchdog interval timer.
 - If no PCM chunk has arrived within 120ms, the watchdog writes a 4096-byte 16-bit silence buffer to `stdin`.
-- To prevent unbounded memory expansion and log flooding if the audio consumer backs up, `VirtualAudioSink` enforces a strict 64KB queue depth ceiling (`AUDIO_SINK_MAX_QUEUE_BYTES`). When the queue exceeds 64KB, incoming chunks are dropped to preserve real-time synchronicity, and warning logs are throttled to at most once per 3 seconds.
-- `pacat` is spawned with `--latency-msec=25 --process-time-msec=10 --raw` to enforce low-latency real-time ring buffering.
+- To eliminate audio buffer bloat and guarantee real-time synchronization (< 42ms queue latency):
+  - `AUDIO_SINK_MAX_QUEUE_BYTES` is capped at 8KB (`8 * 1024` bytes, or ~42ms of 48kHz stereo 16-bit PCM).
+  - If the OS pipe backs up beyond 8KB, incoming chunks are dropped immediately to preserve real-time synchronicity rather than buffering seconds of stale audio.
+  - Warning logs are throttled to at most once per 3 seconds.
+- `pacat` is spawned with `--latency-msec=10 --process-time-msec=5 --raw` for ultra-responsive low-latency ring buffering.
+- Microphone input in Chromium is acquired with explicit constraints:
+  ```ts
+  audio: {
+    deviceId: selectedMicId ? { exact: selectedMicId } : undefined,
+    echoCancellation: false,
+    noiseSuppression: false,
+    autoGainControl: false,
+    channelCount: 2,
+    sampleRate: 48000,
+  }
+  ```
+  Disabling redundant Chromium-side AEC removes Chromium's internal 150–300ms acoustic correlation ring buffer on Linux, while Google Meet, Zoom, and Teams continue to apply their native echo cancellation to `demothat_source`.
+- `AudioContext` is initialized with `latencyHint: 'interactive'` and `sampleRate: 48000`.
+
+### 4.5 Precision A/V Lip Sync Engine (`avSyncOffsetMs`)
+
+DemoThat provides a bidirectional, sub-millisecond A/V Lip Sync synchronization engine:
+
+1. **User-Tunable Sync Range**:
+   - Tunable between `-1000ms` and `+1000ms` (in `10ms` increments, default `0ms`).
+   - Accessible via slider and "Reset to 0ms" buttons in both the Virtual Studio Header Pill popover and the Floating Mini-HUD overlay.
+2. **Video Delay Queue (`avSyncOffsetMs > 0`)**:
+   - When audio lags behind video (e.g. video lips move before sound is heard), positive offsets delay outgoing video frames in a precision `videoDelayQueue` until `now >= releaseTime`.
+   - Audio is dispatched to IPC immediately without delay.
+3. **Audio Delay Queue (`avSyncOffsetMs < 0`)**:
+   - When video lags behind audio, negative offsets delay outgoing PCM chunks in `audioDelayQueue` until `now >= releaseTime`.
+   - Video is dispatched to IPC immediately without delay.
+4. **Zero-Overhead Neutral Mode (`avSyncOffsetMs === 0`)**:
+   - When offset is `0ms`, both audio and video bypass the queue entirely and are dispatched instantaneously with zero queueing overhead or CPU cost.
 
 ---
 

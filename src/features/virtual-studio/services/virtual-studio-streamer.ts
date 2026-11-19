@@ -2,6 +2,9 @@ import {
   DEFAULT_VIRTUAL_STUDIO_RESOLUTION,
   DEFAULT_VIRTUAL_STUDIO_STREAM_RESOLUTION,
   DEFAULT_VIRTUAL_STUDIO_FALLBACK_COLOR,
+  DEFAULT_AV_SYNC_OFFSET_MS,
+  MIN_AV_SYNC_OFFSET_MS,
+  MAX_AV_SYNC_OFFSET_MS,
   type VirtualStudioConfig,
   type VirtualStudioStatus,
   type VirtualFramePayload,
@@ -138,6 +141,13 @@ export class VirtualStudioStreamer {
   private lastThumbnailTime = -1
   private isMiniHudVisible = true
   private nextFrameTime = 0
+
+  // A/V Lip Sync State
+  private avSyncOffsetMs: number = DEFAULT_AV_SYNC_OFFSET_MS
+  private videoDelayQueue: Array<{ payload: VirtualFramePayload; releaseTime: number }> = []
+  private videoDelayTimer: ReturnType<typeof setTimeout> | null = null
+  private audioDelayQueue: Array<{ buffer: Uint8Array | ArrayBuffer; releaseTime: number }> = []
+  private audioDelayTimer: ReturnType<typeof setTimeout> | null = null
 
   // Dependency Injections
   private audioContext: AudioContext | null = null
@@ -318,6 +328,110 @@ export class VirtualStudioStreamer {
 
   public setMiniHudVisible(visible: boolean): void {
     this.isMiniHudVisible = visible
+  }
+
+  public getAvSyncOffsetMs(): number {
+    return this.avSyncOffsetMs
+  }
+
+  public setAvSyncOffsetMs(offsetMs: number): void {
+    const clamped = Math.max(MIN_AV_SYNC_OFFSET_MS, Math.min(MAX_AV_SYNC_OFFSET_MS, Math.round(offsetMs)))
+    if (this.avSyncOffsetMs === clamped) return
+    this.avSyncOffsetMs = clamped
+    logger.info(`[VirtualStudioStreamer] A/V Sync offset set to ${clamped}ms`)
+    this.clearDelayQueues()
+    if (this.active) {
+      this.ipcBridge.updateStatus({ avSyncOffsetMs: clamped })
+    }
+  }
+
+  public dispatchFrame(payload: VirtualFramePayload): void {
+    if (!this.active) return
+
+    if (this.avSyncOffsetMs <= 0) {
+      this.ipcBridge.pushFrame(payload)
+      return
+    }
+
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now()
+    const releaseTime = now + this.avSyncOffsetMs
+    this.videoDelayQueue.push({ payload, releaseTime })
+    this.drainVideoDelayQueue()
+  }
+
+  private drainVideoDelayQueue(): void {
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now()
+    while (this.videoDelayQueue.length > 0 && now >= this.videoDelayQueue[0].releaseTime) {
+      const item = this.videoDelayQueue.shift()!
+      this.ipcBridge.pushFrame(item.payload)
+    }
+
+    if (this.videoDelayTimer) {
+      clearTimeout(this.videoDelayTimer)
+      this.videoDelayTimer = null
+    }
+
+    if (this.videoDelayQueue.length > 0 && this.active) {
+      const nextDelay = Math.max(0, this.videoDelayQueue[0].releaseTime - now)
+      this.videoDelayTimer = setTimeout(
+        () => {
+          this.videoDelayTimer = null
+          this.drainVideoDelayQueue()
+        },
+        Math.min(nextDelay, 25),
+      )
+    }
+  }
+
+  public dispatchAudio(buffer: Uint8Array | ArrayBuffer): void {
+    if (!this.active) return
+
+    if (this.avSyncOffsetMs >= 0) {
+      this.ipcBridge.pushAudio(buffer)
+      return
+    }
+
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now()
+    const releaseTime = now + Math.abs(this.avSyncOffsetMs)
+    this.audioDelayQueue.push({ buffer, releaseTime })
+    this.drainAudioDelayQueue()
+  }
+
+  private drainAudioDelayQueue(): void {
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now()
+    while (this.audioDelayQueue.length > 0 && now >= this.audioDelayQueue[0].releaseTime) {
+      const item = this.audioDelayQueue.shift()!
+      this.ipcBridge.pushAudio(item.buffer)
+    }
+
+    if (this.audioDelayTimer) {
+      clearTimeout(this.audioDelayTimer)
+      this.audioDelayTimer = null
+    }
+
+    if (this.audioDelayQueue.length > 0 && this.active) {
+      const nextDelay = Math.max(0, this.audioDelayQueue[0].releaseTime - now)
+      this.audioDelayTimer = setTimeout(
+        () => {
+          this.audioDelayTimer = null
+          this.drainAudioDelayQueue()
+        },
+        Math.min(nextDelay, 15),
+      )
+    }
+  }
+
+  private clearDelayQueues(): void {
+    if (this.videoDelayTimer) {
+      clearTimeout(this.videoDelayTimer)
+      this.videoDelayTimer = null
+    }
+    if (this.audioDelayTimer) {
+      clearTimeout(this.audioDelayTimer)
+      this.audioDelayTimer = null
+    }
+    this.videoDelayQueue = []
+    this.audioDelayQueue = []
   }
 
   public getPreviewCanvas(): HTMLCanvasElement | null {
@@ -687,6 +801,12 @@ export class VirtualStudioStreamer {
     if (configAny.isMiniHudVisible !== undefined) {
       this.isMiniHudVisible = configAny.isMiniHudVisible
     }
+    if (config.avSyncOffsetMs !== undefined) {
+      this.avSyncOffsetMs = Math.max(
+        MIN_AV_SYNC_OFFSET_MS,
+        Math.min(MAX_AV_SYNC_OFFSET_MS, Math.round(config.avSyncOffsetMs)),
+      )
+    }
 
     this.active = true
     this.isPlaying = false
@@ -744,6 +864,7 @@ export class VirtualStudioStreamer {
       inputResolution: this.inputResolution,
       enableLocalAudioMonitoring: this.isLocalAudioMonitoringEnabled,
       localMonitoringVolume: this.localMonitoringVolume,
+      avSyncOffsetMs: this.avSyncOffsetMs,
     })
 
     return result
@@ -754,6 +875,7 @@ export class VirtualStudioStreamer {
    */
   public async stop(): Promise<VirtualStudioActionResult> {
     this.active = false
+    this.clearDelayQueues()
     this.cancelWebcamCapture()
     this.stopFrameLoop()
     this.cleanupCanvasWorker()
@@ -913,7 +1035,7 @@ export class VirtualStudioStreamer {
     try {
       const AudioCtx = typeof window !== 'undefined' ? window.AudioContext || window.webkitAudioContext : null
       if (AudioCtx) {
-        this.audioContext = new AudioCtx({ sampleRate: 48000 })
+        this.audioContext = new AudioCtx({ sampleRate: 48000, latencyHint: 'interactive' } as AudioContextOptions)
       }
     } catch (err) {
       console.warn('[VirtualStudioStreamer] Unable to create AudioContext:', err)
@@ -971,7 +1093,7 @@ export class VirtualStudioStreamer {
             const workletNode = new AudioWorkletNode(this.audioContext, VIRTUAL_STUDIO_AUDIO_PROCESSOR_NAME)
             workletNode.port.onmessage = (event: MessageEvent<ArrayBuffer>) => {
               if (!this.active) return
-              this.ipcBridge.pushAudio(event.data)
+              this.dispatchAudio(event.data)
             }
             this.audioWorkletNode = workletNode
             this.virtualMicMasterNode.connect(workletNode)
@@ -1001,7 +1123,7 @@ export class VirtualStudioStreamer {
           const right = input.numberOfChannels > 1 ? input.getChannelData(1) : left
 
           const pcmBytes = this.interleaveFloatTo16BitPCM(left, right)
-          this.ipcBridge.pushAudio(pcmBytes)
+          this.dispatchAudio(pcmBytes)
 
           // Periodic active audio diagnostic logging (every 4 seconds during playback)
           const now = Date.now()
@@ -1397,7 +1519,14 @@ export class VirtualStudioStreamer {
       }
 
       const constraints: MediaStreamConstraints = {
-        audio: this.selectedMicId ? { deviceId: { exact: this.selectedMicId } } : true,
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+          channelCount: 2,
+          sampleRate: 48000,
+          ...(this.selectedMicId ? { deviceId: { exact: this.selectedMicId } } : {}),
+        },
       }
 
       this.micStream = await this.mediaDevices.getUserMedia(constraints)
@@ -1548,7 +1677,7 @@ export class VirtualStudioStreamer {
         this.lastCanvasWorkerFrames = this.canvasWorkerFramesReceived
       }
 
-      this.ipcBridge.pushFrame({
+      this.dispatchFrame({
         data: frame.data,
         width: frame.width,
         height: frame.height,
@@ -1686,7 +1815,7 @@ export class VirtualStudioStreamer {
     try {
       // Extract frame pixels and push directly without redundant memcpy
       const imgData = this.scratchCtx.getImageData(0, 0, width, height)
-      this.ipcBridge.pushFrame({
+      this.dispatchFrame({
         data: new Uint8Array(imgData.data.buffer),
         width,
         height,
@@ -1775,6 +1904,9 @@ export class VirtualStudioStreamer {
       if (stateAny.isMiniHudVisible !== undefined && stateAny.isMiniHudVisible !== prevStateAny.isMiniHudVisible) {
         this.setMiniHudVisible(stateAny.isMiniHudVisible)
       }
+      if (state.avSyncOffsetMs !== prevState.avSyncOffsetMs) {
+        this.setAvSyncOffsetMs(state.avSyncOffsetMs)
+      }
       if (state.isVirtualStudioActive !== prevState.isVirtualStudioActive) {
         if (state.isVirtualStudioActive) {
           void this.start({
@@ -1786,6 +1918,7 @@ export class VirtualStudioStreamer {
             localMonitoringVolume: state.localMonitoringVolume,
             isMirrored: stateAny.isMirrored ?? false,
             isMiniHudVisible: stateAny.isMiniHudVisible ?? true,
+            avSyncOffsetMs: state.avSyncOffsetMs,
           } as Partial<VirtualStudioConfig>)
         } else {
           void this.stop()
@@ -1801,6 +1934,9 @@ export class VirtualStudioStreamer {
       useEditorStore.getState().setVirtualStudioStatus(status)
       if (status.isMiniHudVisible !== undefined) {
         this.setMiniHudVisible(status.isMiniHudVisible)
+      }
+      if (status.avSyncOffsetMs !== undefined) {
+        this.setAvSyncOffsetMs(status.avSyncOffsetMs)
       }
     })
 

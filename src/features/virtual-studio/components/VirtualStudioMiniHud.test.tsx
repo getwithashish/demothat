@@ -203,4 +203,39 @@ describe('VirtualStudioMiniHud', () => {
     expect(img).not.toBeNull()
     expect(img.src).toBe('data:image/jpeg;base64,mockframedata')
   })
+
+  it('toggles A/V lip sync panel and updates offset via slider and reset', () => {
+    const el = render(<VirtualStudioMiniHud />)
+    const syncBtn = el.querySelector('button[aria-label="Toggle A/V Lip Sync Settings"]') as HTMLButtonElement
+    expect(syncBtn).not.toBeNull()
+
+    // Panel is initially closed
+    expect(el.textContent).not.toContain('A/V Lip Sync')
+
+    // Click to open panel
+    act(() => {
+      syncBtn.click()
+    })
+
+    expect(el.textContent).toContain('A/V Lip Sync')
+    expect(el.textContent).toContain('0 ms')
+
+    // Set sync offset in store
+    act(() => {
+      useEditorStore.getState().setAvSyncOffsetMs(-120)
+    })
+
+    expect(el.textContent).toContain('-120ms')
+
+    // Reset button should now be visible
+    const resetBtn = Array.from(el.querySelectorAll('button')).find((b) => b.textContent?.includes('Reset'))
+    expect(resetBtn).toBeDefined()
+
+    act(() => {
+      resetBtn?.click()
+    })
+
+    expect(useEditorStore.getState().avSyncOffsetMs).toBe(0)
+    expect(mockVirtualStudio.updateStatus).toHaveBeenCalledWith({ avSyncOffsetMs: 0 })
+  })
 })

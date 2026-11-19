@@ -657,6 +657,7 @@ export interface VirtualStudioState {
   selectedCameraId: string | null
   selectedMicId: string | null
   isMirrored: boolean
+  avSyncOffsetMs: number
   cameraDriverInstalled: boolean
   micDriverInstalled: boolean
   isDriverInstalling: boolean
@@ -677,6 +678,7 @@ export interface VirtualStudioActions {
   setLocalMonitoringVolume: (volume: number) => void
   setIsMirrored: (mirrored: boolean) => void
   toggleMirror: () => void
+  setAvSyncOffsetMs: (offset: number) => void
   setSelectedCameraId: (id: string | null) => void
   setSelectedMicId: (id: string | null) => void
   setVirtualStudioStatus: (status: Partial<VirtualStudioStatus>) => void

@@ -13,6 +13,7 @@ import {
   ChevronDown,
   Loader2,
   FlipVertical,
+  AdjustmentsHorizontal,
 } from 'tabler-icons-react'
 import { useEditorStore } from '../../../store/editorStore'
 import { ICON_SIZE, ICON_STROKE } from '../../../components/ui/icons'
@@ -20,6 +21,11 @@ import { Button } from '../../../components/ui/button'
 import { Switch } from '../../../components/ui/switch'
 import { Slider } from '../../../components/ui/slider'
 import { cn } from '../../../lib/utils'
+import {
+  MIN_AV_SYNC_OFFSET_MS,
+  MAX_AV_SYNC_OFFSET_MS,
+  DEFAULT_AV_SYNC_OFFSET_MS,
+} from '../../../../shared/virtual-camera-types'
 
 interface MediaDeviceInfoItem {
   deviceId: string
@@ -49,6 +55,7 @@ export const VirtualStudioHeaderPill: React.FC = () => {
     micDriverInstalled,
     isDriverInstalling,
     studioError,
+    avSyncOffsetMs,
   } = useEditorStore(
     useShallow((state) => ({
       isVirtualStudioActive: state.isVirtualStudioActive,
@@ -66,6 +73,7 @@ export const VirtualStudioHeaderPill: React.FC = () => {
       micDriverInstalled: state.micDriverInstalled,
       isDriverInstalling: state.isDriverInstalling,
       studioError: state.studioError,
+      avSyncOffsetMs: state.avSyncOffsetMs,
     })),
   )
 
@@ -81,12 +89,47 @@ export const VirtualStudioHeaderPill: React.FC = () => {
     setSelectedMicId,
     setVirtualStudioStatus,
     setDriverInstalling,
+    setAvSyncOffsetMs,
     pushToast,
   } = useEditorStore.getState()
 
   const [sliderVol, setSliderVol] = useState(Math.round((localMonitoringVolume ?? 1.0) * 100))
   const isAdjustingSliderRef = useRef(false)
   const debounceCommitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const [syncOffset, setSyncOffset] = useState(avSyncOffsetMs ?? DEFAULT_AV_SYNC_OFFSET_MS)
+  const isAdjustingSyncRef = useRef(false)
+  const debounceSyncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    if (!isAdjustingSyncRef.current) {
+      setSyncOffset(avSyncOffsetMs ?? DEFAULT_AV_SYNC_OFFSET_MS)
+    }
+  }, [avSyncOffsetMs])
+
+  const handleSyncOffsetChange = useCallback(
+    (val: number) => {
+      isAdjustingSyncRef.current = true
+      setSyncOffset(val)
+      setAvSyncOffsetMs(val)
+      window.electronAPI?.virtualStudio?.updateStatus({ avSyncOffsetMs: val })
+
+      if (debounceSyncTimeoutRef.current) {
+        clearTimeout(debounceSyncTimeoutRef.current)
+      }
+      debounceSyncTimeoutRef.current = setTimeout(() => {
+        isAdjustingSyncRef.current = false
+      }, 300)
+    },
+    [setAvSyncOffsetMs],
+  )
+
+  const handleResetSyncOffset = useCallback(() => {
+    isAdjustingSyncRef.current = false
+    setSyncOffset(DEFAULT_AV_SYNC_OFFSET_MS)
+    setAvSyncOffsetMs(DEFAULT_AV_SYNC_OFFSET_MS)
+    window.electronAPI?.virtualStudio?.updateStatus({ avSyncOffsetMs: DEFAULT_AV_SYNC_OFFSET_MS })
+  }, [setAvSyncOffsetMs])
 
   useEffect(() => {
     if (!isAdjustingSliderRef.current) {
@@ -510,6 +553,61 @@ export const VirtualStudioHeaderPill: React.FC = () => {
                 />
               </div>
             )}
+          </div>
+
+          {/* A/V Lip Sync Offset */}
+          <div className="flex flex-col gap-2 rounded-ctl border border-line bg-ctl/50 p-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <AdjustmentsHorizontal size={16} strokeWidth={ICON_STROKE} className="text-accent shrink-0" />
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-medium">A/V Lip Sync</span>
+                    {syncOffset !== DEFAULT_AV_SYNC_OFFSET_MS && (
+                      <span className="rounded bg-accent/15 px-1 py-0.5 text-[11px] font-mono text-accent">
+                        {syncOffset > 0 ? `+${syncOffset}ms (Video)` : `${syncOffset}ms (Audio)`}
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[11px] text-muted block">
+                    {syncOffset === 0
+                      ? 'Adjust if voice and lips are out of sync'
+                      : syncOffset > 0
+                        ? 'Delays video so late audio stays in sync'
+                        : 'Delays audio so late video stays in sync'}
+                  </span>
+                </div>
+              </div>
+              {syncOffset !== DEFAULT_AV_SYNC_OFFSET_MS && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleResetSyncOffset}
+                  className="h-6 px-1.5 text-[11px] text-muted hover:text-fg"
+                  title="Reset lip sync offset to 0 ms"
+                >
+                  Reset
+                </Button>
+              )}
+            </div>
+
+            <div className="mt-1 px-1">
+              <Slider
+                min={MIN_AV_SYNC_OFFSET_MS}
+                max={MAX_AV_SYNC_OFFSET_MS}
+                step={10}
+                value={syncOffset}
+                onChange={handleSyncOffsetChange}
+                formatValue={(val) => (val === 0 ? '0 ms' : val > 0 ? `+${val} ms` : `${val} ms`)}
+                showValue
+                className="w-full"
+              />
+              <div className="flex justify-between text-[11px] text-muted px-0.5 mt-1 font-mono">
+                <span>-1000ms (Audio delay)</span>
+                <span>0ms</span>
+                <span>+1000ms (Video delay)</span>
+              </div>
+            </div>
           </div>
 
           {/* Mini-HUD & Display Controls */}

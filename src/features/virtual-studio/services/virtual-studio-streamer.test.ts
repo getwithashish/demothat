@@ -1103,7 +1103,9 @@ describe('VirtualStudioStreamer', () => {
 
       mockMediaDevices.getUserMedia.mockClear()
       await streamer.setEnableMic(true)
-      expect(mockMediaDevices.getUserMedia).toHaveBeenCalledWith(expect.objectContaining({ audio: true }))
+      expect(mockMediaDevices.getUserMedia).toHaveBeenCalledWith(
+        expect.objectContaining({ audio: expect.objectContaining({ echoCancellation: false }) }),
+      )
       expect(mockIpc.updateStatus).toHaveBeenCalledWith({ isMicActive: true })
 
       // Redundant call should be a no-op
@@ -1251,7 +1253,7 @@ describe('VirtualStudioStreamer', () => {
       await streamer.setSelectedMic('mic-studio')
       expect(mockMediaDevices.getUserMedia).toHaveBeenCalledWith(
         expect.objectContaining({
-          audio: { deviceId: { exact: 'mic-studio' } },
+          audio: expect.objectContaining({ deviceId: { exact: 'mic-studio' } }),
         }),
       )
     })
@@ -1497,6 +1499,94 @@ describe('VirtualStudioStreamer', () => {
       expect(telemetry.isPlaying).toBe(false)
 
       await instance.stop()
+    })
+  })
+
+  describe('A/V Lip Sync Offset & Precision Queues', () => {
+    it('initializes with default A/V sync offset and clamps updates to [-1000, 1000]', () => {
+      expect(streamer.getAvSyncOffsetMs()).toBe(0)
+
+      streamer.setAvSyncOffsetMs(250)
+      expect(streamer.getAvSyncOffsetMs()).toBe(250)
+
+      streamer.setAvSyncOffsetMs(-150)
+      expect(streamer.getAvSyncOffsetMs()).toBe(-150)
+
+      streamer.setAvSyncOffsetMs(1500)
+      expect(streamer.getAvSyncOffsetMs()).toBe(1000)
+
+      streamer.setAvSyncOffsetMs(-2000)
+      expect(streamer.getAvSyncOffsetMs()).toBe(-1000)
+    })
+
+    it('immediately dispatches frames and audio when offset is 0', async () => {
+      await streamer.start()
+      mockIpc.pushFrame.mockClear()
+      mockIpc.pushAudio.mockClear()
+      streamer.setAvSyncOffsetMs(0)
+
+      const frameData = {
+        data: new Uint8Array(10),
+        width: 1920,
+        height: 1080,
+        format: 'rgba' as const,
+        timestamp: 100,
+      }
+      const audioBuffer = new ArrayBuffer(256)
+
+      streamer.dispatchFrame(frameData)
+      expect(mockIpc.pushFrame).toHaveBeenCalledWith(frameData)
+
+      streamer.dispatchAudio(audioBuffer)
+      expect(mockIpc.pushAudio).toHaveBeenCalledWith(audioBuffer)
+    })
+
+    it('delays video frame dispatch when avSyncOffsetMs > 0 and releases when time expires', async () => {
+      await streamer.start()
+      vi.useFakeTimers()
+      try {
+        mockIpc.pushFrame.mockClear()
+        streamer.setAvSyncOffsetMs(100)
+
+        const frameData = {
+          data: new Uint8Array(10),
+          width: 1920,
+          height: 1080,
+          format: 'rgba' as const,
+          timestamp: 100,
+        }
+
+        streamer.dispatchFrame(frameData)
+        // Delayed: not pushed yet
+        expect(mockIpc.pushFrame).not.toHaveBeenCalled()
+
+        // Advance 100ms
+        vi.advanceTimersByTime(105)
+        expect(mockIpc.pushFrame).toHaveBeenCalledWith(frameData)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('delays audio buffer dispatch when avSyncOffsetMs < 0 and releases when time expires', async () => {
+      await streamer.start()
+      vi.useFakeTimers()
+      try {
+        mockIpc.pushAudio.mockClear()
+        streamer.setAvSyncOffsetMs(-80)
+
+        const audioBuffer = new ArrayBuffer(128)
+
+        streamer.dispatchAudio(audioBuffer)
+        // Delayed: not pushed yet
+        expect(mockIpc.pushAudio).not.toHaveBeenCalled()
+
+        // Advance 80ms
+        vi.advanceTimersByTime(85)
+        expect(mockIpc.pushAudio).toHaveBeenCalledWith(audioBuffer)
+      } finally {
+        vi.useRealTimers()
+      }
     })
   })
 })

@@ -61,8 +61,8 @@ describe('VirtualAudioSink', () => {
         '--rate=48000',
         '--channels=2',
         '--device=demothat_mic',
-        '--latency-msec=25',
-        '--process-time-msec=10',
+        '--latency-msec=10',
+        '--process-time-msec=5',
         '--raw',
       ])
 
@@ -89,8 +89,8 @@ describe('VirtualAudioSink', () => {
         '--rate=48000',
         '--channels=2',
         '--device=custom_sink',
-        '--latency-msec=25',
-        '--process-time-msec=10',
+        '--latency-msec=10',
+        '--process-time-msec=5',
         '--raw',
       ])
     } finally {
@@ -218,12 +218,12 @@ describe('VirtualAudioSink', () => {
     }
   })
 
-  it('drops chunks and throttles warnings when stdin backpressure exceeds 64KB', async () => {
+  it('drops chunks and throttles warnings when stdin backpressure exceeds 8KB', async () => {
     await sink.start()
     mockStdin.write.mockClear()
 
-    // Simulate backed-up queue: writableLength >= 64KB
-    Object.defineProperty(mockStdin, 'writableLength', { value: 65536, configurable: true })
+    // Simulate backed-up queue: writableLength >= 8KB
+    Object.defineProperty(mockStdin, 'writableLength', { value: 8192, configurable: true })
 
     const chunk = Buffer.from([1, 2, 3, 4])
     const result1 = await sink.pushAudio(chunk)
@@ -231,7 +231,9 @@ describe('VirtualAudioSink', () => {
     expect(mockStdin.write).not.toHaveBeenCalled()
     expect(sink.getOverflowCount()).toBe(1)
     expect(log.warn).toHaveBeenCalledWith(
-      expect.stringContaining('[VirtualAudioSink] Audio queue backpressure: stdin buffer length 65536 bytes >= 64KB'),
+      expect.stringContaining(
+        '[VirtualAudioSink] Audio queue backpressure: stdin buffer length 8192 bytes >= 8192 bytes',
+      ),
     )
 
     // Second chunk within 3000ms should also drop, but NOT emit another warning log (throttled)

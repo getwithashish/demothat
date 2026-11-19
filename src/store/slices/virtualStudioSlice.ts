@@ -1,5 +1,10 @@
 import type { Slice, VirtualStudioState, VirtualStudioActions } from '../../types'
 import type { VirtualStudioStatus, TrayQuickAction } from '../../../shared/virtual-camera-types'
+import {
+  DEFAULT_AV_SYNC_OFFSET_MS,
+  MIN_AV_SYNC_OFFSET_MS,
+  MAX_AV_SYNC_OFFSET_MS,
+} from '../../../shared/virtual-camera-types'
 import { createScopedLogger } from '../../lib/logger'
 
 const logger = createScopedLogger('store:virtualStudio')
@@ -16,6 +21,7 @@ export const initialVirtualStudioState: VirtualStudioState = {
   selectedCameraId: null,
   selectedMicId: null,
   isMirrored: false,
+  avSyncOffsetMs: DEFAULT_AV_SYNC_OFFSET_MS,
   cameraDriverInstalled: false,
   micDriverInstalled: false,
   isDriverInstalling: false,
@@ -106,6 +112,13 @@ export const createVirtualStudioSlice: Slice<VirtualStudioState, VirtualStudioAc
       state.isMirrored = !state.isMirrored
     })
   },
+  setAvSyncOffsetMs: (offset: number) => {
+    const clamped = Math.max(MIN_AV_SYNC_OFFSET_MS, Math.min(MAX_AV_SYNC_OFFSET_MS, Math.round(offset)))
+    logger.info(`setAvSyncOffsetMs: ${clamped}`)
+    set((state) => {
+      state.avSyncOffsetMs = clamped
+    })
+  },
   setSelectedCameraId: (id: string | null) => {
     logger.info(`setSelectedCameraId: ${id}`)
     set((state) => {
@@ -132,6 +145,12 @@ export const createVirtualStudioSlice: Slice<VirtualStudioState, VirtualStudioAc
       }
       if (status.isMirrored !== undefined) {
         state.isMirrored = status.isMirrored
+      }
+      if (status.avSyncOffsetMs !== undefined) {
+        state.avSyncOffsetMs = Math.max(
+          MIN_AV_SYNC_OFFSET_MS,
+          Math.min(MAX_AV_SYNC_OFFSET_MS, Math.round(status.avSyncOffsetMs)),
+        )
       }
       if (
         status.localMonitoringVolume !== undefined &&

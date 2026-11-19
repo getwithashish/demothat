@@ -1,3 +1,9 @@
+## [1.21.0-beta.17](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.16...v1.21.0-beta.17) (2026-11-19)
+
+### Performance Improvements
+
+* **virtual-studio:** stream at 720p and upscale to 1080p in sink ([b196e7c](https://github.com/getwithashish/DemoThat/commit/b196e7c1d18ebaec3f49f2e2b43a74f7d4200f69))
+
 ## [1.21.0-beta.16](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.15...v1.21.0-beta.16) (2026-11-19)
 
 ### Performance Improvements

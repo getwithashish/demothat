@@ -2,7 +2,6 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import log from 'electron-log/main'
 import { getFFmpegPath } from '../../lib/utils'
 import { DEFAULT_VIRTUAL_STUDIO_RESOLUTION, type VirtualFramePayload } from '../../../../shared/virtual-camera-types'
-import { rgbaToI420, createStandbySlateI420 } from '../../../../shared/virtual-camera-utils'
 import { checkLinuxCameraDriver } from './driver-setup'
 
 export interface CameraSinkOptions {
@@ -17,7 +16,6 @@ export class VirtualCameraSink {
   private isStandby = false
   private standbyTimer: NodeJS.Timeout | null = null
   private standbySlateBuffer: Buffer | null = null
-  private cachedI420Buffer: Buffer | null = null
   private ffmpegProcess: ChildProcessWithoutNullStreams | null = null
   private options: CameraSinkOptions | null = null
   private frameCount = 0
@@ -48,16 +46,21 @@ export class VirtualCameraSink {
   }
 
   /**
-   * Generates or returns cached 1080p dark standby slate buffer in I420 format.
-   * Dark slate matching DEFAULT_VIRTUAL_STUDIO_FALLBACK_COLOR (#17181b -> Y:24, U:128, V:128).
+   * Generates or returns cached 1080p dark standby slate buffer in RGBA format.
+   * Dark slate matching DEFAULT_VIRTUAL_STUDIO_FALLBACK_COLOR (#17181b -> R:23, G:24, B:27, A:255).
    */
   public getStandbySlateBuffer(width: number, height: number): Buffer {
-    const size = Math.floor(width * height * 1.5)
+    const size = width * height * 4
     if (this.standbySlateBuffer && this.standbySlateBuffer.length === size) {
       return this.standbySlateBuffer
     }
-    const slate = createStandbySlateI420(width, height)
-    const buf = Buffer.from(slate.buffer, slate.byteOffset, slate.byteLength)
+    const buf = Buffer.alloc(size)
+    for (let i = 0; i < size; i += 4) {
+      buf[i] = 23
+      buf[i + 1] = 24
+      buf[i + 2] = 27
+      buf[i + 3] = 255
+    }
     this.standbySlateBuffer = buf
     return buf
   }
@@ -252,13 +255,15 @@ export class VirtualCameraSink {
         '-f',
         'rawvideo',
         '-pix_fmt',
-        'yuv420p',
+        'rgba',
         '-s',
         `${options.width}x${options.height}`,
         '-r',
         String(options.fps || 30),
         '-i',
         'pipe:0',
+        '-vf',
+        'scale=out_color_matrix=bt709:out_range=pc:flags=bicubic',
         '-color_range',
         'pc',
         '-colorspace',
@@ -367,18 +372,26 @@ export class VirtualCameraSink {
         buffer = Buffer.from(payload.data)
       }
 
-      // If format is RGBA (8.3 MB for 1080p), convert to I420 (3.1 MB) using fast integer math
       const targetW = this.options?.width || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.width
       const targetH = this.options?.height || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.height
       const rgbaSize = targetW * targetH * 4
-      const i420Size = Math.floor(targetW * targetH * 1.5)
 
-      if (payload.format === 'rgba' || buffer.length === rgbaSize) {
-        if (!this.cachedI420Buffer || this.cachedI420Buffer.length !== i420Size) {
-          this.cachedI420Buffer = Buffer.alloc(i420Size)
-        }
-        rgbaToI420(buffer, targetW, targetH, this.cachedI420Buffer)
-        buffer = this.cachedI420Buffer
+      // CRITICAL STREAM INTEGRITY GUARD:
+      // Drop any frame whose resolution or buffer size does not match the active sink resolution.
+      // Writing mismatched byte counts to FFmpeg's rawvideo stdin permanently desynchronizes the frame
+      // boundary, causing vertical rolling and swapped chroma planes (green/magenta artifacts).
+      if (payload.width && payload.height && (payload.width !== targetW || payload.height !== targetH)) {
+        log.warn(
+          `[VirtualCameraSink] Dropping frame with mismatched resolution: ${payload.width}x${payload.height} !== ${targetW}x${targetH}`,
+        )
+        return false
+      }
+
+      if (buffer.length >= 1024 && buffer.length !== rgbaSize) {
+        log.warn(
+          `[VirtualCameraSink] Dropping frame with mismatched size: ${buffer.length} bytes (expected ${rgbaSize} bytes for ${targetW}x${targetH} RGBA)`,
+        )
+        return false
       }
 
       if (this.ffmpegProcess && this.ffmpegProcess.stdin.writable) {

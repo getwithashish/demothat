@@ -147,6 +147,29 @@ describe('VirtualCameraSink', () => {
     expect(backpressureOk).toBe(true)
   })
 
+  it('drops frames with mismatched resolution or oversized/undersized buffer length to prevent pipe corruption', async () => {
+    await sink.start({ width: 1920, height: 1080, fps: 30 })
+    mockStdin.write.mockClear()
+
+    // 1. Mismatched width/height (e.g. 640x480 frame sent to 1080p sink)
+    const badResOk = await sink.pushFrame({
+      data: new Uint8Array(640 * 480 * 4),
+      width: 640,
+      height: 480,
+    })
+    expect(badResOk).toBe(false)
+    expect(mockStdin.write).not.toHaveBeenCalled()
+
+    // 2. Mismatched buffer length (e.g. 460,800 bytes instead of 8,294,400 bytes)
+    const badLenOk = await sink.pushFrame({
+      data: new Uint8Array(460800),
+      width: 1920,
+      height: 1080,
+    })
+    expect(badLenOk).toBe(false)
+    expect(mockStdin.write).not.toHaveBeenCalled()
+  })
+
   it('stops cleanly and terminates child process', async () => {
     await sink.start({ width: 1280, height: 720, fps: 30 })
     expect(sink.isActive()).toBe(true)

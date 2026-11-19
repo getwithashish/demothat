@@ -2,10 +2,10 @@ import { describe, it, expect } from 'vitest'
 import { createVirtualCameraCanvasWorkerUrl, VIRTUAL_CAMERA_CANVAS_WORKER_CODE } from './virtual-camera-canvas.worker'
 
 describe('virtual-camera-canvas.worker', () => {
-  it('exports worker code containing rgbaToI420 and OffscreenCanvas handling', () => {
-    expect(VIRTUAL_CAMERA_CANVAS_WORKER_CODE).toContain('function rgbaToI420')
+  it('exports worker code containing OffscreenCanvas and RGBA handling', () => {
     expect(VIRTUAL_CAMERA_CANVAS_WORKER_CODE).toContain('OffscreenCanvas')
-    expect(VIRTUAL_CAMERA_CANVAS_WORKER_CODE).toContain('yuv420p')
+    expect(VIRTUAL_CAMERA_CANVAS_WORKER_CODE).toContain("format: 'rgba'")
+    expect(VIRTUAL_CAMERA_CANVAS_WORKER_CODE).toContain('drawImage')
   })
 
   it('creates a valid blob URL in browser-like environments', () => {

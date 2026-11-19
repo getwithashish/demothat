@@ -1,3 +1,9 @@
+## [1.21.0-beta.19](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.18...v1.21.0-beta.19) (2026-11-19)
+
+### Bug Fixes
+
+* **virtual-studio:** prevent lip sync slider fighting loop and expand delay range ([1aacb8d](https://github.com/getwithashish/DemoThat/commit/1aacb8d8f49c51ffb6c04aefc4e369b8a3a90062))
+
 ## [1.21.0-beta.18](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.17...v1.21.0-beta.18) (2026-11-19)
 
 ### Performance Improvements

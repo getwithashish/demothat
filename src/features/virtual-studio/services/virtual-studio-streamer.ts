@@ -337,12 +337,51 @@ export class VirtualStudioStreamer {
   public setAvSyncOffsetMs(offsetMs: number): void {
     const clamped = Math.max(MIN_AV_SYNC_OFFSET_MS, Math.min(MAX_AV_SYNC_OFFSET_MS, Math.round(offsetMs)))
     if (this.avSyncOffsetMs === clamped) return
+    const prevOffset = this.avSyncOffsetMs
     this.avSyncOffsetMs = clamped
-    logger.info(`[VirtualStudioStreamer] A/V Sync offset set to ${clamped}ms`)
-    this.clearDelayQueues()
-    if (this.active) {
-      this.ipcBridge.updateStatus({ avSyncOffsetMs: clamped })
+    logger.info(`[VirtualStudioStreamer] A/V Sync offset set to ${clamped}ms (was ${prevOffset}ms)`)
+
+    // Smooth queue transition without dropping in-flight frames:
+    if (clamped <= 0 && this.videoDelayQueue.length > 0) {
+      // Switched to zero or negative video delay: flush all queued video frames immediately
+      while (this.videoDelayQueue.length > 0) {
+        const item = this.videoDelayQueue.shift()!
+        this.ipcBridge.pushFrame(item.payload)
+      }
+      if (this.videoDelayTimer) {
+        clearTimeout(this.videoDelayTimer)
+        this.videoDelayTimer = null
+      }
+    } else if (clamped > 0 && prevOffset > 0) {
+      // Adjusted positive video delay: adjust release times of in-flight frames by difference
+      const delta = clamped - prevOffset
+      for (const item of this.videoDelayQueue) {
+        item.releaseTime += delta
+      }
+      this.drainVideoDelayQueue()
     }
+
+    if (clamped >= 0 && this.audioDelayQueue.length > 0) {
+      // Switched to zero or positive audio delay: flush all queued audio buffers immediately
+      while (this.audioDelayQueue.length > 0) {
+        const item = this.audioDelayQueue.shift()!
+        this.ipcBridge.pushAudio(item.buffer)
+      }
+      if (this.audioDelayTimer) {
+        clearTimeout(this.audioDelayTimer)
+        this.audioDelayTimer = null
+      }
+    } else if (clamped < 0 && prevOffset < 0) {
+      // Adjusted negative audio delay: adjust release times by difference
+      const delta = Math.abs(clamped) - Math.abs(prevOffset)
+      for (const item of this.audioDelayQueue) {
+        item.releaseTime += delta
+      }
+      this.drainAudioDelayQueue()
+    }
+
+    // Note: Does not dispatch async updateStatus to IPC to prevent circular slider fighting loops.
+    // UI components handle debounced IPC synchronization.
   }
 
   public dispatchFrame(payload: VirtualFramePayload): void {
@@ -356,6 +395,15 @@ export class VirtualStudioStreamer {
     const now = typeof performance !== 'undefined' ? performance.now() : Date.now()
     const releaseTime = now + this.avSyncOffsetMs
     this.videoDelayQueue.push({ payload, releaseTime })
+
+    // Safety watchdog: cap video delay queue at 120 frames (~4 seconds at 30 fps) to avoid unbounded memory
+    if (this.videoDelayQueue.length > 120) {
+      const dropped = this.videoDelayQueue.shift()
+      if (dropped) {
+        this.ipcBridge.pushFrame(dropped.payload)
+      }
+    }
+
     this.drainVideoDelayQueue()
   }
 
@@ -394,6 +442,15 @@ export class VirtualStudioStreamer {
     const now = typeof performance !== 'undefined' ? performance.now() : Date.now()
     const releaseTime = now + Math.abs(this.avSyncOffsetMs)
     this.audioDelayQueue.push({ buffer, releaseTime })
+
+    // Safety watchdog: cap audio delay queue at 300 chunks (~4 seconds) to avoid unbounded memory
+    if (this.audioDelayQueue.length > 300) {
+      const dropped = this.audioDelayQueue.shift()
+      if (dropped) {
+        this.ipcBridge.pushAudio(dropped.buffer)
+      }
+    }
+
     this.drainAudioDelayQueue()
   }
 
@@ -1047,7 +1104,7 @@ export class VirtualStudioStreamer {
 
     try {
       if (this.audioContext.state === 'suspended') {
-        void this.audioContext.resume().catch(() => {})
+        await this.audioContext.resume().catch(() => {})
       }
 
       // 1. Virtual Mic Master Gain Node

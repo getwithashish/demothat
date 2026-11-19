@@ -27,6 +27,8 @@ import {
   DEFAULT_AV_SYNC_OFFSET_MS,
 } from '../../../../shared/virtual-camera-types'
 
+const SYNC_PRESETS = [0, 250, 500, 1000, 1500, 2000] as const
+
 export const VirtualStudioMiniHud: React.FC = () => {
   const {
     isVirtualStudioActive,
@@ -67,37 +69,65 @@ export const VirtualStudioMiniHud: React.FC = () => {
   const [isSyncOpen, setIsSyncOpen] = useState(false)
   const [syncOffset, setSyncOffset] = useState(avSyncOffsetMs ?? DEFAULT_AV_SYNC_OFFSET_MS)
   const isAdjustingSyncRef = useRef(false)
-  const debounceSyncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const debounceSyncIpcRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const debounceSyncUnlockRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
-    if (!isAdjustingSyncRef.current) {
-      setSyncOffset(avSyncOffsetMs ?? DEFAULT_AV_SYNC_OFFSET_MS)
+    if (!isAdjustingSyncRef.current && avSyncOffsetMs !== undefined) {
+      setSyncOffset(avSyncOffsetMs)
     }
   }, [avSyncOffsetMs])
 
-  const handleSyncOffsetChange = useCallback(
-    (val: number) => {
-      isAdjustingSyncRef.current = true
-      setSyncOffset(val)
-      setAvSyncOffsetMs(val)
-      window.electronAPI?.virtualStudio?.updateStatus({ avSyncOffsetMs: val })
+  useEffect(() => {
+    return () => {
+      if (debounceSyncIpcRef.current) clearTimeout(debounceSyncIpcRef.current)
+      if (debounceSyncUnlockRef.current) clearTimeout(debounceSyncUnlockRef.current)
+    }
+  }, [])
 
-      if (debounceSyncTimeoutRef.current) {
-        clearTimeout(debounceSyncTimeoutRef.current)
+  const applySyncOffset = useCallback(
+    (val: number, immediateIpc = false) => {
+      isAdjustingSyncRef.current = true
+      const clamped = Math.max(MIN_AV_SYNC_OFFSET_MS, Math.min(MAX_AV_SYNC_OFFSET_MS, Math.round(val)))
+      setSyncOffset(clamped)
+      setAvSyncOffsetMs(clamped)
+
+      if (debounceSyncIpcRef.current) {
+        clearTimeout(debounceSyncIpcRef.current)
+        debounceSyncIpcRef.current = null
       }
-      debounceSyncTimeoutRef.current = setTimeout(() => {
-        isAdjustingSyncRef.current = false
-      }, 300)
+      if (debounceSyncUnlockRef.current) {
+        clearTimeout(debounceSyncUnlockRef.current)
+        debounceSyncUnlockRef.current = null
+      }
+
+      if (immediateIpc) {
+        window.electronAPI?.virtualStudio?.updateStatus({ avSyncOffsetMs: clamped })
+        debounceSyncUnlockRef.current = setTimeout(() => {
+          isAdjustingSyncRef.current = false
+        }, 500)
+      } else {
+        debounceSyncIpcRef.current = setTimeout(() => {
+          window.electronAPI?.virtualStudio?.updateStatus({ avSyncOffsetMs: clamped })
+          debounceSyncUnlockRef.current = setTimeout(() => {
+            isAdjustingSyncRef.current = false
+          }, 500)
+        }, 150)
+      }
     },
     [setAvSyncOffsetMs],
   )
 
+  const handleSyncOffsetChange = useCallback(
+    (val: number) => {
+      applySyncOffset(val, false)
+    },
+    [applySyncOffset],
+  )
+
   const handleResetSyncOffset = useCallback(() => {
-    isAdjustingSyncRef.current = false
-    setSyncOffset(DEFAULT_AV_SYNC_OFFSET_MS)
-    setAvSyncOffsetMs(DEFAULT_AV_SYNC_OFFSET_MS)
-    window.electronAPI?.virtualStudio?.updateStatus({ avSyncOffsetMs: DEFAULT_AV_SYNC_OFFSET_MS })
-  }, [setAvSyncOffsetMs])
+    applySyncOffset(DEFAULT_AV_SYNC_OFFSET_MS, true)
+  }, [applySyncOffset])
 
   // Video element for live outgoing webcam feed
   const webcamVideoRef = useRef<HTMLVideoElement>(null)
@@ -421,9 +451,52 @@ export const VirtualStudioMiniHud: React.FC = () => {
             className="w-full"
           />
           <div className="flex justify-between text-[11px] text-muted px-0.5 font-mono">
-            <span>Audio delay</span>
+            <span>-2000ms</span>
             <span>0ms</span>
-            <span>Video delay</span>
+            <span>+3000ms</span>
+          </div>
+
+          {/* Quick Presets & Nudge */}
+          <div className="mt-1 flex flex-wrap items-center justify-between gap-1 pt-1 border-t border-line/40">
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => applySyncOffset(syncOffset - 100, true)}
+                className="rounded border border-line bg-ctl px-1 py-0.5 font-mono text-[11px] text-muted hover:bg-ctl-hover hover:text-fg"
+                title="Decrease by 100ms"
+              >
+                -100
+              </button>
+              <button
+                type="button"
+                onClick={() => applySyncOffset(syncOffset + 100, true)}
+                className="rounded border border-line bg-ctl px-1 py-0.5 font-mono text-[11px] text-muted hover:bg-ctl-hover hover:text-fg"
+                title="Increase by 100ms"
+              >
+                +100
+              </button>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1">
+              {SYNC_PRESETS.map((preset) => {
+                const isActive = syncOffset === preset
+                return (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => applySyncOffset(preset, true)}
+                    className={cn(
+                      'rounded px-1 py-0.5 font-mono text-[11px] transition-colors border',
+                      isActive
+                        ? 'border-accent bg-accent font-semibold text-on-accent'
+                        : 'border-line bg-ctl text-muted hover:bg-ctl-hover hover:text-fg',
+                    )}
+                  >
+                    {preset === 0 ? '0' : `+${preset}`}
+                  </button>
+                )
+              })}
+            </div>
           </div>
         </div>
       )}

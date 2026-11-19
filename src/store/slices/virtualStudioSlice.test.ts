@@ -138,7 +138,7 @@ describe('virtualStudioSlice', () => {
     expect(useEditorStore.getState().isVirtualStudioActive).toBe(false)
   })
 
-  it('sets and clamps avSyncOffsetMs to [-1000, 1000] and syncs from status', () => {
+  it('sets and clamps avSyncOffsetMs to [-2000, 3000] and syncs from status', () => {
     const { setAvSyncOffsetMs, setVirtualStudioStatus } = useEditorStore.getState()
 
     setAvSyncOffsetMs(200)
@@ -147,15 +147,19 @@ describe('virtualStudioSlice', () => {
     setAvSyncOffsetMs(-150)
     expect(useEditorStore.getState().avSyncOffsetMs).toBe(-150)
 
-    // Clamping to [-1000, 1000]
-    setAvSyncOffsetMs(2500)
-    expect(useEditorStore.getState().avSyncOffsetMs).toBe(1000)
+    // Clamping to [-2000, 3000]
+    setAvSyncOffsetMs(4500)
+    expect(useEditorStore.getState().avSyncOffsetMs).toBe(3000)
 
     setAvSyncOffsetMs(-5000)
-    expect(useEditorStore.getState().avSyncOffsetMs).toBe(-1000)
+    expect(useEditorStore.getState().avSyncOffsetMs).toBe(-2000)
 
     // Sync from status
     setVirtualStudioStatus({ avSyncOffsetMs: 50 })
+    expect(useEditorStore.getState().avSyncOffsetMs).toBe(50)
+
+    // Ignores minor status echo (<= 2ms)
+    setVirtualStudioStatus({ avSyncOffsetMs: 51 })
     expect(useEditorStore.getState().avSyncOffsetMs).toBe(50)
   })
 })

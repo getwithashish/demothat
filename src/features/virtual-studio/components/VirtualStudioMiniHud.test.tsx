@@ -237,5 +237,25 @@ describe('VirtualStudioMiniHud', () => {
 
     expect(useEditorStore.getState().avSyncOffsetMs).toBe(0)
     expect(mockVirtualStudio.updateStatus).toHaveBeenCalledWith({ avSyncOffsetMs: 0 })
+
+    // Clicking quick preset in mini-hud (+1000)
+    mockVirtualStudio.updateStatus.mockClear()
+    const preset1000Btn = Array.from(el.querySelectorAll('button')).find((b) => b.textContent === '+1000')
+    expect(preset1000Btn).toBeDefined()
+    act(() => {
+      preset1000Btn?.click()
+    })
+    expect(useEditorStore.getState().avSyncOffsetMs).toBe(1000)
+    expect(mockVirtualStudio.updateStatus).toHaveBeenCalledWith({ avSyncOffsetMs: 1000 })
+
+    // Clicking nudge in mini-hud (+100)
+    mockVirtualStudio.updateStatus.mockClear()
+    const nudgeBtn = Array.from(el.querySelectorAll('button')).find((b) => b.textContent === '+100')
+    expect(nudgeBtn).toBeDefined()
+    act(() => {
+      nudgeBtn?.click()
+    })
+    expect(useEditorStore.getState().avSyncOffsetMs).toBe(1100)
+    expect(mockVirtualStudio.updateStatus).toHaveBeenCalledWith({ avSyncOffsetMs: 1100 })
   })
 })

@@ -147,10 +147,13 @@ export const createVirtualStudioSlice: Slice<VirtualStudioState, VirtualStudioAc
         state.isMirrored = status.isMirrored
       }
       if (status.avSyncOffsetMs !== undefined) {
-        state.avSyncOffsetMs = Math.max(
+        const clampedSync = Math.max(
           MIN_AV_SYNC_OFFSET_MS,
           Math.min(MAX_AV_SYNC_OFFSET_MS, Math.round(status.avSyncOffsetMs)),
         )
+        if (Math.abs(clampedSync - state.avSyncOffsetMs) > 2) {
+          state.avSyncOffsetMs = clampedSync
+        }
       }
       if (
         status.localMonitoringVolume !== undefined &&

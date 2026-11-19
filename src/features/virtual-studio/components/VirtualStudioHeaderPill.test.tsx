@@ -246,5 +246,25 @@ describe('VirtualStudioHeaderPill', () => {
 
     expect(useEditorStore.getState().avSyncOffsetMs).toBe(0)
     expect(mockVirtualStudio.updateStatus).toHaveBeenCalledWith({ avSyncOffsetMs: 0 })
+
+    // Clicking quick preset button (+500ms) sets offset directly and commits to IPC
+    mockVirtualStudio.updateStatus.mockClear()
+    const preset500Btn = Array.from(el.querySelectorAll('button')).find((b) => b.textContent === '+500ms')
+    expect(preset500Btn).toBeDefined()
+    await act(async () => {
+      preset500Btn?.click()
+    })
+    expect(useEditorStore.getState().avSyncOffsetMs).toBe(500)
+    expect(mockVirtualStudio.updateStatus).toHaveBeenCalledWith({ avSyncOffsetMs: 500 })
+
+    // Clicking nudge button (+100ms) increases offset to 600ms
+    mockVirtualStudio.updateStatus.mockClear()
+    const nudgePlusBtn = Array.from(el.querySelectorAll('button')).find((b) => b.textContent === '+100ms')
+    expect(nudgePlusBtn).toBeDefined()
+    await act(async () => {
+      nudgePlusBtn?.click()
+    })
+    expect(useEditorStore.getState().avSyncOffsetMs).toBe(600)
+    expect(mockVirtualStudio.updateStatus).toHaveBeenCalledWith({ avSyncOffsetMs: 600 })
   })
 })

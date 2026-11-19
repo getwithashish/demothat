@@ -192,13 +192,16 @@ To eliminate clicks, pops, or audio discontinuities during transitions, gain adj
 DemoThat provides a bidirectional, sub-millisecond A/V Lip Sync synchronization engine:
 
 1. **User-Tunable Sync Range**:
-   - Tunable between `-1000ms` and `+1000ms` (in `10ms` increments, default `0ms`).
-   - Accessible via slider and "Reset to 0ms" buttons in both the Virtual Studio Header Pill popover and the Floating Mini-HUD overlay.
+   - Tunable between `-2000ms` and `+3000ms` (in `10ms` increments, default `0ms`).
+   - Accessible via slider, direct 100ms nudge buttons (`-100ms`, `+100ms`), quick preset buttons (`0ms`, `+250ms`, `+500ms`, `+1000ms`, `+1500ms`, `+2000ms`), and "Reset" button in both the Virtual Studio Header Pill popover and the Floating Mini-HUD overlay.
+   - Circular IPC echo protection: continuous dragging updates local state and streamer queues with zero dropped frames; IPC synchronization is debounced to eliminate slider fighting loops.
 2. **Video Delay Queue (`avSyncOffsetMs > 0`)**:
    - When audio lags behind video (e.g. video lips move before sound is heard), positive offsets delay outgoing video frames in a precision `videoDelayQueue` until `now >= releaseTime`.
+   - In-flight frames have their release times smoothly adjusted during offset calibration without purging the queue.
    - Audio is dispatched to IPC immediately without delay.
 3. **Audio Delay Queue (`avSyncOffsetMs < 0`)**:
    - When video lags behind audio, negative offsets delay outgoing PCM chunks in `audioDelayQueue` until `now >= releaseTime`.
+   - In-flight audio buffers have their release times smoothly adjusted during offset calibration without purging the queue.
    - Video is dispatched to IPC immediately without delay.
 4. **Zero-Overhead Neutral Mode (`avSyncOffsetMs === 0`)**:
    - When offset is `0ms`, both audio and video bypass the queue entirely and are dispatched instantaneously with zero queueing overhead or CPU cost.

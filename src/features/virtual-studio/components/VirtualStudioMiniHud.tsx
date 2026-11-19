@@ -18,6 +18,7 @@ import { ICON_SIZE, ICON_STROKE } from '../../../components/ui/icons'
 import { Button } from '../../../components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../../components/ui/tooltip'
 import { cn } from '../../../lib/utils'
+import { virtualStudioStreamer } from '../services/virtual-studio-streamer'
 
 export const VirtualStudioMiniHud: React.FC = () => {
   const {
@@ -76,6 +77,14 @@ export const VirtualStudioMiniHud: React.FC = () => {
     const videoElement = webcamVideoRef.current
 
     if (isVirtualStudioActive && activeSource === 'webcam' && enableCamera && isMiniHudVisible) {
+      // Reuse streamer webcam stream if available to avoid duplicate hardware device locks on /dev/video0
+      const streamerStream = virtualStudioStreamer.getWebcamStream?.()
+      if (streamerStream && videoElement) {
+        videoElement.srcObject = streamerStream
+        setStreamError(false)
+        return
+      }
+
       const constraints: MediaStreamConstraints = {
         video: selectedCameraId ? { deviceId: { exact: selectedCameraId } } : true,
         audio: false,

@@ -39,7 +39,7 @@ export interface VirtualFramePayload {
   data: Uint8Array | ArrayBuffer | Uint8ClampedArray
   width: number
   height: number
-  format?: 'rgba' | 'bgra' | 'jpeg'
+  format?: 'rgba' | 'bgra' | 'jpeg' | 'yuv420p'
   timestamp?: number
 }
 

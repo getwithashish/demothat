@@ -637,14 +637,36 @@ export const Preview = memo(
           'function' &&
         !video.paused
       ) {
+        // Hardware-synced rVFC
         rvfcHandleRef.current = (
           video as HTMLVideoElement & {
             requestVideoFrameCallback: (callback: (now: number, metadata: unknown) => void) => number
           }
         ).requestVideoFrameCallback(() => {
           rvfcHandleRef.current = null
+          if (studioTimerRef.current !== null) {
+            clearTimeout(studioTimerRef.current)
+            studioTimerRef.current = null
+          }
           void renderCanvasRef.current?.()
         })
+
+        // Safety watchdog: if rVFC does not fire within 45ms (~22 FPS minimum floor),
+        // execute render anyway to prevent frame drops caused by decoder jitter or window occlusion.
+        studioTimerRef.current = setTimeout(() => {
+          studioTimerRef.current = null
+          if (rvfcHandleRef.current !== null && video && 'cancelVideoFrameCallback' in video) {
+            try {
+              ;(
+                video as HTMLVideoElement & { cancelVideoFrameCallback: (handle: number) => void }
+              ).cancelVideoFrameCallback(rvfcHandleRef.current)
+            } catch {
+              // Ignore
+            }
+            rvfcHandleRef.current = null
+          }
+          void renderCanvasRef.current?.()
+        }, 45)
         return
       }
 
@@ -680,13 +702,17 @@ export const Preview = memo(
       if (drawInFlight.current && useEditorStore.getState().isPlaying) return
       drawInFlight.current = true
       try {
+        const state = useEditorStore.getState()
+        // Pipelined scheduling: request the next hardware video frame callback immediately
+        // so hardware decoding and canvas drawing/IPC stream run concurrently in parallel.
+        if (state.isPlaying) {
+          scheduleNextRender()
+        }
         const canvas = canvasRef.current
         const video = videoRef.current
         const webcamVideo = webcamVideoRef.current
-        const state = useEditorStore.getState()
         const ctx = canvas?.getContext('2d')
         if (!canvas || !video || !ctx || !state.videoDimensions.width) {
-          if (state.isPlaying) scheduleNextRender()
           return
         }
         syncClipVideos(state.isPlaying, video.currentTime)
@@ -712,9 +738,6 @@ export const Preview = memo(
         )
         if (isVirtualStudioActive && canvas) {
           virtualStudioStreamer.pushRenderedCanvas(canvas, video.currentTime)
-        }
-        if (state.isPlaying) {
-          scheduleNextRender()
         }
       } finally {
         drawInFlight.current = false
@@ -1062,19 +1085,17 @@ export const Preview = memo(
             console.error('[Preview] media element failed to load:', mediaError)
             reportMediaHealth(`error code=${mediaError?.code} message=${mediaError?.message ?? ''}`)
           }}
-          // Rendered-but-invisible, NOT `display:none`: the compositor drops
-          // textures for display:none videos, so a GPU-accelerated canvas
-          // drawImage() of them silently draws nothing (black preview while
-          // export works). A 1px off-screen, ~transparent video stays composited
-          // long enough for every backend to keep its frame available.
+          // In-viewport invisible styling ensures Chromium compositor keeps video textures
+          // in the active layer tree without background throttling or occluded rVFC suspension.
           style={{
-            position: 'fixed',
-            top: '-200px',
-            left: '-200px',
-            width: '4px',
-            height: '4px',
-            opacity: 0.01,
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '1px',
+            height: '1px',
+            opacity: 0.001,
             pointerEvents: 'none',
+            zIndex: -1,
           }}
         />
         {webcamVideoUrl && (
@@ -1085,13 +1106,14 @@ export const Preview = memo(
             playsInline
             onLoadedMetadata={handleWebcamLoadedMetadata}
             style={{
-              position: 'fixed',
-              top: '-200px',
-              left: '-200px',
-              width: '4px',
-              height: '4px',
-              opacity: 0.01,
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '1px',
+              height: '1px',
+              opacity: 0.001,
               pointerEvents: 'none',
+              zIndex: -1,
             }}
           />
         )}
@@ -1108,13 +1130,14 @@ export const Preview = memo(
             playsInline
             preload="auto"
             style={{
-              position: 'fixed',
-              top: '-200px',
-              left: '-200px',
-              width: '4px',
-              height: '4px',
-              opacity: 0.01,
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '1px',
+              height: '1px',
+              opacity: 0.001,
               pointerEvents: 'none',
+              zIndex: -1,
             }}
           />
         ))}

@@ -1,3 +1,9 @@
+## [1.21.0-beta.15](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.14...v1.21.0-beta.15) (2026-11-19)
+
+### Performance Improvements
+
+* **virtual-studio:** pipeline canvas worker pool and eliminate audio underflows ([0ac48f8](https://github.com/getwithashish/DemoThat/commit/0ac48f8f9c4532ce251e34376b212c2118aa6f21))
+
 ## [1.21.0-beta.14](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.13...v1.21.0-beta.14) (2026-11-19)
 
 ### Features

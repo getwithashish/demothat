@@ -216,4 +216,35 @@ describe('VirtualStudioHeaderPill', () => {
     expect(useEditorStore.getState().isLocalAudioMonitoringEnabled).toBe(false)
     expect(mockVirtualStudio.updateStatus).toHaveBeenCalledWith({ isLocalAudioMonitoringEnabled: false })
   })
+
+  it('renders A/V lip sync section in popover and handles offset updates and reset', async () => {
+    const el = await renderAsync(<VirtualStudioHeaderPill />)
+    const trigger = el.querySelector('#virtual-studio-pill-trigger') as HTMLButtonElement
+
+    act(() => {
+      trigger.click()
+    })
+
+    expect(el.textContent).toContain('A/V Lip Sync')
+    expect(el.textContent).toContain('Adjust if voice and lips are out of sync')
+
+    // Change sync offset in store to +150ms
+    act(() => {
+      useEditorStore.getState().setAvSyncOffsetMs(150)
+    })
+
+    expect(el.textContent).toContain('+150ms (Video)')
+    expect(el.textContent).toContain('Delays video so late audio stays in sync')
+
+    // Reset button should now be visible
+    const resetBtn = Array.from(el.querySelectorAll('button')).find((b) => b.textContent?.includes('Reset'))
+    expect(resetBtn).toBeDefined()
+
+    await act(async () => {
+      resetBtn?.click()
+    })
+
+    expect(useEditorStore.getState().avSyncOffsetMs).toBe(0)
+    expect(mockVirtualStudio.updateStatus).toHaveBeenCalledWith({ avSyncOffsetMs: 0 })
+  })
 })

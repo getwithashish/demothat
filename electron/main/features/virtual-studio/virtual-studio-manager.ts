@@ -37,6 +37,7 @@ export class VirtualStudioManager {
     localMonitoringVolume: 1.0,
     isMirrored: false,
     isMiniHudVisible: true,
+    avSyncOffsetMs: 0,
     error: null,
   }
 
@@ -105,6 +106,7 @@ export class VirtualStudioManager {
         isLocalAudioMonitoringEnabled: config.enableLocalAudioMonitoring,
         localMonitoringVolume: config.localMonitoringVolume,
         isMirrored: config.isMirrored ?? this.status.isMirrored,
+        avSyncOffsetMs: config.avSyncOffsetMs ?? this.status.avSyncOffsetMs,
       })
       return { success: true }
     }
@@ -157,6 +159,7 @@ export class VirtualStudioManager {
       this.status.isLocalAudioMonitoringEnabled = config.enableLocalAudioMonitoring
       this.status.localMonitoringVolume = config.localMonitoringVolume
       this.status.isMirrored = config.isMirrored ?? this.status.isMirrored ?? false
+      this.status.avSyncOffsetMs = config.avSyncOffsetMs ?? this.status.avSyncOffsetMs ?? 0
       this.status.activeSource = 'webcam'
       this.status.isPlaying = false
       this.status.isMicMuted = false

@@ -16,6 +16,7 @@ describe('virtualStudioSlice', () => {
     state.setIsMirrored(false)
     state.setSelectedCameraId(null)
     state.setSelectedMicId(null)
+    state.setAvSyncOffsetMs(0)
   })
 
   it('initializes with camera and microphone enabled by default', () => {
@@ -28,6 +29,7 @@ describe('virtualStudioSlice', () => {
     expect(state.isLocalAudioMonitoringEnabled).toBe(true)
     expect(state.localMonitoringVolume).toBe(1.0)
     expect(state.isMirrored).toBe(false)
+    expect(state.avSyncOffsetMs).toBe(0)
   })
 
   it('supports setting and toggling mirroring and audio monitoring directly', () => {
@@ -134,5 +136,26 @@ describe('virtualStudioSlice', () => {
     expect(useEditorStore.getState().isVirtualStudioActive).toBe(true)
     handleTrayAction('stop-studio')
     expect(useEditorStore.getState().isVirtualStudioActive).toBe(false)
+  })
+
+  it('sets and clamps avSyncOffsetMs to [-1000, 1000] and syncs from status', () => {
+    const { setAvSyncOffsetMs, setVirtualStudioStatus } = useEditorStore.getState()
+
+    setAvSyncOffsetMs(200)
+    expect(useEditorStore.getState().avSyncOffsetMs).toBe(200)
+
+    setAvSyncOffsetMs(-150)
+    expect(useEditorStore.getState().avSyncOffsetMs).toBe(-150)
+
+    // Clamping to [-1000, 1000]
+    setAvSyncOffsetMs(2500)
+    expect(useEditorStore.getState().avSyncOffsetMs).toBe(1000)
+
+    setAvSyncOffsetMs(-5000)
+    expect(useEditorStore.getState().avSyncOffsetMs).toBe(-1000)
+
+    // Sync from status
+    setVirtualStudioStatus({ avSyncOffsetMs: 50 })
+    expect(useEditorStore.getState().avSyncOffsetMs).toBe(50)
   })
 })

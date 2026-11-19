@@ -2,7 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import log from 'electron-log/main'
 import { getFFmpegPath } from '../../lib/utils'
 
-export const AUDIO_SINK_MAX_QUEUE_BYTES = 64 * 1024
+export const AUDIO_SINK_MAX_QUEUE_BYTES = 8 * 1024
 
 export interface AudioSinkOptions {
   sampleRate?: number
@@ -250,8 +250,8 @@ export class VirtualAudioSink {
         `--rate=${this.sampleRate}`,
         `--channels=${this.channels}`,
         `--device=${sinkName}`,
-        '--latency-msec=25',
-        '--process-time-msec=10',
+        '--latency-msec=10',
+        '--process-time-msec=5',
         '--raw',
       ])
 
@@ -374,7 +374,7 @@ export class VirtualAudioSink {
           const nowMs = Date.now()
           if (nowMs - this.lastOverflowLogTime >= 3000) {
             log.warn(
-              `[VirtualAudioSink] Audio queue backpressure: stdin buffer length ${queueDepth} bytes >= 64KB (overflow events: ${this.overflowCount}). Dropping real-time chunk to prevent latency drift.`,
+              `[VirtualAudioSink] Audio queue backpressure: stdin buffer length ${queueDepth} bytes >= ${AUDIO_SINK_MAX_QUEUE_BYTES} bytes (overflow events: ${this.overflowCount}). Dropping real-time chunk to prevent latency drift.`,
             )
             this.lastOverflowLogTime = nowMs
           }

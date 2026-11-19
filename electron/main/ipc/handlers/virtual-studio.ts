@@ -10,20 +10,38 @@ import { virtualStudioManager } from '../../features/virtual-studio/virtual-stud
 import { showHudWindow, hideHudWindow, toggleHudWindow } from '../../windows/hud-window'
 
 export function registerVirtualStudioHandlers(): void {
+  log.info('[VirtualStudioIPC] Registering Virtual Studio IPC handlers...')
+
   ipcMain.handle('virtual-studio:get-status', async () => {
-    return virtualStudioManager.getStatus()
+    const status = await virtualStudioManager.getStatus()
+    log.info(
+      `[VirtualStudioIPC] get-status: isStreaming=${status.isStreaming}, isCameraActive=${status.isCameraActive}, isMicActive=${status.isMicActive}, activeSource=${status.activeSource}`,
+    )
+    return status
   })
 
   ipcMain.handle('virtual-studio:install-driver', async () => {
-    return virtualStudioManager.installDriver()
+    log.info('[VirtualStudioIPC] Installing virtual camera driver...')
+    const result = await virtualStudioManager.installDriver()
+    log.info(`[VirtualStudioIPC] Driver installation complete: success=${result.success}`)
+    return result
   })
 
   ipcMain.handle('virtual-studio:start', async (_event, config: VirtualStudioConfig) => {
-    return virtualStudioManager.start(config)
+    const res = config.outputResolution
+    log.info(
+      `[VirtualStudioIPC] Starting Virtual Studio (Resolution: ${res?.width ?? 1920}x${res?.height ?? 1080} @ ${res?.fps ?? 30}fps, enableCamera: ${config.enableCamera}, enableMic: ${config.enableMic})`,
+    )
+    const result = await virtualStudioManager.start(config)
+    log.info(`[VirtualStudioIPC] Virtual Studio start result: success=${result.success}`)
+    return result
   })
 
   ipcMain.handle('virtual-studio:stop', async () => {
-    return virtualStudioManager.stop()
+    log.info('[VirtualStudioIPC] Stopping Virtual Studio...')
+    const result = await virtualStudioManager.stop()
+    log.info(`[VirtualStudioIPC] Virtual Studio stop result: success=${result.success}`)
+    return result
   })
 
   ipcMain.on('virtual-studio:push-frame', (_event, payload: VirtualFramePayload) => {
@@ -39,10 +57,12 @@ export function registerVirtualStudioHandlers(): void {
   })
 
   ipcMain.handle('virtual-studio:trigger-action', async (_event, action: TrayQuickAction) => {
+    log.info(`[VirtualStudioIPC] Triggering action: ${action}`)
     return virtualStudioManager.triggerAction(action)
   })
 
   ipcMain.on('virtual-studio:update-status', (_event, patch: Partial<VirtualStudioStatus>) => {
+    log.info('[VirtualStudioIPC] Updating status patch:', patch)
     void virtualStudioManager.updateStatus(patch)
   })
 
@@ -51,14 +71,17 @@ export function registerVirtualStudioHandlers(): void {
   })
 
   ipcMain.on('virtual-studio:show-hud', () => {
+    log.info('[VirtualStudioIPC] show-hud event received')
     showHudWindow()
   })
 
   ipcMain.on('virtual-studio:hide-hud', () => {
+    log.info('[VirtualStudioIPC] hide-hud event received')
     hideHudWindow()
   })
 
   ipcMain.on('virtual-studio:toggle-hud', () => {
+    log.info('[VirtualStudioIPC] toggle-hud event received')
     toggleHudWindow()
   })
 }

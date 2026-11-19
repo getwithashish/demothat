@@ -19,7 +19,12 @@ export class VirtualCameraSink {
   private ffmpegProcess: ChildProcessWithoutNullStreams | null = null
   private options: CameraSinkOptions | null = null
   private frameCount = 0
+  private droppedFrames = 0
+  private drainEvents = 0
   private lastError: string | null = null
+  private metricsTimer: NodeJS.Timeout | null = null
+  private lastMetricsTime = 0
+  private lastMetricsFrames = 0
 
   public isActive(): boolean {
     return this.active
@@ -35,6 +40,30 @@ export class VirtualCameraSink {
 
   public getFrameCount(): number {
     return this.frameCount
+  }
+
+  public getDroppedFrames(): number {
+    return this.droppedFrames
+  }
+
+  public getDrainEvents(): number {
+    return this.drainEvents
+  }
+
+  public getMetrics(): {
+    frameCount: number
+    droppedFrames: number
+    drainEvents: number
+    isActive: boolean
+    isStandby: boolean
+  } {
+    return {
+      frameCount: this.frameCount,
+      droppedFrames: this.droppedFrames,
+      drainEvents: this.drainEvents,
+      isActive: this.active,
+      isStandby: this.isStandby,
+    }
   }
 
   public getLastError(): string | null {
@@ -99,6 +128,39 @@ export class VirtualCameraSink {
     }
   }
 
+  private startMetricsTimer(): void {
+    this.stopMetricsTimer()
+    this.lastMetricsTime = Date.now()
+    this.lastMetricsFrames = this.frameCount
+    this.metricsTimer = setInterval(() => {
+      if (!this.active || this.isStandby) {
+        return
+      }
+      const now = Date.now()
+      const elapsedSec = (now - this.lastMetricsTime) / 1000
+      if (elapsedSec <= 0) return
+      const deltaFrames = this.frameCount - this.lastMetricsFrames
+      const fps = (deltaFrames / elapsedSec).toFixed(1)
+      const writableLength = this.ffmpegProcess?.stdin?.writableLength ?? 0
+      log.info(
+        `[VirtualCameraSink Metrics] Throughput: ${fps} FPS (${deltaFrames} frames in ${elapsedSec.toFixed(1)}s) | Total frames: ${this.frameCount} | Dropped frames: ${this.droppedFrames} | Backpressure drains: ${this.drainEvents} | Stdin queue: ${writableLength} bytes`,
+      )
+      this.lastMetricsTime = now
+      this.lastMetricsFrames = this.frameCount
+    }, 5000)
+
+    if (this.metricsTimer && typeof this.metricsTimer.unref === 'function') {
+      this.metricsTimer.unref()
+    }
+  }
+
+  private stopMetricsTimer(): void {
+    if (this.metricsTimer) {
+      clearInterval(this.metricsTimer)
+      this.metricsTimer = null
+    }
+  }
+
   /**
    * Starts feeding an idle standby slate at 1080p while Studio is idle,
    * keeping /dev/video10 discoverable by WebRTC/browsers.
@@ -111,6 +173,10 @@ export class VirtualCameraSink {
       devicePath: options?.devicePath,
     }
 
+    log.info(
+      `[VirtualCameraSink] startStandby invoked (resolution: ${standardizedOptions.width}x${standardizedOptions.height}, fps: ${standardizedOptions.fps}, devicePath: ${standardizedOptions.devicePath ?? 'auto-detect'})`,
+    )
+
     // If already in standby with identical configuration, keep running
     if (
       this.isStandby &&
@@ -122,12 +188,13 @@ export class VirtualCameraSink {
       this.ffmpegProcess &&
       !this.ffmpegProcess.killed
     ) {
+      log.info('[VirtualCameraSink] Already in standby mode with identical configuration; maintaining standby stream')
       return { success: true }
     }
 
     // If active live streaming is underway, do not interrupt live stream
     if (this.active && !this.isStandby) {
-      log.info('[VirtualCameraSink] Live stream is active; ignoring startStandby')
+      log.info('[VirtualCameraSink] Live stream is currently active; ignoring startStandby')
       return { success: true }
     }
 
@@ -137,6 +204,8 @@ export class VirtualCameraSink {
 
     this.options = standardizedOptions
     this.frameCount = 0
+    this.droppedFrames = 0
+    this.drainEvents = 0
     this.lastError = null
 
     try {
@@ -154,8 +223,9 @@ export class VirtualCameraSink {
       this.active = false
       this.isStandby = true
       this.startStandbyTimer()
+      this.stopMetricsTimer()
       log.info(
-        `[VirtualCameraSink] Idle standby slate active at ${standardizedOptions.width}x${standardizedOptions.height} @ ${standardizedOptions.fps}fps`,
+        `[VirtualCameraSink] Standby slate transition: idle standby slate active at ${standardizedOptions.width}x${standardizedOptions.height} @ ${standardizedOptions.fps}fps`,
       )
       return { success: true }
     } catch (err: unknown) {
@@ -177,6 +247,10 @@ export class VirtualCameraSink {
       devicePath: options.devicePath,
     }
 
+    log.info(
+      `[VirtualCameraSink] start invoked (resolution: ${standardizedOptions.width}x${standardizedOptions.height}, fps: ${standardizedOptions.fps}, devicePath: ${standardizedOptions.devicePath ?? 'auto-detect'})`,
+    )
+
     // Seamless transition from standby slate to live frames without restarting FFmpeg
     if (
       this.isStandby &&
@@ -188,10 +262,11 @@ export class VirtualCameraSink {
       this.options.fps === standardizedOptions.fps &&
       (!standardizedOptions.devicePath || this.options.devicePath === standardizedOptions.devicePath)
     ) {
-      log.info('[VirtualCameraSink] Seamlessly switching from standby slate to live frames')
+      log.info('[VirtualCameraSink] Standby slate transition: seamlessly switching standby slate -> live stream')
       this.stopStandbyTimer()
       this.isStandby = false
       this.active = true
+      this.startMetricsTimer()
       return { success: true }
     }
 
@@ -217,20 +292,28 @@ export class VirtualCameraSink {
 
     this.options = standardizedOptions
     this.frameCount = 0
+    this.droppedFrames = 0
+    this.drainEvents = 0
     this.lastError = null
 
     try {
+      let result: { success: boolean; error?: string }
       if (process.platform === 'linux') {
-        return await this.startLinuxSink(standardizedOptions)
+        result = await this.startLinuxSink(standardizedOptions)
       } else if (process.platform === 'win32') {
-        return await this.startWindowsSink(standardizedOptions)
+        result = await this.startWindowsSink(standardizedOptions)
       } else if (process.platform === 'darwin') {
-        return await this.startMacSink(standardizedOptions)
+        result = await this.startMacSink(standardizedOptions)
       } else {
         this.active = true
         log.info(`[VirtualCameraSink] Running on stub platform: ${process.platform}`)
-        return { success: true }
+        result = { success: true }
       }
+
+      if (result.success && this.active) {
+        this.startMetricsTimer()
+      }
+      return result
     } catch (err: unknown) {
       this.lastError = err instanceof Error ? err.message : String(err)
       log.error('[VirtualCameraSink] Failed to start virtual camera sink:', err)
@@ -381,15 +464,17 @@ export class VirtualCameraSink {
       // Writing mismatched byte counts to FFmpeg's rawvideo stdin permanently desynchronizes the frame
       // boundary, causing vertical rolling and swapped chroma planes (green/magenta artifacts).
       if (payload.width && payload.height && (payload.width !== targetW || payload.height !== targetH)) {
+        this.droppedFrames++
         log.warn(
-          `[VirtualCameraSink] Dropping frame with mismatched resolution: ${payload.width}x${payload.height} !== ${targetW}x${targetH}`,
+          `[VirtualCameraSink] Dropping frame with mismatched resolution: ${payload.width}x${payload.height} !== ${targetW}x${targetH} (Total dropped: ${this.droppedFrames})`,
         )
         return false
       }
 
       if (buffer.length >= 1024 && buffer.length !== rgbaSize) {
+        this.droppedFrames++
         log.warn(
-          `[VirtualCameraSink] Dropping frame with mismatched size: ${buffer.length} bytes (expected ${rgbaSize} bytes for ${targetW}x${targetH} RGBA)`,
+          `[VirtualCameraSink] Dropping frame with mismatched size: ${buffer.length} bytes (expected ${rgbaSize} bytes for ${targetW}x${targetH} RGBA) (Total dropped: ${this.droppedFrames})`,
         )
         return false
       }
@@ -397,6 +482,10 @@ export class VirtualCameraSink {
       if (this.ffmpegProcess && this.ffmpegProcess.stdin.writable) {
         const stdin = this.ffmpegProcess.stdin
         if (stdin.writableLength > buffer.length * 2) {
+          this.drainEvents++
+          log.debug(
+            `[VirtualCameraSink] Backpressure detected: stdin queue length ${stdin.writableLength} exceeds buffer threshold ${buffer.length * 2}. Awaiting drain event #${this.drainEvents}...`,
+          )
           await new Promise<void>((resolve) => {
             stdin.once('drain', () => resolve())
             setTimeout(resolve, 10)
@@ -408,6 +497,7 @@ export class VirtualCameraSink {
       this.frameCount++
       return true
     } catch (err: unknown) {
+      this.droppedFrames++
       this.lastError = err instanceof Error ? err.message : String(err)
       log.warn('[VirtualCameraSink] pushFrame error:', this.lastError)
       return false
@@ -419,8 +509,12 @@ export class VirtualCameraSink {
    * or falls back to idle standby slate if fallbackToStandby is true.
    */
   public async stop(options: { fallbackToStandby?: boolean } = {}): Promise<void> {
+    this.stopMetricsTimer()
+
     if (options.fallbackToStandby && this.ffmpegProcess && !this.ffmpegProcess.killed) {
-      log.info('[VirtualCameraSink] Falling back to idle standby slate')
+      log.info(
+        `[VirtualCameraSink] Standby slate transition: live -> falling back to idle standby slate (Live session: ${this.frameCount} frames pushed, ${this.droppedFrames} dropped, ${this.drainEvents} backpressure drains)`,
+      )
       this.active = false
       this.isStandby = true
       this.startStandbyTimer()
@@ -434,7 +528,9 @@ export class VirtualCameraSink {
       return
     }
 
-    log.info('[VirtualCameraSink] Stopping virtual camera sink')
+    log.info(
+      `[VirtualCameraSink] Stopping virtual camera sink. Session summary: ${this.frameCount} frames pushed, ${this.droppedFrames} dropped, ${this.drainEvents} backpressure drains`,
+    )
     this.active = false
     const proc = this.ffmpegProcess
     this.ffmpegProcess = null

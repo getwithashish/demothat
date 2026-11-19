@@ -1,6 +1,9 @@
 import { WALLPAPERS } from '../../lib/constants'
 import { getCameraPoseAtTime } from '../../lib/camera-motion'
 import type { FrameState, FrameActions, Slice } from '../../types'
+import { createScopedLogger } from '../../lib/logger'
+
+const logger = createScopedLogger('store:frame')
 import type {
   AspectRatio,
   FrameStyles,
@@ -129,16 +132,21 @@ export const createFrameSlice: Slice<FrameState, FrameActions> = (set, get) => (
       state.selectedRegionId = effect.id
       state.activeSidePanelTab = 'general'
     })
+    logger.info(`addVisualEffect: kind=${kind}, id=${effect.id}`)
   },
-  updateVisualEffect: (id, updates) =>
+  updateVisualEffect: (id, updates) => {
+    logger.info(`updateVisualEffect: id=${id}`, updates)
     set((state) => {
       const effect = state.visualEffects.find((item) => item.id === id)
       if (effect) Object.assign(effect, updates)
-    }),
-  deleteVisualEffect: (id) =>
+    })
+  },
+  deleteVisualEffect: (id) => {
+    logger.info(`deleteVisualEffect: id=${id}`)
     set((state) => {
       state.visualEffects = state.visualEffects.filter((item) => item.id !== id)
-    }),
+    })
+  },
   addCompositionLayout: (layout: CompositionLayout) => {
     const { currentTime, duration } = get()
     if (duration <= currentTime) return
@@ -152,16 +160,21 @@ export const createFrameSlice: Slice<FrameState, FrameActions> = (set, get) => (
     set((state) => {
       state.compositionLayouts.push(range)
     })
+    logger.info(`addCompositionLayout: layout=${layout}, id=${range.id}`)
   },
-  updateCompositionLayout: (id, updates) =>
+  updateCompositionLayout: (id, updates) => {
+    logger.info(`updateCompositionLayout: id=${id}`, updates)
     set((state) => {
       const range = state.compositionLayouts.find((item) => item.id === id)
       if (range) Object.assign(range, updates)
-    }),
-  deleteCompositionLayout: (id) =>
+    })
+  },
+  deleteCompositionLayout: (id) => {
+    logger.info(`deleteCompositionLayout: id=${id}`)
     set((state) => {
       state.compositionLayouts = state.compositionLayouts.filter((item) => item.id !== id)
-    }),
+    })
+  },
   addCameraMotion: (kind: CameraMoveKind, startTime: number, endTime: number) => {
     const state = get()
     // Start from the camera's actual pose at this timeline position. If no 3D
@@ -229,29 +242,37 @@ export const createFrameSlice: Slice<FrameState, FrameActions> = (set, get) => (
     set((state) => {
       state.cameraMotions.push(track)
     })
+    logger.info(`addCameraMotion: kind=${kind}, id=${track.id}`)
   },
-  updateCameraMotion: (id, updates) =>
+  updateCameraMotion: (id, updates) => {
+    logger.info(`updateCameraMotion: id=${id}`, updates)
     set((state) => {
       const track = state.cameraMotions.find((item) => item.id === id)
       if (track) Object.assign(track, updates)
-    }),
-  deleteCameraMotion: (id) =>
+    })
+  },
+  deleteCameraMotion: (id) => {
+    logger.info(`deleteCameraMotion: id=${id}`)
     set((state) => {
       state.cameraMotions = state.cameraMotions.filter((item) => item.id !== id)
-    }),
+    })
+  },
   updateFrameStyle: (style: Partial<Omit<FrameStyles, 'background'>>) => {
+    logger.info('updateFrameStyle', style)
     set((state) => {
       Object.assign(state.frameStyles, style)
     })
     get()._ensureActivePresetIsWritable()
   },
   updateBackground: (bg) => {
+    logger.info('updateBackground', bg)
     set((state) => {
       Object.assign(state.frameStyles.background, bg)
     })
     get()._ensureActivePresetIsWritable()
   },
   setAspectRatio: (ratio) => {
+    logger.info(`setAspectRatio: ${ratio}`)
     set((state) => {
       state.aspectRatio = ratio
       recalculateCanvasDimensions(state)

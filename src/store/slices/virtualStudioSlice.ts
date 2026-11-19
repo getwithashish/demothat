@@ -1,5 +1,8 @@
 import type { Slice, VirtualStudioState, VirtualStudioActions } from '../../types'
 import type { VirtualStudioStatus, TrayQuickAction } from '../../../shared/virtual-camera-types'
+import { createScopedLogger } from '../../lib/logger'
+
+const logger = createScopedLogger('store:virtualStudio')
 
 export const initialVirtualStudioState: VirtualStudioState = {
   isVirtualStudioActive: false,
@@ -22,6 +25,7 @@ export const initialVirtualStudioState: VirtualStudioState = {
 export const createVirtualStudioSlice: Slice<VirtualStudioState, VirtualStudioActions> = (set, get) => ({
   ...initialVirtualStudioState,
   setVirtualStudioActive: (active: boolean) => {
+    logger.info(`setVirtualStudioActive: ${active}`)
     set((state) => {
       state.isVirtualStudioActive = active
       if (active) {
@@ -30,72 +34,86 @@ export const createVirtualStudioSlice: Slice<VirtualStudioState, VirtualStudioAc
     })
   },
   setEnableCamera: (enable: boolean) => {
+    logger.info(`setEnableCamera: ${enable}`)
     set((state) => {
       state.enableCamera = enable
     })
   },
   setEnableMic: (enable: boolean) => {
+    logger.info(`setEnableMic: ${enable}`)
     set((state) => {
       state.enableMic = enable
     })
   },
   setActiveSource: (source: 'webcam' | 'canvas') => {
+    logger.info(`setActiveSource: ${source}`)
     set((state) => {
       state.activeSource = source
     })
   },
   toggleMicMute: () => {
+    logger.info('toggleMicMute')
     set((state) => {
       state.isMicMuted = !state.isMicMuted
     })
   },
   setMicMuted: (muted: boolean) => {
+    logger.info(`setMicMuted: ${muted}`)
     set((state) => {
       state.isMicMuted = muted
     })
   },
   setMiniHudVisible: (visible: boolean) => {
+    logger.info(`setMiniHudVisible: ${visible}`)
     set((state) => {
       state.isMiniHudVisible = visible
     })
   },
   toggleMiniHud: () => {
+    logger.info('toggleMiniHud')
     set((state) => {
       state.isMiniHudVisible = !state.isMiniHudVisible
     })
   },
   setLocalAudioMonitoringEnabled: (enabled: boolean) => {
+    logger.info(`setLocalAudioMonitoringEnabled: ${enabled}`)
     set((state) => {
       state.isLocalAudioMonitoringEnabled = enabled
     })
   },
   toggleLocalAudioMonitoring: () => {
+    logger.info('toggleLocalAudioMonitoring')
     set((state) => {
       state.isLocalAudioMonitoringEnabled = !state.isLocalAudioMonitoringEnabled
     })
   },
   setLocalMonitoringVolume: (volume: number) => {
     const clamped = Math.max(0, Math.min(1, volume))
+    logger.debug(`setLocalMonitoringVolume: ${clamped}`)
     set((state) => {
       state.localMonitoringVolume = clamped
     })
   },
   setIsMirrored: (mirrored: boolean) => {
+    logger.info(`setIsMirrored: ${mirrored}`)
     set((state) => {
       state.isMirrored = mirrored
     })
   },
   toggleMirror: () => {
+    logger.info('toggleMirror')
     set((state) => {
       state.isMirrored = !state.isMirrored
     })
   },
   setSelectedCameraId: (id: string | null) => {
+    logger.info(`setSelectedCameraId: ${id}`)
     set((state) => {
       state.selectedCameraId = id
     })
   },
   setSelectedMicId: (id: string | null) => {
+    logger.info(`setSelectedMicId: ${id}`)
     set((state) => {
       state.selectedMicId = id
     })
@@ -126,16 +144,23 @@ export const createVirtualStudioSlice: Slice<VirtualStudioState, VirtualStudioAc
     })
   },
   setDriverInstalling: (installing: boolean) => {
+    logger.info(`setDriverInstalling: ${installing}`)
     set((state) => {
       state.isDriverInstalling = installing
     })
   },
   setStudioError: (error: string | null) => {
+    if (error) {
+      logger.error(`setStudioError: ${error}`)
+    } else {
+      logger.info('setStudioError: cleared')
+    }
     set((state) => {
       state.studioError = error
     })
   },
   handleTrayAction: (action: TrayQuickAction) => {
+    logger.info(`handleTrayAction: ${action}`)
     switch (action) {
       case 'toggle-playback':
         get().togglePlay()

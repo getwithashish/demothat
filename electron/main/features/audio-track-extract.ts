@@ -117,22 +117,29 @@ export interface ExtractedTrack {
 export async function extractAudioTracks(filePath: string, tracks: AudioTrack[]): Promise<ExtractedTrack[]> {
   if (tracks.length === 0) return []
 
+  log.info(`[AudioTrackExtract] Starting extraction of ${tracks.length} audio track(s) from ${filePath}`)
+  const startTime = Date.now()
+
   let key: string
   try {
     const stats = await fsp.stat(filePath)
     key = trackCacheKey(filePath, stats.size, stats.mtimeMs)
   } catch (err) {
-    log.warn('[AudioTracks] Cannot stat the recording, so nothing can be extracted:', err)
+    log.warn('[AudioTrackExtract] Cannot stat the recording, so nothing can be extracted:', err)
     return []
   }
 
   const extracted: ExtractedTrack[] = []
   for (const track of tracks) {
+    const trackStartTime = Date.now()
     const output = trackCachePath(key, track.id)
     try {
       // Already there from a previous open of this exact recording.
       const existing = await fsp.stat(output)
       if (existing.size > 0) {
+        log.info(
+          `[AudioTrackExtract] Track #${track.index} (${track.id}) cache hit: ${output} (${existing.size} bytes)`,
+        )
         extracted.push({ id: track.id, index: track.index, filePath: output })
         continue
       }
@@ -142,20 +149,35 @@ export async function extractAudioTracks(filePath: string, tracks: AudioTrack[])
 
     await fsp.mkdir(path.dirname(output), { recursive: true })
 
-    let result = await runFfmpeg(buildExtractArgs(filePath, output, track.index))
+    const copyArgs = buildExtractArgs(filePath, output, track.index)
+    log.info(`[AudioTrackExtract] Extracting track #${track.index} via stream copy with args:`, copyArgs.join(' '))
+    let result = await runFfmpeg(copyArgs)
     if (result.code !== 0) {
-      log.info(`[AudioTracks] Stream copy failed for a:${track.index}, re-encoding instead.`)
-      result = await runFfmpeg(buildReencodeExtractArgs(filePath, output, track.index))
+      const reencodeArgs = buildReencodeExtractArgs(filePath, output, track.index)
+      log.info(
+        `[AudioTrackExtract] Stream copy failed for a:${track.index}; re-encoding with args:`,
+        reencodeArgs.join(' '),
+      )
+      result = await runFfmpeg(reencodeArgs)
     }
 
     if (result.code !== 0) {
-      log.warn(`[AudioTracks] Could not extract a:${track.index}: ${result.stderr.slice(-300)}`)
+      log.warn(`[AudioTrackExtract] Could not extract a:${track.index}: ${result.stderr.slice(-300)}`)
       await fsp.rm(output, { force: true }).catch(() => undefined)
       continue
     }
 
+    const trackStat = await fsp.stat(output).catch(() => null)
+    const trackElapsedMs = Date.now() - trackStartTime
+    log.info(
+      `[AudioTrackExtract] Track #${track.index} (${track.id}) extracted in ${trackElapsedMs}ms (${trackStat ? `${trackStat.size} bytes` : 'unknown size'}) -> ${output}`,
+    )
     extracted.push({ id: track.id, index: track.index, filePath: output })
   }
 
+  const totalElapsedMs = Date.now() - startTime
+  log.info(
+    `[AudioTrackExtract] Audio track extraction completed: ${extracted.length}/${tracks.length} track(s) ready in ${totalElapsedMs}ms`,
+  )
   return extracted
 }

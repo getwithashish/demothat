@@ -47,6 +47,8 @@ function setupEditorWindow(): BrowserWindow {
     }
   }
 
+  log.info('[EditorWindow] Creating editor BrowserWindow with configured bounds:', bounds)
+
   const win = new BrowserWindow({
     icon: path.join(process.env.VITE_PUBLIC!, 'demothat-appicon.png'),
     autoHideMenuBar: true,
@@ -64,16 +66,67 @@ function setupEditorWindow(): BrowserWindow {
     },
   })
   appState.editorWin = win
+  log.info(`[EditorWindow] BrowserWindow instance created (ID: ${win.id})`)
 
   // Set the application menu for the editor window
   createEditorMenu()
 
-  // Add listeners for maximize/unmaximize
+  // Window state and visibility listeners
+  win.on('show', () => {
+    log.info('[EditorWindow] Window event: show')
+  })
+  win.on('hide', () => {
+    log.info('[EditorWindow] Window event: hide')
+  })
+  win.on('focus', () => {
+    log.debug('[EditorWindow] Window event: focus')
+  })
+  win.on('blur', () => {
+    log.debug('[EditorWindow] Window event: blur')
+  })
+  win.on('minimize', () => {
+    log.info('[EditorWindow] Window event: minimize')
+  })
+  win.on('restore', () => {
+    log.info('[EditorWindow] Window event: restore')
+  })
   win.on('maximize', () => {
+    log.info('[EditorWindow] Window event: maximize')
     win.webContents.send('window:state-changed', { isMaximized: true })
   })
   win.on('unmaximize', () => {
+    log.info('[EditorWindow] Window event: unmaximize')
     win.webContents.send('window:state-changed', { isMaximized: false })
+  })
+  win.on('unresponsive', () => {
+    log.warn('[EditorWindow] Window became unresponsive')
+  })
+  win.on('responsive', () => {
+    log.info('[EditorWindow] Window responsive again')
+  })
+
+  // WebContents navigation, lifecycle, and crash events
+  win.webContents.on('did-start-loading', () => {
+    log.info('[EditorWindow] webContents: did-start-loading')
+  })
+  win.webContents.on('did-finish-load', () => {
+    log.info(`[EditorWindow] webContents: did-finish-load (URL: ${win.webContents.getURL()})`)
+  })
+  win.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+    log.error(
+      `[EditorWindow] webContents: did-fail-load (code: ${errorCode}, error: ${errorDescription}, URL: ${validatedURL})`,
+    )
+  })
+  win.webContents.on('render-process-gone', (_event, details) => {
+    log.error(
+      `[EditorWindow] webContents: render-process-gone (reason: ${details.reason}, exitCode: ${details.exitCode})`,
+    )
+  })
+  win.webContents.on('unresponsive', () => {
+    log.warn('[EditorWindow] webContents became unresponsive')
+  })
+  win.webContents.on('responsive', () => {
+    log.info('[EditorWindow] webContents responsive again')
   })
 
   win.maximize()
@@ -85,25 +138,43 @@ function setupEditorWindow(): BrowserWindow {
   let resizeTimeout: NodeJS.Timeout
   const saveBounds = () => {
     if (!win.isDestroyed() && !win.isMaximized()) {
-      store.set('windowBounds', win.getBounds())
+      const currentBounds = win.getBounds()
+      log.info('[EditorWindow] Saving window bounds to store:', currentBounds)
+      store.set('windowBounds', currentBounds)
     }
   }
   const debouncedSaveBounds = () => {
     clearTimeout(resizeTimeout)
     resizeTimeout = setTimeout(saveBounds, 500)
   }
-  win.on('resize', debouncedSaveBounds)
-  win.on('move', debouncedSaveBounds)
+  win.on('resize', () => {
+    if (!win.isDestroyed()) {
+      log.debug('[EditorWindow] Window resized:', win.getBounds())
+    }
+    debouncedSaveBounds()
+  })
+  win.on('move', () => {
+    if (!win.isDestroyed()) {
+      log.debug('[EditorWindow] Window moved:', win.getBounds())
+    }
+    debouncedSaveBounds()
+  })
 
   // Closing is a data-loss point: let the session guard flush a save (or ask)
   // before the window — and its temp recording files — go away.
   let isCloseApproved = false
   win.on('close', (event) => {
+    log.info('[EditorWindow] Window close requested. Checking session approval...')
     saveBounds()
     // The quit guard has already asked for this window; do not ask twice.
-    if (isCloseApproved || isQuitApproved()) return
+    if (isCloseApproved || isQuitApproved()) {
+      log.info('[EditorWindow] Close already approved. Proceeding with window close.')
+      return
+    }
     event.preventDefault()
+    log.info('[EditorWindow] Prompting session guard before closing...')
     void confirmReplaceSession('close').then((proceed) => {
+      log.info(`[EditorWindow] Session guard verdict for close: proceed=${proceed}`)
       if (!proceed || win.isDestroyed()) return
       isCloseApproved = true
       win.close()
@@ -111,6 +182,7 @@ function setupEditorWindow(): BrowserWindow {
   })
 
   win.on('closed', () => {
+    log.info('[EditorWindow] Window closed. Cleaning up menu and session state.')
     // Clear the application menu when the editor window is closed
     clearMenu()
     if (appState.currentEditorSessionFiles) {

@@ -6,6 +6,7 @@ import { RendererPage } from './pages/RendererPage'
 import { MiniHudPage } from './pages/MiniHudPage'
 import { useEditorStore } from './store/editorStore'
 import { useStaleScrollLockGuard } from './hooks/useStaleScrollLockGuard'
+import { PageErrorBoundary } from './components/common/PageErrorBoundary'
 
 function App() {
   const [route, setRoute] = useState(window.location.hash)
@@ -41,18 +42,34 @@ function App() {
   }, [])
 
   if (route.startsWith('#renderer')) {
-    return <RendererPage />
+    return (
+      <PageErrorBoundary pageName="RendererPage">
+        <RendererPage />
+      </PageErrorBoundary>
+    )
   }
 
   if (route.startsWith('#editor')) {
-    return <EditorPage />
+    return (
+      <PageErrorBoundary pageName="EditorPage">
+        <EditorPage />
+      </PageErrorBoundary>
+    )
   }
 
   if (route.startsWith('#mini-hud')) {
-    return <MiniHudPage />
+    return (
+      <PageErrorBoundary pageName="MiniHudPage">
+        <MiniHudPage />
+      </PageErrorBoundary>
+    )
   }
 
-  return <RecorderPage />
+  return (
+    <PageErrorBoundary pageName="RecorderPage">
+      <RecorderPage />
+    </PageErrorBoundary>
+  )
 }
 
 export default App

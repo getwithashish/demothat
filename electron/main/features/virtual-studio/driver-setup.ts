@@ -40,18 +40,29 @@ const execPromise = (
  */
 export async function checkLinuxCameraDriver(): Promise<{ installed: boolean; devicePath?: string }> {
   try {
+    log.debug('[DriverSetup] Checking for v4l2loopback kernel module in /sys/module/v4l2loopback...')
     // 1. Check if /sys/module/v4l2loopback exists
     try {
       await fs.access('/sys/module/v4l2loopback')
+      log.info('[DriverSetup] Detected v4l2loopback kernel module loaded via /sys/module/v4l2loopback')
       // Try to find device in /sys/class/video4linux
       const v4lDir = '/sys/class/video4linux'
       const entries = await fs.readdir(v4lDir)
+      log.debug(`[DriverSetup] Scanning video4linux device entries: [${entries.join(', ')}]`)
       for (const entry of entries) {
         const namePath = path.join(v4lDir, entry, 'name')
         try {
           const cardName = (await fs.readFile(namePath, 'utf8')).trim()
+          log.debug(`[DriverSetup] Checking /dev/${entry} card label: "${cardName}"`)
           if (cardName.includes('DemoThat') || cardName.includes('v4l2loopback') || cardName.includes('Virtual')) {
-            return { installed: true, devicePath: `/dev/${entry}` }
+            const devPath = `/dev/${entry}`
+            try {
+              await fs.access(devPath)
+              log.info(`[DriverSetup] Verified device permissions for ${devPath} ("${cardName}"): accessible`)
+            } catch (permErr) {
+              log.warn(`[DriverSetup] Device node ${devPath} permission check warning:`, permErr)
+            }
+            return { installed: true, devicePath: devPath }
           }
         } catch {
           // ignore individual read errors
@@ -60,24 +71,37 @@ export async function checkLinuxCameraDriver(): Promise<{ installed: boolean; de
       // If module is loaded and /dev/video10 exists
       try {
         await fs.access('/dev/video10')
+        log.info('[DriverSetup] Verified device permissions for /dev/video10: accessible')
         return { installed: true, devicePath: '/dev/video10' }
       } catch {
         // Module loaded, maybe default video device
         if (entries.length > 0) {
-          return { installed: true, devicePath: `/dev/${entries[entries.length - 1]}` }
+          const devPath = `/dev/${entries[entries.length - 1]}`
+          log.info(`[DriverSetup] Falling back to last video device: ${devPath}`)
+          return { installed: true, devicePath: devPath }
         }
+        log.info('[DriverSetup] Module loaded; defaulting to device path /dev/video10')
         return { installed: true, devicePath: '/dev/video10' }
       }
     } catch {
       // Module path check failed, check lsmod
+      log.debug('[DriverSetup] /sys/module/v4l2loopback not found, checking lsmod output...')
       const { stdout } = await execPromise('lsmod', [])
       if (stdout.includes('v4l2loopback')) {
+        log.info('[DriverSetup] v4l2loopback detected in lsmod output; default path: /dev/video10')
+        try {
+          await fs.access('/dev/video10')
+          log.info('[DriverSetup] Verified device permissions for /dev/video10: accessible')
+        } catch (permErr) {
+          log.warn('[DriverSetup] Device node /dev/video10 permission check warning:', permErr)
+        }
         return { installed: true, devicePath: '/dev/video10' }
       }
     }
   } catch (err) {
     log.debug('[DriverSetup] Linux camera check encountered error:', err)
   }
+  log.info('[DriverSetup] v4l2loopback module not detected on system')
   return { installed: false }
 }
 
@@ -86,13 +110,17 @@ export async function checkLinuxCameraDriver(): Promise<{ installed: boolean; de
  */
 export async function checkLinuxAudioSink(): Promise<boolean> {
   try {
+    log.debug('[DriverSetup] Checking PipeWire/PulseAudio sink and remap-source status via pactl...')
     const { stdout: sourcesOut } = await execPromise('pactl', ['list', 'short', 'sources'])
     const { stdout: sinksOut } = await execPromise('pactl', ['list', 'short', 'sinks'])
-    return (
-      (sourcesOut.includes('demothat_source') || sourcesOut.includes('demothat_mic')) &&
-      (sinksOut.includes('demothat_mic') || sinksOut.includes('demothat_sink'))
+    const hasSource = sourcesOut.includes('demothat_source') || sourcesOut.includes('demothat_mic')
+    const hasSink = sinksOut.includes('demothat_mic') || sinksOut.includes('demothat_sink')
+    log.info(
+      `[DriverSetup] PipeWire/PulseAudio status: null-sink (demothat_mic/sink)=${hasSink}, remap-source (demothat_source)=${hasSource}`,
     )
-  } catch {
+    return hasSource && hasSink
+  } catch (err) {
+    log.debug('[DriverSetup] checkLinuxAudioSink encountered error:', err)
     return false
   }
 }
@@ -185,7 +213,8 @@ export async function checkVirtualDrivers(platform: NodeJS.Platform = process.pl
  */
 export async function installLinuxDriver(): Promise<{ success: boolean; error?: string }> {
   try {
-    log.info('[DriverSetup] Attempting Linux v4l2loopback driver setup via pkexec')
+    const modprobeParams = 'video_nr=10 card_label="DemoThat Virtual Camera" exclusive_caps=1 max_buffers=4'
+    log.info(`[DriverSetup] Attempting Linux v4l2loopback driver setup via pkexec with parameters: ${modprobeParams}`)
     // Attempt loading v4l2loopback and configuring passwordless sudoers rule for dynamic unload on app exit
     const sudoersRule =
       'ALL ALL=(root) NOPASSWD: /usr/sbin/modprobe -r v4l2loopback, /usr/sbin/modprobe v4l2loopback *, /sbin/modprobe -r v4l2loopback, /sbin/modprobe v4l2loopback *'
@@ -194,6 +223,9 @@ export async function installLinuxDriver(): Promise<{ success: boolean; error?: 
     let { code, stderr } = await execPromise('pkexec', ['sh', '-c', script], { timeout: 30000 })
 
     if (code !== 0) {
+      log.info(
+        `[DriverSetup] Elevated script setup returned code ${code}, falling back to direct modprobe with parameters: ${modprobeParams}`,
+      )
       // Fallback to simple modprobe without sudoers write if restricted
       const fallback = await execPromise(
         'pkexec',
@@ -215,6 +247,8 @@ export async function installLinuxDriver(): Promise<{ success: boolean; error?: 
       log.warn(`[DriverSetup] pkexec modprobe failed: ${stderr}`)
       return { success: false, error: stderr || 'Failed to load v4l2loopback kernel module' }
     }
+
+    log.info('[DriverSetup] Successfully loaded v4l2loopback kernel module via pkexec')
 
     // Set up PulseAudio null sink if not present
     try {
@@ -238,6 +272,10 @@ export async function ensureLinuxCameraDriver(): Promise<{ success: boolean; err
     if (status.installed) {
       return { success: true }
     }
+    const modprobeParams = ['video_nr=10', 'card_label=DemoThat Virtual Camera', 'exclusive_caps=1', 'max_buffers=4']
+    log.info(
+      `[DriverSetup] Ensuring Linux camera driver via passwordless sudo with parameters: ${modprobeParams.join(' ')}`,
+    )
     const { code, stderr } = await execPromise(
       'sudo',
       [
@@ -266,10 +304,12 @@ export async function ensureLinuxCameraDriver(): Promise<{ success: boolean; err
  */
 export async function ensureLinuxAudioSink(): Promise<{ success: boolean; error?: string }> {
   try {
+    log.debug('[DriverSetup] Checking existing PulseAudio/PipeWire sinks and sources...')
     const { stdout: sinksOut } = await execPromise('pactl', ['list', 'short', 'sinks'])
     const { stdout: sourcesOut } = await execPromise('pactl', ['list', 'short', 'sources'])
 
     if (!sinksOut.includes('demothat_mic')) {
+      log.info('[DriverSetup] Creating PipeWire/PulseAudio null-sink: demothat_mic')
       const loadSink = await execPromise('pactl', [
         'load-module',
         'module-null-sink',
@@ -280,9 +320,13 @@ export async function ensureLinuxAudioSink(): Promise<{ success: boolean; error?
         log.warn(`[DriverSetup] Failed to load module-null-sink: ${loadSink.stderr}`)
         return { success: false, error: loadSink.stderr || 'Failed to load module-null-sink' }
       }
+      log.info('[DriverSetup] PipeWire/PulseAudio null-sink demothat_mic created successfully')
+    } else {
+      log.debug('[DriverSetup] PipeWire/PulseAudio null-sink demothat_mic already exists')
     }
 
     if (!sourcesOut.includes('demothat_source')) {
+      log.info('[DriverSetup] Creating PipeWire/PulseAudio remap-source: demothat_source (master=demothat_mic.monitor)')
       const loadSource = await execPromise('pactl', [
         'load-module',
         'module-remap-source',
@@ -292,16 +336,22 @@ export async function ensureLinuxAudioSink(): Promise<{ success: boolean; error?
       ])
       if (loadSource.code !== 0) {
         log.debug(`[DriverSetup] module-remap-source load notice: ${loadSource.stderr}`)
+      } else {
+        log.info('[DriverSetup] PipeWire/PulseAudio remap-source demothat_source loaded successfully')
       }
+    } else {
+      log.debug('[DriverSetup] PipeWire/PulseAudio remap-source demothat_source already exists')
     }
 
     // Enforce unmute & 100% volume on sink, monitor, and remap source:
+    log.debug('[DriverSetup] Enforcing unmute and 100% volume across demothat_mic and demothat_source')
     await execPromise('pactl', ['set-sink-mute', 'demothat_mic', '0']).catch(() => {})
     await execPromise('pactl', ['set-sink-volume', 'demothat_mic', '65536']).catch(() => {})
     await execPromise('pactl', ['set-source-mute', 'demothat_mic.monitor', '0']).catch(() => {})
     await execPromise('pactl', ['set-source-volume', 'demothat_mic.monitor', '65536']).catch(() => {})
     await execPromise('pactl', ['set-source-mute', 'demothat_source', '0']).catch(() => {})
     await execPromise('pactl', ['set-source-volume', 'demothat_source', '65536']).catch(() => {})
+    log.info('[DriverSetup] PipeWire remap-source status: active and verified')
 
     return { success: true }
   } catch (err: unknown) {

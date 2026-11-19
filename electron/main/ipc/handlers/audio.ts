@@ -39,8 +39,12 @@ export async function handleExtractAudioTracks(
   _event: IpcMainInvokeEvent,
   request: ExtractTracksRequest,
 ): Promise<ExtractTracksResult> {
+  log.info(
+    `[AudioTracksIPC] handleExtractAudioTracks invoked for '${request.filePath}' (${request.tracks?.length ?? 0} track(s) requested)`,
+  )
   try {
     const extracted = await extractAudioTracks(request.filePath, request.tracks)
+    log.info(`[AudioTracksIPC] Successfully extracted ${extracted.length} audio track(s)`)
     return {
       tracks: extracted.map((track) => ({
         id: track.id,
@@ -53,11 +57,12 @@ export async function handleExtractAudioTracks(
   } catch (error) {
     // The renderer falls back to playing the video's own audio track, so a failure
     // here is a degraded preview and not a broken editor.
-    log.warn('[AudioTracks] Extraction failed:', error)
+    log.warn('[AudioTracksIPC] Extraction failed:', error)
     return { tracks: [] }
   }
 }
 
 export function registerAudioHandlers(): void {
+  log.info('[AudioTracksIPC] Registering audio track IPC handlers...')
   ipcMain.handle('audio:extractTracks', handleExtractAudioTracks)
 }

@@ -103,17 +103,20 @@ export async function handleCheckoutResume(): Promise<{ pending: boolean }> {
  * launch (or a window focus) picks the purchase back up.
  */
 export function handleCheckoutCancel(): void {
+  log.info('[CheckoutIPC] handleCheckoutCancel invoked. Stopping purchase polling...')
   if (activePoll) activePoll.cancelled = true
 }
 
 /** Forgets the pending purchase (used once a purchase has been dealt with). */
 export function handleCheckoutForget(): { forgotten: boolean } {
   const had = getPendingPurchase() !== null
+  log.info(`[CheckoutIPC] handleCheckoutForget invoked (had pending: ${had})`)
   clearPendingPurchase()
   return { forgotten: had }
 }
 
 export function registerCheckoutHandlers(): void {
+  log.info('[CheckoutIPC] Registering checkout IPC handlers...')
   ipcMain.handle('checkout:start', handleCheckoutStart)
   ipcMain.handle('checkout:status', handleCheckoutStatus)
   ipcMain.handle('checkout:resume', handleCheckoutResume)
@@ -127,6 +130,8 @@ export function registerCheckoutHandlers(): void {
  * could not be fetched; the renderer falls back to its offline packs.
  */
 export async function handleProductsList(): Promise<{ products: Product[] | null; error: string | null }> {
+  log.info('[CheckoutIPC] Fetching products list...')
   const products = await fetchProducts()
+  log.info(`[CheckoutIPC] Products fetched: ${products?.length ?? 0} item(s)`)
   return { products, error: products === null ? 'Could not reach the store.' : null }
 }

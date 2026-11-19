@@ -10,8 +10,11 @@
 export const VIRTUAL_CAMERA_CANVAS_WORKER_CODE = `
 let offscreen = null
 let ctx = null
+let workerFrameCount = 0
+let lastDevLogTime = 0
 
 self.onmessage = function (e) {
+  const renderStartTime = typeof performance !== 'undefined' ? performance.now() : Date.now()
   const data = e.data
   if (!data || !data.bitmap) return
 
@@ -20,6 +23,7 @@ self.onmessage = function (e) {
   const targetH = data.height || 1080
   const isMirrored = Boolean(data.isMirrored)
   const timestamp = data.timestamp
+  const postMessageTime = data.postMessageTime || timestamp
 
   try {
     if (!offscreen || offscreen.width !== targetW || offscreen.height !== targetH) {
@@ -58,6 +62,20 @@ self.onmessage = function (e) {
       }
 
       const imgData = ctx.getImageData(0, 0, targetW, targetH)
+      const renderEndTime = typeof performance !== 'undefined' ? performance.now() : Date.now()
+      const renderDurationMs = renderEndTime - renderStartTime
+      workerFrameCount++
+
+      // Throttled logging in dev (every ~60 frames or at least 2 seconds)
+      if (typeof console !== 'undefined' && console.debug) {
+        if (renderEndTime - lastDevLogTime >= 2000 || workerFrameCount % 60 === 0) {
+          lastDevLogTime = renderEndTime
+          const transferLatency = postMessageTime ? (renderStartTime - postMessageTime).toFixed(2) : '0.00'
+          console.debug(
+            \`[VirtualCameraCanvasWorker] Frame #\${workerFrameCount}: render \${renderDurationMs.toFixed(2)}ms | transfer latency \${transferLatency}ms (\${targetW}x\${targetH})\`
+          )
+        }
+      }
 
       // Zero-copy transfer of the exact 1920x1080 RGBA buffer back to main thread
       self.postMessage(
@@ -67,6 +85,8 @@ self.onmessage = function (e) {
           height: targetH,
           format: 'rgba',
           timestamp: timestamp,
+          renderDurationMs: renderDurationMs,
+          workerTransferStartTime: renderEndTime,
           buffer: imgData.data.buffer,
         },
         [imgData.data.buffer]

@@ -48,15 +48,19 @@ export interface CloudStatus {
 
 /** What the export modal needs to gate the AI option and quote a credit cost. */
 export async function handleCloudStatus(): Promise<CloudStatus> {
+  log.info('[CloudIPC] Querying cloud status and capabilities...')
   const consent = hasCloudConsent() ? { acceptedAt: Date.now() } : null
   if (!getStoredToken()) {
+    log.info('[CloudIPC] No stored license token found (device unconfigured).')
     return { configured: false, consent, capabilities: null, error: null }
   }
   try {
-    return { configured: true, consent, capabilities: await fetchCapabilities(), error: null }
+    const capabilities = await fetchCapabilities()
+    log.info('[CloudIPC] Successfully fetched cloud capabilities.')
+    return { configured: true, consent, capabilities, error: null }
   } catch (error) {
     const message = error instanceof CloudError ? error.message : String(error)
-    log.warn(`[Cloud] Capabilities unavailable: ${message}`)
+    log.warn(`[CloudIPC] Capabilities unavailable: ${message}`)
     return { configured: true, consent, capabilities: null, error: message }
   }
 }
@@ -122,6 +126,7 @@ function reportOutcome(
 }
 
 export function handleCloudCancel(): void {
+  log.info('[CloudIPC] handleCloudCancel invoked. Canceling active cloud work...')
   // Reaches whichever cloud work is in flight: a retry, a resumed job, or the
   // cloud stages of an export whose `export:cancel` listener is already gone.
   cancelActiveCloudWork()
@@ -241,6 +246,7 @@ export async function handleCloudFallback(
   event: IpcMainInvokeEvent,
   request: CloudFallbackRequest,
 ): Promise<{ ok: boolean; error?: string }> {
+  log.info(`[CloudIPC] Initiating local fallback upscale: ${request.intermediatePath} -> ${request.outputPath}`)
   const window = BrowserWindow.fromWebContents(event.sender)
   const result = await runStandardFallback({
     ...request,
@@ -251,10 +257,12 @@ export async function handleCloudFallback(
     'export:complete',
     result.ok ? { success: true, outputPath: request.outputPath } : { success: false, error: result.error },
   )
+  log.info(`[CloudIPC] Local fallback upscale complete: ok=${result.ok}`)
   return result
 }
 
 export function registerCloudHandlers(): void {
+  log.info('[CloudIPC] Registering Cloud IPC handlers...')
   ipcMain.handle('cloud:status', handleCloudStatus)
   ipcMain.handle('cloud:capabilities', handleCloudCapabilities)
   ipcMain.handle('cloud:consent', handleCloudConsent)

@@ -2,6 +2,9 @@ import { TIMELINE, ZOOM } from '../../lib/constants'
 import { suggestSpeedRegions } from '../../../shared/auto-speed'
 import type { TimelineState, TimelineActions, Slice } from '../../types'
 import type { CutRegion, ZoomRegion, SpeedRegion } from '../../types'
+import { createScopedLogger } from '../../lib/logger'
+
+const logger = createScopedLogger('store:timeline')
 
 export const initialTimelineState: TimelineState = {
   zoomRegions: {},
@@ -81,6 +84,9 @@ export const createTimelineSlice: Slice<TimelineState, TimelineActions> = (set, 
       state.selectedRegionId = id
       recalculateZIndices(state)
     })
+    logger.info(
+      `addZoomRegion: id=${id}, start=${newRegion.startTime.toFixed(3)}s, duration=${newRegion.duration.toFixed(3)}s`,
+    )
   },
   addCutRegion: (regionData) => {
     const { currentTime, duration } = get()
@@ -105,6 +111,9 @@ export const createTimelineSlice: Slice<TimelineState, TimelineActions> = (set, 
       state.selectedRegionId = id
       recalculateZIndices(state)
     })
+    logger.info(
+      `addCutRegion: id=${id}, start=${newRegion.startTime.toFixed(3)}s, duration=${newRegion.duration.toFixed(3)}s`,
+    )
   },
   addVideoClip: (clip) => {
     const id = `video-clip-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
@@ -114,8 +123,10 @@ export const createTimelineSlice: Slice<TimelineState, TimelineActions> = (set, 
       state.videoClips.push({ ...clip, sourceStart: 0, order: nextOrder, id })
       state.selectedRegionId = id
     })
+    logger.info(`addVideoClip: id=${id}, path=${clip.filePath}, duration=${clip.duration.toFixed(3)}s`)
   },
-  updateVideoClip: (id, updates) =>
+  updateVideoClip: (id, updates) => {
+    logger.info(`updateVideoClip: id=${id}`, updates)
     set((state) => {
       const clip = state.videoClips.find((item) => item.id === id)
       if (!clip) return
@@ -123,20 +134,25 @@ export const createTimelineSlice: Slice<TimelineState, TimelineActions> = (set, 
       clip.startTime = Math.max(0, clip.startTime)
       clip.duration = Math.max(0.1, clip.duration)
       clip.sourceStart = Math.max(0, Math.min(Math.max(0, clip.sourceDuration - 0.1), clip.sourceStart))
-    }),
-  deleteVideoClip: (id) =>
+    })
+  },
+  deleteVideoClip: (id) => {
+    logger.info(`deleteVideoClip: id=${id}`)
     set((state) => {
       state.videoClips = state.videoClips.filter((clip) => clip.id !== id)
       if (state.selectedRegionId === id) state.selectedRegionId = null
-    }),
-  setVideoClipOrder: (orderedIds) =>
+    })
+  },
+  setVideoClipOrder: (orderedIds) => {
+    logger.info(`setVideoClipOrder: count=${orderedIds.length}`)
     set((state) => {
       // Index 0 is the bottom-most layer; the last id is the topmost.
       orderedIds.forEach((id, index) => {
         const clip = state.videoClips.find((item) => item.id === id)
         if (clip) clip.order = index
       })
-    }),
+    })
+  },
   addSpeedRegion: () => {
     const { currentTime, duration } = get()
     if (duration === 0) return
@@ -160,6 +176,7 @@ export const createTimelineSlice: Slice<TimelineState, TimelineActions> = (set, 
       state.selectedRegionId = id
       recalculateZIndices(state)
     })
+    logger.info(`addSpeedRegion: id=${id}, start=${newRegion.startTime.toFixed(3)}s, speed=${newRegion.speed}x`)
   },
   /**
    * Find the dead stretches and add a speed region over each.
@@ -184,7 +201,7 @@ export const createTimelineSlice: Slice<TimelineState, TimelineActions> = (set, 
     } catch (error) {
       // Without the audio there is nothing to be sure about, and guessing would put
       // speed changes over material the viewer was watching.
-      console.warn('[TidyUp] Could not read the recording’s silences:', error)
+      logger.warn('[TidyUp] Could not read the recording’s silences:', error)
       return { added: 0, suggested: 0 }
     }
 
@@ -196,7 +213,7 @@ export const createTimelineSlice: Slice<TimelineState, TimelineActions> = (set, 
     try {
       samples = await window.electronAPI.detectActivity(videoPath)
     } catch (error) {
-      console.warn('[TidyUp] Could not measure the recording’s picture:', error)
+      logger.warn('[TidyUp] Could not measure the recording’s picture:', error)
     }
 
     const suggested = suggestSpeedRegions({ silences, samples, duration })
@@ -227,10 +244,12 @@ export const createTimelineSlice: Slice<TimelineState, TimelineActions> = (set, 
         state.isDirty = true
       })
     }
+    logger.info(`tidyUp complete: added ${additions.length} of ${suggested.length} suggested speed regions`)
 
     return { added: additions.length, suggested: suggested.length }
   },
   updateRegion: (id, updates) => {
+    logger.info(`updateRegion: id=${id}`, updates)
     set((state) => {
       const region = state.zoomRegions[id] || state.cutRegions[id] || state.speedRegions[id]
       if (region) {
@@ -243,6 +262,7 @@ export const createTimelineSlice: Slice<TimelineState, TimelineActions> = (set, 
     })
   },
   deleteRegion: (id) => {
+    logger.info(`deleteRegion: id=${id}`)
     set((state) => {
       delete state.zoomRegions[id]
       delete state.cutRegions[id]
@@ -260,6 +280,7 @@ export const createTimelineSlice: Slice<TimelineState, TimelineActions> = (set, 
     const state = get()
     const id = state.selectedRegionId
     if (!id) return
+    logger.info(`deleteSelected: id=${id}`)
     if (state.zoomRegions[id] || state.cutRegions[id] || state.speedRegions[id]) {
       get().deleteRegion(id)
       return
@@ -279,19 +300,24 @@ export const createTimelineSlice: Slice<TimelineState, TimelineActions> = (set, 
       if (state.selectedRegionId === id) state.selectedRegionId = null
     })
   },
-  setSelectedRegionId: (id) =>
+  setSelectedRegionId: (id) => {
+    if (id) logger.debug(`setSelectedRegionId: ${id}`)
     set((state) => {
       state.selectedRegionId = id
-    }),
+    })
+  },
   setPreviewCutRegion: (region) =>
     set((state) => {
       state.previewCutRegion = region
     }),
-  setTimelineZoom: (zoom) =>
+  setTimelineZoom: (zoom) => {
+    logger.debug(`setTimelineZoom: ${zoom}`)
     set((state) => {
       state.timelineZoom = zoom
-    }),
+    })
+  },
   applyAnimationSettingsToAll: ({ transitionDuration, easing, zoomLevel }) => {
+    logger.info('applyAnimationSettingsToAll', { transitionDuration, easing, zoomLevel })
     set((state) => {
       Object.values(state.zoomRegions).forEach((region) => {
         region.transitionDuration = transitionDuration
@@ -301,6 +327,7 @@ export const createTimelineSlice: Slice<TimelineState, TimelineActions> = (set, 
     })
   },
   applySpeedToAll: (speed) => {
+    logger.info(`applySpeedToAll: ${speed}x`)
     set((state) => {
       Object.values(state.speedRegions).forEach((region) => {
         region.speed = speed

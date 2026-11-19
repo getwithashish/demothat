@@ -1,5 +1,8 @@
-import log from 'electron-log/renderer'
+import { createScopedLogger } from '../lib/logger'
+import { usePageLifecycle } from '../hooks/usePageLifecycle'
 import { useEffect, useRef } from 'react'
+
+const log = createScopedLogger('RendererPage')
 import { useEditorStore } from '../store/editorStore'
 import { EditorState, EditorActions, CursorTheme, CursorFrame, CursorImageBitmap } from '../types'
 import { ExportSettings } from '../components/editor/ExportModal'
@@ -113,6 +116,7 @@ const loadBackgroundImage = (
 }
 
 export function RendererPage() {
+  usePageLifecycle('RendererPage')
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const webcamVideoRef = useRef<HTMLVideoElement>(null)

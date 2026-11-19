@@ -239,6 +239,9 @@ async function validateRecordingFiles(session: RecordingSession): Promise<boolea
         dialog.showErrorBox('Recording Validation Failed', errorMessage)
         return false
       }
+      log.info(
+        `[Validation] File verified: ${filePath} (${stats.size} bytes / ${(stats.size / 1024 / 1024).toFixed(2)} MB)`,
+      )
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
         const errorMessage = `The recording process failed to create the video file: ${path.basename(filePath)}.`
@@ -384,12 +387,14 @@ async function startActualRecording(
     log.info(`[SystemAudio] Starting writer for ${systemAudioPath}`)
     markSystemAudioStopped()
     systemAudioWriter.start(systemAudioPath)
+    log.info(`[RecordingManager] System audio writer spawned at ${systemAudioPath}`)
   }
 
   if (screenWebmPath) {
     log.info(`[ScreenCapture] Starting writer for ${screenWebmPath}`)
     markScreenCaptureStopped()
     screenVideoWriter.start(screenWebmPath)
+    log.info(`[RecordingManager] Screen video writer spawned at ${screenWebmPath}`)
   }
 
   appState.recorderWin?.minimize()
@@ -764,6 +769,9 @@ export async function startRecording(options: any) {
     const safeWidth = Math.floor(width / 2) * 2
     const safeHeight = Math.floor(height / 2) * 2
     recordingGeometry = { x, y, width: safeWidth, height: safeHeight }
+    log.info(
+      `[RecordingManager] Display source selected: fullscreen display #${targetDisplay.id} (${safeWidth}x${safeHeight} physical, scaleFactor=${scaleFactor}).`,
+    )
     switch (process.platform) {
       case 'linux':
         if (backendCapturesScreen()) {
@@ -839,6 +847,9 @@ export async function startRecording(options: any) {
     const safeWidth = Math.floor(selectedGeometry.width / 2) * 2
     const safeHeight = Math.floor(selectedGeometry.height / 2) * 2
     recordingGeometry = { x: selectedGeometry.x, y: selectedGeometry.y, width: safeWidth, height: safeHeight }
+    log.info(
+      `[RecordingManager] Display source selected: area crop (${selectedGeometry.x},${selectedGeometry.y} ${safeWidth}x${safeHeight}).`,
+    )
 
     // Wayland records the whole monitor, because the portal has no notion of a
     // user-drawn region, so the selection becomes a crop applied during the mux.
@@ -1014,6 +1025,18 @@ export async function startRecording(options: any) {
   // renderer's browser capture is not used at all (two capture paths would mean two
   // portals, two pickers, and a pointer recorded twice).
   const useRendererScreenCapture = backendCapturesScreen() && appState.cursorHelper === null
+  log.info('[RecordingManager] Audio capture state:', {
+    hasMic: !!mic,
+    micDevice: mic ? (typeof mic === 'object' ? (mic as any).deviceLabel || (mic as any).index : mic) : null,
+    hasWebcam: !!webcam,
+    webcamDevice: webcam
+      ? typeof webcam === 'object'
+        ? (webcam as any).deviceLabel || (webcam as any).index
+        : webcam
+      : null,
+    wantsSystemAudio,
+    platform: process.platform,
+  })
   log.info('[RecordingManager] Starting actual recording with args:', baseFfmpegArgs, {
     hasWebcam: !!webcam,
     hasMic: !!mic,
@@ -1186,6 +1209,18 @@ export async function stopRecording() {
 
   appState.currentRecordingSession = null
   if (finalizedSession) {
+    const screenStat = await fsPromises.stat(finalizedSession.screenVideoPath).catch(() => null)
+    const webcamStat = finalizedSession.webcamVideoPath
+      ? await fsPromises.stat(finalizedSession.webcamVideoPath).catch(() => null)
+      : null
+    const metaStat = await fsPromises.stat(finalizedSession.metadataPath).catch(() => null)
+    log.info('[StopRecord] Recording finalized. Output file sizes:', {
+      screenVideo: screenStat
+        ? `${screenStat.size} bytes (${(screenStat.size / 1024 / 1024).toFixed(2)} MB)`
+        : 'missing',
+      webcamVideo: webcamStat ? `${webcamStat.size} bytes (${(webcamStat.size / 1024 / 1024).toFixed(2)} MB)` : 'none',
+      metadata: metaStat ? `${metaStat.size} bytes` : 'missing',
+    })
     createEditorWindow(
       finalizedSession.screenVideoPath,
       finalizedSession.metadataPath,
@@ -1437,11 +1472,12 @@ async function muxMacScreenWebm(session: RecordingSession): Promise<void> {
  * Cancels the recording and discards all associated files and processes.
  */
 export async function cancelRecording() {
-  log.info('Cancelling recording and deleting files...')
+  log.info('[RecordingManager] User requested cancel recording. Discarding files and stopping processes...')
   recordingTeardownInProgress = true
   await cleanupAndDiscard()
   appState.recorderWin?.webContents.send('recording-finished', { canceled: true })
   appState.recorderWin?.show()
+  log.info('[RecordingManager] Recording cancellation and cleanup complete.')
 }
 
 /**

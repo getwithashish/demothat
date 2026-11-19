@@ -39,8 +39,10 @@ import { useAIToolDispatcher } from '../components/ai/useAIToolDispatcher'
 import { EdCommandPalette } from '../features/ed/palette/EdCommandPalette'
 import { EdSidebar } from '../features/ed/sidebar/EdSidebar'
 import { VirtualStudioHeaderPill, virtualStudioStreamer } from '../features/virtual-studio'
+import { usePageLifecycle } from '../hooks/usePageLifecycle'
 
 export function EditorPage() {
+  usePageLifecycle('EditorPage')
   const {
     loadProject,
     initializePresets,

@@ -8,6 +8,7 @@
 // The vocabulary lives in `shared/audio-tracks.ts`, because the editor needs the
 // same kind and label logic the recorder does, and two copies of it would drift.
 
+import log from 'electron-log/main'
 import type { AudioStreamInfo } from '../lib/audio-info'
 import { probeAudioStreams } from '../lib/audio-info'
 import { trackKindFromName, type AudioTrackKind, type AudioTrackManifestEntry } from '../../../shared/audio-tracks'
@@ -34,7 +35,16 @@ export function toTrackManifest(streams: AudioStreamInfo[]): AudioTrackManifestE
  * treats as "no audio" — the same outcome as a recording made without any.
  */
 export async function probeAudioTracks(filePath: string): Promise<AudioTrackManifestEntry[]> {
-  return toTrackManifest(await probeAudioStreams(filePath))
+  log.info(`[AudioTracks] Probing audio tracks for ${filePath}...`)
+  try {
+    const streams = await probeAudioStreams(filePath)
+    const manifest = toTrackManifest(streams)
+    log.info(`[AudioTracks] Probed ${manifest.length} audio stream(s) for ${filePath}:`, manifest)
+    return manifest
+  } catch (err) {
+    log.error(`[AudioTracks] Error probing audio tracks for ${filePath}:`, err)
+    return []
+  }
 }
 
 /** The kinds a recording can hold, for exhaustiveness checks. */

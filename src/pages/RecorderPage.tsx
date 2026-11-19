@@ -28,6 +28,7 @@ import { startSystemAudioCapture, type SystemAudioCaptureHandle } from '../lib/s
 import { startScreenCapture, type ScreenCaptureHandle } from '../lib/screen-capture'
 import { resolveCaptureBackend } from '../lib/capture-backend'
 import type { SessionSummary } from '../../shared/session'
+import { usePageLifecycle } from '../hooks/usePageLifecycle'
 import '../index.css'
 
 // --- Constants ---
@@ -64,6 +65,7 @@ type RecordingSource = 'area' | 'fullscreen'
 type DisplayInfo = { id: number; name: string; isPrimary: boolean }
 
 export function RecorderPage() {
+  usePageLifecycle('RecorderPage')
   const [recordingState, setRecordingState] = useState<RecordingState>('idle')
   const [isRecording, setIsRecording] = useState(false)
   const [actionInProgress, setActionInProgress] = useState<ActionInProgress>('none')

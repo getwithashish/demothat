@@ -65,6 +65,9 @@ async function chooseSavePath(): Promise<string | undefined> {
 }
 
 export async function handleProjectSave(_event: IpcMainInvokeEvent, request: SaveRequest) {
+  log.info(
+    `[ProjectIpc] handleProjectSave invoked (auto: ${Boolean(request?.auto)}, requestedPath: ${request?.path ?? 'none'})`,
+  )
   const destination = resolveSaveDestination({
     requestedPath: request.path,
     auto: request.auto,
@@ -75,21 +78,32 @@ export async function handleProjectSave(_event: IpcMainInvokeEvent, request: Sav
       ? destination.path
       : ensureProjectExtension(destination.path)
     : await chooseSavePath()
-  if (!destPath) return { canceled: true }
+  if (!destPath) {
+    log.info('[ProjectIpc] Project save canceled by user (no destination path chosen).')
+    return { canceled: true }
+  }
 
+  log.info(`[ProjectIpc] Saving project archive to: ${destPath} (recovery=${Boolean(destination?.recovery)})`)
   await saveProject(request.project, destPath)
   // A recovery write does not count as "saved" for the dirty flag.
   const recovery = destination?.recovery ?? false
   if (!recovery) appState.editorProjectDirty = false
+  log.info(`[ProjectIpc] Project successfully saved to: ${destPath}`)
   return { canceled: false, path: destPath, recovery }
 }
 
 export async function handleProjectSaveAs(_event: IpcMainInvokeEvent, project: SaveProjectPayload) {
+  log.info('[ProjectIpc] handleProjectSaveAs invoked. Opening file dialog...')
   const destPath = await chooseSavePath()
-  if (!destPath) return { canceled: true }
+  if (!destPath) {
+    log.info('[ProjectIpc] Save As dialog canceled.')
+    return { canceled: true }
+  }
 
+  log.info(`[ProjectIpc] Saving project as new file: ${destPath}`)
   await saveProject(project, destPath)
   appState.editorProjectDirty = false
+  log.info(`[ProjectIpc] Project Save As complete: ${destPath}`)
   return { canceled: false, path: destPath }
 }
 
@@ -101,6 +115,7 @@ export async function handleProjectSaveAs(_event: IpcMainInvokeEvent, project: S
  */
 export async function handleProjectSaveCopy(_event: IpcMainInvokeEvent, request: SaveCopyRequest) {
   const suggested = typeof request?.suggestedName === 'string' ? request.suggestedName.trim() : ''
+  log.info(`[ProjectIpc] handleProjectSaveCopy invoked (suggested: ${suggested || 'none'})`)
   const options = {
     title: 'Save a Copy',
     defaultPath: suggested ? `${suggested} copy.dthat` : defaultProjectName(),
@@ -108,11 +123,16 @@ export async function handleProjectSaveCopy(_event: IpcMainInvokeEvent, request:
   }
   const parent = parentWindow()
   const result = parent ? await dialog.showSaveDialog(parent, options) : await dialog.showSaveDialog(options)
-  if (result.canceled || !result.filePath) return { canceled: true }
+  if (result.canceled || !result.filePath) {
+    log.info('[ProjectIpc] Save Copy dialog canceled.')
+    return { canceled: true }
+  }
 
   const destPath = ensureProjectExtension(result.filePath)
+  log.info(`[ProjectIpc] Saving copy snapshot to: ${destPath}`)
   try {
     await saveProject(request.project, destPath)
+    log.info(`[ProjectIpc] Save copy successful: ${destPath}`)
   } catch (error) {
     log.error('[ProjectIpc] Failed to save the copy:', error)
     return { canceled: true, error: (error as Error).message }
@@ -161,10 +181,14 @@ export async function handleProjectRename(_event: IpcMainInvokeEvent, request: R
 
 export async function handleProjectLoad(_event: IpcMainInvokeEvent, options?: LoadRequest) {
   const quiet = !!options?.quiet
+  log.info(`[ProjectIpc] handleProjectLoad invoked (path: ${options?.path ?? 'none'}, quiet: ${quiet})`)
 
   // One guard for every way a session gets replaced, so a renderer-initiated
   // open cannot skip the check the OS-initiated one performs.
-  if (!(await confirmReplaceSession('open'))) return { canceled: true }
+  if (!(await confirmReplaceSession('open'))) {
+    log.info('[ProjectIpc] Session replacement declined by session guard. Load canceled.')
+    return { canceled: true }
+  }
 
   let srcPath = options?.path
   if (!srcPath) {
@@ -177,9 +201,14 @@ export async function handleProjectLoad(_event: IpcMainInvokeEvent, options?: Lo
     const result = parent
       ? await dialog.showOpenDialog(parent, dialogOptions)
       : await dialog.showOpenDialog(dialogOptions)
-    if (result.canceled || result.filePaths.length === 0) return { canceled: true }
+    if (result.canceled || result.filePaths.length === 0) {
+      log.info('[ProjectIpc] Open Project file dialog canceled.')
+      return { canceled: true }
+    }
     srcPath = result.filePaths[0]
   }
+
+  log.info(`[ProjectIpc] Opening project from path: ${srcPath}`)
 
   // A remembered path can point at a file the user has since moved or deleted.
   // Say so plainly rather than failing inside the archive reader.
@@ -189,7 +218,7 @@ export async function handleProjectLoad(_event: IpcMainInvokeEvent, options?: Lo
       .then(() => true)
       .catch(() => false)
     if (!exists) {
-      log.info(`[ProjectIpc] Project file is missing: ${srcPath}`)
+      log.warn(`[ProjectIpc] Project file is missing on disk: ${srcPath}`)
       return { canceled: true, missing: true, error: "That project can't be found" }
     }
   }
@@ -197,6 +226,10 @@ export async function handleProjectLoad(_event: IpcMainInvokeEvent, options?: Lo
   try {
     const opened = await openProject(srcPath)
     appState.editorProjectDirty = false
+    const projectAny = opened.project as { tracks?: unknown[]; duration?: number }
+    log.info(
+      `[ProjectIpc] Successfully opened project: ${srcPath} (Tracks: ${projectAny.tracks?.length ?? 0}, Duration: ${projectAny.duration ?? 0}s)`,
+    )
     return {
       canceled: false,
       project: opened.project,

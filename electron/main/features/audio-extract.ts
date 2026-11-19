@@ -96,9 +96,12 @@ export function progressPercentFromOutTime(chunk: string, durationSec: number | 
  */
 export async function extractAudioForTranscription(options: ExtractAudioOptions): Promise<ExtractedAudio> {
   const { outputPath, durationSec, onProgress, signal } = options
+  const args = buildAudioExtractArgs(options)
+  log.info('[AudioExtract] Extracting audio for transcription with args:', args.join(' '))
+  const startTime = Date.now()
 
   return new Promise<ExtractedAudio>((resolve, reject) => {
-    const proc = spawn(getFFmpegPath(), buildAudioExtractArgs(options))
+    const proc = spawn(getFFmpegPath(), args)
     let stderr = ''
     let stdout = ''
     let settled = false
@@ -111,6 +114,7 @@ export async function extractAudioForTranscription(options: ExtractAudioOptions)
     }
 
     signal?.addEventListener('abort', () => {
+      log.warn('[AudioExtract] Audio extraction aborted via signal.')
       proc.kill('SIGKILL')
       finish(new Error('Audio extraction cancelled'))
     })
@@ -139,7 +143,13 @@ export async function extractAudioForTranscription(options: ExtractAudioOptions)
       }
       void fsp
         .stat(outputPath)
-        .then((stat) => finish(null, { path: outputPath, bytes: stat.size }))
+        .then((stat) => {
+          const elapsedMs = Date.now() - startTime
+          log.info(
+            `[AudioExtract] Audio extracted successfully in ${elapsedMs}ms (${stat.size} bytes) -> ${outputPath}`,
+          )
+          finish(null, { path: outputPath, bytes: stat.size })
+        })
         .catch(() => finish(new Error('Audio extraction produced no file.')))
     })
   })

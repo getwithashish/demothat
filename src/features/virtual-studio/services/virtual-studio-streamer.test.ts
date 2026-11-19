@@ -1307,6 +1307,11 @@ describe('VirtualStudioStreamer', () => {
         }),
       )
 
+      const telemetry = instance.getTelemetry()
+      expect(telemetry.rvfcFrameCount).toBe(1)
+      expect(telemetry.activeSource).toBe('webcam')
+      expect(telemetry.isPlaying).toBe(false)
+
       await instance.stop()
     })
   })

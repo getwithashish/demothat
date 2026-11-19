@@ -1,3 +1,41 @@
+## [1.21.0-beta.13](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.12...v1.21.0-beta.13) (2026-11-19)
+
+### Features
+
+* **audio:** update Linux audio topology and recording audio pipeline ([a6af324](https://github.com/getwithashish/DemoThat/commit/a6af324a7c9b398e62d15557dcf98f2e48339dcc))
+* **virtual-studio:** 1080p camera sink, PC range, and idle slate ([85c5e35](https://github.com/getwithashish/DemoThat/commit/85c5e35e06793676a41df1516407ed83f6bbdd83))
+* **virtual-studio:** add cross-platform virtual camera and mic studio ([d20355f](https://github.com/getwithashish/DemoThat/commit/d20355fefbbf7033e17d74de6a6fa926747d217b))
+* **virtual-studio:** add mirror toggle, local audio monitor control, and edge-case hardening ([a50fec4](https://github.com/getwithashish/DemoThat/commit/a50fec4297da81348daf6506d36e0c369865566b))
+* **virtual-studio:** add playback mic mute control, audio track fallback, and 48kHz context ([dde9e62](https://github.com/getwithashish/DemoThat/commit/dde9e62954bf94aac8ecf1551da844c1866351bf))
+* **virtual-studio:** add unsharp text edge filter and remap-source virtual microphone ([bfcb84f](https://github.com/getwithashish/DemoThat/commit/bfcb84f62a20446bddff598d62dede5ef635959d))
+* **virtual-studio:** extract native 1080p canvas frames and decouple render loop from rAF ([171ff4f](https://github.com/getwithashish/DemoThat/commit/171ff4fb5a6d2aa52db4252f80b5467f308d03bd))
+
+### Bug Fixes
+
+* **virtual-studio:** configure v4l2loopback with max_buffers=4 to prevent queue starvation ([ac3f2f3](https://github.com/getwithashish/DemoThat/commit/ac3f2f31bc1c38769eb602833f164862baaf4e90))
+* **virtual-studio:** offload canvas processing to Web Worker and optimize native I420 streaming ([2a68d76](https://github.com/getwithashish/DemoThat/commit/2a68d767228c83155ba5c2a388e4f2b27fc6f3ff))
+* **virtual-studio:** preserve custom audio source node and restore remap microphone ([3330df1](https://github.com/getwithashish/DemoThat/commit/3330df149aa11d798af711ee7b76d9c59db21d4b))
+* **virtual-studio:** resolve meet camera blank screen, unify 720p resolution, and add last frame hold ([1346919](https://github.com/getwithashish/DemoThat/commit/1346919f6f411f889adcca4ba56c9d383f513e44))
+* **virtual-studio:** resolve meet camera feed, process race, and dynamic device teardown ([33d0ca1](https://github.com/getwithashish/DemoThat/commit/33d0ca1e3056257d84fc2654cf62954f2a65597a))
+* **virtual-studio:** resolve meet permission issue with 720p broadcast and 1080p supersampling ([9808a0e](https://github.com/getwithashish/DemoThat/commit/9808a0e87185f9267a8cc16711010203c61529f0))
+* **virtual-studio:** resolve slider jitter, meet camera visibility, and add desktop hud window ([d18bc0c](https://github.com/getwithashish/DemoThat/commit/d18bc0ce013f9f314cf07565bd32594bc80f910c))
+* **virtual-studio:** resolve video playback silence and optimize CPU ([e294a6f](https://github.com/getwithashish/DemoThat/commit/e294a6f074ab615b756a031c2ce27e08b0235600))
+* **virtual-studio:** restore 1080p RGBA pipeline to eliminate roll and color shift, revert webcam to RVFC ([13942ce](https://github.com/getwithashish/DemoThat/commit/13942ce9c8f525d3f890d0f24fc7b4b66dad4512))
+* **virtual-studio:** route timeline audio clips and clicks to demo audio bus ([7fb0c90](https://github.com/getwithashish/DemoThat/commit/7fb0c90b07448eacea2406752ad99ce0c2c65267))
+* **virtual-studio:** unify virtual camera sink format, stabilize device stream, and buffer worklet audio ([4b432f3](https://github.com/getwithashish/DemoThat/commit/4b432f32f2ff69cfca68d538f1678d23cadde7fb))
+* **virtual-studio:** update mirror icon to FlipVertical and upgrade demo playback resolution to 720p HD ([ead52cc](https://github.com/getwithashish/DemoThat/commit/ead52ccdcd3e6b9018a15841cd25a518f66f0b44))
+
+### Performance Improvements
+
+* **virtual-studio:** achieve 20 FPS webcam pass-through and unthrottled demo video pipeline ([c34deae](https://github.com/getwithashish/DemoThat/commit/c34deae0ba7b9857bc18937b4d7584bbeacc9f36))
+* **virtual-studio:** boost playback to 15-30 FPS via event-driven delivery and medium smoothing ([fca26a8](https://github.com/getwithashish/DemoThat/commit/fca26a8ecc1413a47089cc55af1627b998898b9e))
+* **virtual-studio:** decouple audio pipeline with AudioWorklet ([40cc1d4](https://github.com/getwithashish/DemoThat/commit/40cc1d4c8437bfc2e43f88f06789e84456671133))
+* **virtual-studio:** eliminate attendee video stutter and restore virtual microphone audio ([fc5e11a](https://github.com/getwithashish/DemoThat/commit/fc5e11ad4250237a3629af9412552a0cfa8345f0))
+* **virtual-studio:** fix 6-9 fps collapse with non-blocking send and background unthrottling ([513f495](https://github.com/getwithashish/DemoThat/commit/513f495d21f997b703897909f62ab20cdb1c008c))
+* **virtual-studio:** optimize camera sink and deduplicate mini-hud capture ([2acba59](https://github.com/getwithashish/DemoThat/commit/2acba5952578807fd3cd31e9ba9a3002b18ae3ec))
+* **virtual-studio:** sync video decoder with requestVideoFrameCallback and decouple timeupdate ([c4514fe](https://github.com/getwithashish/DemoThat/commit/c4514fe88b7967019d1401d114311632211f6872))
+* **virtual-studio:** upgrade virtual camera to 1080p Full HD with zero-stutter thumbnail scaling ([d8e9724](https://github.com/getwithashish/DemoThat/commit/d8e97246f23922e5ec76ad9e7c7ab7846f24f4dc))
+
 ## [1.21.0-beta.12](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.11...v1.21.0-beta.12) (2026-11-16)
 
 ### Features

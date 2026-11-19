@@ -22,6 +22,7 @@ export interface VirtualStudioConfig {
   selectedWebcamId?: string
   selectedMicId?: string
   outputResolution: { width: number; height: number; fps: number }
+  inputResolution?: { width: number; height: number }
   enableLocalAudioMonitoring: boolean
   localMonitoringVolume: number
   isMirrored?: boolean
@@ -31,6 +32,11 @@ export const DEFAULT_VIRTUAL_STUDIO_RESOLUTION = {
   width: 1920,
   height: 1080,
   fps: 30,
+} as const
+
+export const DEFAULT_VIRTUAL_STUDIO_STREAM_RESOLUTION = {
+  width: 1280,
+  height: 720,
 } as const
 
 export const DEFAULT_VIRTUAL_STUDIO_FALLBACK_COLOR = '#17181b'

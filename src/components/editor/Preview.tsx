@@ -490,11 +490,12 @@ export const Preview = memo(
           let nextW = Math.max(1, Math.round(fitW * maxScale))
           let nextH = Math.max(1, Math.round(fitH * maxScale))
 
-          // When Virtual Studio is active, clamp backing store to native 1080p Full HD (SSAA supersampling)
-          // preserving aspect ratio so canvas drawing is rendered with 2.25x pixel detail for crisp text and code
+          // When Virtual Studio is active, clamp backing store to 1280x720 (720p HD)
+          // preserving aspect ratio so canvas drawing is rendered fast at 30 FPS while
+          // maintaining crisp text and code detail upscaled to 1080p by the virtual camera sink.
           if (isVirtualStudioActive) {
-            const targetW = 1920
-            const targetH = 1080
+            const targetW = 1280
+            const targetH = 720
             nextW = targetW
             nextH = targetH
             if (aspect >= 1) {

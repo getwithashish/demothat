@@ -36,11 +36,11 @@ self.onmessage = function (e) {
     if (ctx) {
       const bw = bitmap.width
       const bh = bitmap.height
-      const isExact1080p = bw === targetW && bh === targetH
+      const isExactMatch = bw === targetW && bh === targetH
 
       // When dimensions match 1:1, disable smoothing for fastest blit and crisp text
-      ctx.imageSmoothingEnabled = !isExact1080p
-      if (!isExact1080p) {
+      ctx.imageSmoothingEnabled = !isExactMatch
+      if (!isExactMatch) {
         ctx.imageSmoothingQuality = 'medium'
       }
 
@@ -50,7 +50,7 @@ self.onmessage = function (e) {
         ctx.scale(-1, 1)
       }
 
-      if (isExact1080p) {
+      if (isExactMatch) {
         ctx.drawImage(bitmap, 0, 0, targetW, targetH)
       } else {
         const scale = Math.min(targetW / bw, targetH / bh)

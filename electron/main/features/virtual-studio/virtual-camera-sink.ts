@@ -9,6 +9,8 @@ export interface CameraSinkOptions {
   height: number
   fps: number
   devicePath?: string
+  inputWidth?: number
+  inputHeight?: number
 }
 
 export class VirtualCameraSink {
@@ -98,10 +100,9 @@ export class VirtualCameraSink {
     this.stopStandbyTimer()
     const fps = this.options?.fps || 30
     const intervalMs = Math.floor(1000 / fps)
-    const slate = this.getStandbySlateBuffer(
-      this.options?.width || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.width,
-      this.options?.height || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.height,
-    )
+    const inW = this.options?.inputWidth || this.options?.width || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.width
+    const inH = this.options?.inputHeight || this.options?.height || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.height
+    const slate = this.getStandbySlateBuffer(inW, inH)
 
     this.standbyTimer = setInterval(() => {
       if (!this.isStandby || !this.ffmpegProcess || !this.ffmpegProcess.stdin.writable) {
@@ -166,15 +167,22 @@ export class VirtualCameraSink {
    * keeping /dev/video10 discoverable by WebRTC/browsers.
    */
   public async startStandby(options?: Partial<CameraSinkOptions>): Promise<{ success: boolean; error?: string }> {
+    const outW = options?.width || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.width
+    const outH = options?.height || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.height
+    const inW = options?.inputWidth || options?.width || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.width
+    const inH = options?.inputHeight || options?.height || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.height
+
     const standardizedOptions: CameraSinkOptions = {
-      width: options?.width || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.width,
-      height: options?.height || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.height,
+      width: outW,
+      height: outH,
       fps: options?.fps || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.fps,
       devicePath: options?.devicePath,
+      inputWidth: inW,
+      inputHeight: inH,
     }
 
     log.info(
-      `[VirtualCameraSink] startStandby invoked (resolution: ${standardizedOptions.width}x${standardizedOptions.height}, fps: ${standardizedOptions.fps}, devicePath: ${standardizedOptions.devicePath ?? 'auto-detect'})`,
+      `[VirtualCameraSink] startStandby invoked (resolution: ${standardizedOptions.width}x${standardizedOptions.height}, input: ${standardizedOptions.inputWidth}x${standardizedOptions.inputHeight}, fps: ${standardizedOptions.fps}, devicePath: ${standardizedOptions.devicePath ?? 'auto-detect'})`,
     )
 
     // If already in standby with identical configuration, keep running
@@ -184,6 +192,10 @@ export class VirtualCameraSink {
       this.options.width === standardizedOptions.width &&
       this.options.height === standardizedOptions.height &&
       this.options.fps === standardizedOptions.fps &&
+      (this.options.inputWidth ?? this.options.width) ===
+        (standardizedOptions.inputWidth ?? standardizedOptions.width) &&
+      (this.options.inputHeight ?? this.options.height) ===
+        (standardizedOptions.inputHeight ?? standardizedOptions.height) &&
       (!standardizedOptions.devicePath || this.options.devicePath === standardizedOptions.devicePath) &&
       this.ffmpegProcess &&
       !this.ffmpegProcess.killed
@@ -225,7 +237,7 @@ export class VirtualCameraSink {
       this.startStandbyTimer()
       this.stopMetricsTimer()
       log.info(
-        `[VirtualCameraSink] Standby slate transition: idle standby slate active at ${standardizedOptions.width}x${standardizedOptions.height} @ ${standardizedOptions.fps}fps`,
+        `[VirtualCameraSink] Standby slate transition: idle standby slate active at ${standardizedOptions.width}x${standardizedOptions.height} (input: ${standardizedOptions.inputWidth}x${standardizedOptions.inputHeight}) @ ${standardizedOptions.fps}fps`,
       )
       return { success: true }
     } catch (err: unknown) {
@@ -239,16 +251,22 @@ export class VirtualCameraSink {
    * Starts the camera sink on the host OS, seamlessly transitioning from standby slate if running.
    */
   public async start(options: CameraSinkOptions): Promise<{ success: boolean; error?: string }> {
-    // Standardize default resolution to DEFAULT_VIRTUAL_STUDIO_RESOLUTION (1920x1080 @ 30fps)
+    const outW = options.width || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.width
+    const outH = options.height || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.height
+    const inW = options.inputWidth || options.width || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.width
+    const inH = options.inputHeight || options.height || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.height
+
     const standardizedOptions: CameraSinkOptions = {
-      width: options.width || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.width,
-      height: options.height || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.height,
+      width: outW,
+      height: outH,
       fps: options.fps || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.fps,
       devicePath: options.devicePath,
+      inputWidth: inW,
+      inputHeight: inH,
     }
 
     log.info(
-      `[VirtualCameraSink] start invoked (resolution: ${standardizedOptions.width}x${standardizedOptions.height}, fps: ${standardizedOptions.fps}, devicePath: ${standardizedOptions.devicePath ?? 'auto-detect'})`,
+      `[VirtualCameraSink] start invoked (resolution: ${standardizedOptions.width}x${standardizedOptions.height}, input: ${standardizedOptions.inputWidth}x${standardizedOptions.inputHeight}, fps: ${standardizedOptions.fps}, devicePath: ${standardizedOptions.devicePath ?? 'auto-detect'})`,
     )
 
     // Seamless transition from standby slate to live frames without restarting FFmpeg
@@ -260,6 +278,10 @@ export class VirtualCameraSink {
       this.options.width === standardizedOptions.width &&
       this.options.height === standardizedOptions.height &&
       this.options.fps === standardizedOptions.fps &&
+      (this.options.inputWidth ?? this.options.width) ===
+        (standardizedOptions.inputWidth ?? standardizedOptions.width) &&
+      (this.options.inputHeight ?? this.options.height) ===
+        (standardizedOptions.inputHeight ?? standardizedOptions.height) &&
       (!standardizedOptions.devicePath || this.options.devicePath === standardizedOptions.devicePath)
     ) {
       log.info('[VirtualCameraSink] Standby slate transition: seamlessly switching standby slate -> live stream')
@@ -278,6 +300,10 @@ export class VirtualCameraSink {
       this.options.width === standardizedOptions.width &&
       this.options.height === standardizedOptions.height &&
       this.options.fps === standardizedOptions.fps &&
+      (this.options.inputWidth ?? this.options.width) ===
+        (standardizedOptions.inputWidth ?? standardizedOptions.width) &&
+      (this.options.inputHeight ?? this.options.height) ===
+        (standardizedOptions.inputHeight ?? standardizedOptions.height) &&
       (!standardizedOptions.devicePath || this.options.devicePath === standardizedOptions.devicePath) &&
       this.ffmpegProcess &&
       !this.ffmpegProcess.killed
@@ -331,6 +357,16 @@ export class VirtualCameraSink {
       device = detected.devicePath || '/dev/video10'
     }
 
+    const inW = options.inputWidth || options.width || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.width
+    const inH = options.inputHeight || options.height || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.height
+    const outW = options.width || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.width
+    const outH = options.height || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.height
+
+    const scaleFilter =
+      inW === outW && inH === outH
+        ? 'scale=out_color_matrix=bt709:out_range=pc:flags=fast_bilinear'
+        : `scale=${outW}:${outH}:out_color_matrix=bt709:out_range=pc:flags=fast_bilinear`
+
     try {
       const ffmpegPath = getFFmpegPath()
       const args = [
@@ -340,13 +376,13 @@ export class VirtualCameraSink {
         '-pix_fmt',
         'rgba',
         '-s',
-        `${options.width}x${options.height}`,
+        `${inW}x${inH}`,
         '-r',
         String(options.fps || 30),
         '-i',
         'pipe:0',
         '-vf',
-        'scale=out_color_matrix=bt709:out_range=pc:flags=bicubic',
+        scaleFilter,
         '-color_range',
         'pc',
         '-colorspace',
@@ -395,7 +431,7 @@ export class VirtualCameraSink {
 
       // Immediately pipe initial frames so v4l2loopback registers V4L2_CAP_VIDEO_CAPTURE in Chrome/Google Meet
       try {
-        const slate = this.getStandbySlateBuffer(options.width, options.height)
+        const slate = this.getStandbySlateBuffer(inW, inH)
         if (proc.stdin.writable) {
           for (let i = 0; i < 5; i++) {
             proc.stdin.write(slate)
@@ -455,8 +491,8 @@ export class VirtualCameraSink {
         buffer = Buffer.from(payload.data)
       }
 
-      const targetW = this.options?.width || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.width
-      const targetH = this.options?.height || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.height
+      const targetW = this.options?.inputWidth || this.options?.width || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.width
+      const targetH = this.options?.inputHeight || this.options?.height || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.height
       const rgbaSize = targetW * targetH * 4
 
       // CRITICAL STREAM INTEGRITY GUARD:

@@ -1,10 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import log from 'electron-log/main'
 import { getFFmpegPath } from '../../lib/utils'
-import {
-  DEFAULT_VIRTUAL_STUDIO_RESOLUTION,
-  type VirtualFramePayload,
-} from '../../../../shared/virtual-camera-types'
+import { DEFAULT_VIRTUAL_STUDIO_RESOLUTION, type VirtualFramePayload } from '../../../../shared/virtual-camera-types'
 import { checkLinuxCameraDriver } from './driver-setup'
 
 export interface CameraSinkOptions {

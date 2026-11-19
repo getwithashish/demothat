@@ -61,6 +61,9 @@ describe('VirtualAudioSink', () => {
         '--rate=48000',
         '--channels=2',
         '--device=demothat_mic',
+        '--latency-msec=25',
+        '--process-time-msec=10',
+        '--raw',
       ])
 
       // Verify pacat process error handler is attached
@@ -86,6 +89,9 @@ describe('VirtualAudioSink', () => {
         '--rate=48000',
         '--channels=2',
         '--device=custom_sink',
+        '--latency-msec=25',
+        '--process-time-msec=10',
+        '--raw',
       ])
     } finally {
       Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true })
@@ -210,5 +216,40 @@ describe('VirtualAudioSink', () => {
       await stopPromise
       vi.useRealTimers()
     }
+  })
+
+  it('drops chunks and throttles warnings when stdin backpressure exceeds 64KB', async () => {
+    await sink.start()
+    mockStdin.write.mockClear()
+
+    // Simulate backed-up queue: writableLength >= 64KB
+    Object.defineProperty(mockStdin, 'writableLength', { value: 65536, configurable: true })
+
+    const chunk = Buffer.from([1, 2, 3, 4])
+    const result1 = await sink.pushAudio(chunk)
+    expect(result1).toBe(false)
+    expect(mockStdin.write).not.toHaveBeenCalled()
+    expect(sink.getOverflowCount()).toBe(1)
+    expect(log.warn).toHaveBeenCalledWith(
+      expect.stringContaining('[VirtualAudioSink] Audio queue backpressure: stdin buffer length 65536 bytes >= 64KB'),
+    )
+
+    // Second chunk within 3000ms should also drop, but NOT emit another warning log (throttled)
+    vi.mocked(log.warn).mockClear()
+    const result2 = await sink.pushAudio(chunk)
+    expect(result2).toBe(false)
+    expect(mockStdin.write).not.toHaveBeenCalled()
+    expect(sink.getOverflowCount()).toBe(2)
+    expect(log.warn).not.toHaveBeenCalled()
+
+    // Reset writableLength
+    Object.defineProperty(mockStdin, 'writableLength', { value: 0, configurable: true })
+    const result3 = await sink.pushAudio(chunk)
+    expect(result3).toBe(true)
+    expect(mockStdin.write).toHaveBeenCalledWith(chunk)
+
+    const stopPromise = sink.stop()
+    mockProc.emit('close', 0)
+    await stopPromise
   })
 })

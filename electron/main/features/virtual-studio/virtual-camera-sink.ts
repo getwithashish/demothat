@@ -481,10 +481,10 @@ export class VirtualCameraSink {
 
       if (this.ffmpegProcess && this.ffmpegProcess.stdin.writable) {
         const stdin = this.ffmpegProcess.stdin
-        if (stdin.writableLength > buffer.length * 2) {
+        if (stdin.writableLength >= buffer.length) {
           this.drainEvents++
           log.debug(
-            `[VirtualCameraSink] Backpressure detected: stdin queue length ${stdin.writableLength} exceeds buffer threshold ${buffer.length * 2}. Awaiting drain event #${this.drainEvents}...`,
+            `[VirtualCameraSink] Backpressure detected: stdin queue length ${stdin.writableLength} exceeds buffer threshold ${buffer.length}. Awaiting drain event #${this.drainEvents}...`,
           )
           await new Promise<void>((resolve) => {
             stdin.once('drain', () => resolve())

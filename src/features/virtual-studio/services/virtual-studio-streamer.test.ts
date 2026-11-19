@@ -805,15 +805,16 @@ describe('VirtualStudioStreamer', () => {
       global.createImageBitmap = originalCreateImageBitmap
     })
 
-    it('initializes a pool of 2 workers on start and cleans up on stop', async () => {
+    it('initializes a pool of 3 workers on start and cleans up on stop', async () => {
       await streamer.start()
-      expect(streamer.getWorkerPoolSize()).toBe(2)
-      expect(MockWorker.instances.length).toBe(2)
+      expect(streamer.getWorkerPoolSize()).toBe(3)
+      expect(MockWorker.instances.length).toBe(3)
 
       await streamer.stop()
       expect(streamer.getWorkerPoolSize()).toBe(0)
       expect(MockWorker.instances[0].terminated).toBe(true)
       expect(MockWorker.instances[1].terminated).toBe(true)
+      expect(MockWorker.instances[2].terminated).toBe(true)
     })
 
     it('alternates workers in round-robin and tracks busy state', async () => {
@@ -828,6 +829,7 @@ describe('VirtualStudioStreamer', () => {
 
       expect(MockWorker.instances[0].postedMessages.length).toBe(1)
       expect(MockWorker.instances[1].postedMessages.length).toBe(0)
+      expect(MockWorker.instances[2].postedMessages.length).toBe(0)
       expect(streamer.getWorkerBusyCount()).toBe(1)
 
       // Dispatch frame 1 -> should assign to Worker 1
@@ -836,13 +838,24 @@ describe('VirtualStudioStreamer', () => {
 
       expect(MockWorker.instances[0].postedMessages.length).toBe(1)
       expect(MockWorker.instances[1].postedMessages.length).toBe(1)
+      expect(MockWorker.instances[2].postedMessages.length).toBe(0)
       expect(streamer.getWorkerBusyCount()).toBe(2)
 
-      // Dispatch frame 2 while both workers busy -> backpressure drops frame
+      // Dispatch frame 2 -> should assign to Worker 2
+      streamer.pushRenderedCanvas(testCanvas)
+      await Promise.resolve()
+
+      expect(MockWorker.instances[0].postedMessages.length).toBe(1)
+      expect(MockWorker.instances[1].postedMessages.length).toBe(1)
+      expect(MockWorker.instances[2].postedMessages.length).toBe(1)
+      expect(streamer.getWorkerBusyCount()).toBe(3)
+
+      // Dispatch frame 3 while all 3 workers busy -> backpressure drops frame
       streamer.pushRenderedCanvas(testCanvas)
       await Promise.resolve()
       expect(MockWorker.instances[0].postedMessages.length).toBe(1)
       expect(MockWorker.instances[1].postedMessages.length).toBe(1)
+      expect(MockWorker.instances[2].postedMessages.length).toBe(1)
     })
 
     it('guarantees in-order frame delivery even when worker completion is out-of-order', async () => {

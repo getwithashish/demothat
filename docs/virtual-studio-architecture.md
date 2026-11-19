@@ -79,9 +79,9 @@ To prevent HTML5 canvas reads from blocking Chromium's single-threaded JavaScrip
 
 1. `pushRenderedCanvas()` in `VirtualStudioStreamer` captures the current editor canvas using `createImageBitmap(sourceCanvas)`.
 2. **Worker Pool & Pipelining**:
-   - Manages a pool of background workers (`CANVAS_WORKER_POOL_SIZE = 2`).
-   - While Worker 0 is extracting pixels for Frame $N$ (~75ms), Worker 1 processes Frame $N+1$.
-   - This doubles pixel extraction throughput from $\sim 12.5\text{ FPS}$ to $> 25\text{ FPS}$, completely eliminating frame drops during editor preview playback.
+   - Manages a pool of background workers (`CANVAS_WORKER_POOL_SIZE = 3`).
+   - While Worker 0 is extracting pixels for Frame $N$ (~75ms), Worker 1 processes Frame $N+1$, and Worker 2 processes Frame $N+2$.
+   - This increases pixel extraction throughput from $\sim 12.5\text{ FPS}$ to $> 30\text{ FPS}$, completely eliminating frame drops during editor preview playback.
 3. **Monotonic Sequence Reorder Buffer**:
    - Frames are assigned monotonically increasing sequence IDs.
    - Incoming processed frames are held in a sequence reorder buffer and delivered to IPC in strict chronological order, even if a worker resolves out of order.
@@ -159,12 +159,13 @@ To eliminate clicks, pops, or audio discontinuities during transitions, gain adj
 - Transfers buffers via zero-copy `ArrayBuffer` transfer to `virtual-studio-streamer.ts`, which sends them over IPC to `VirtualAudioSink`.
 - If `AudioWorklet` is unavailable in the environment, the streamer falls back gracefully to a `ScriptProcessorNode`.
 
-### 4.4 Silence Keep-Alive Watchdog (`virtual-audio-sink.ts`)
+### 4.4 Silence Keep-Alive & Backpressure Control (`virtual-audio-sink.ts`)
 
 - During Auto-Return transitions (switching between physical mic and timeline playback), video decoders can incur 200–400ms startup latencies before streaming decoded audio samples.
 - To prevent PulseAudio/PipeWire sink buffer starvation (underruns), `VirtualAudioSink` maintains a 60ms watchdog interval timer.
 - If no PCM chunk has arrived within 120ms, the watchdog writes a 4096-byte 16-bit silence buffer to `stdin`.
-- This ensures uninterrupted audio stream continuity without underflows or audible clicks.
+- To prevent unbounded memory expansion and log flooding if the audio consumer backs up, `VirtualAudioSink` enforces a strict 64KB queue depth ceiling (`AUDIO_SINK_MAX_QUEUE_BYTES`). When the queue exceeds 64KB, incoming chunks are dropped to preserve real-time synchronicity, and warning logs are throttled to at most once per 3 seconds.
+- `pacat` is spawned with `--latency-msec=25 --process-time-msec=10 --raw` to enforce low-latency real-time ring buffering.
 
 ---
 

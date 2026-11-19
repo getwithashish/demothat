@@ -9,7 +9,6 @@ export interface CameraSinkOptions {
   height: number
   fps: number
   devicePath?: string
-  format?: 'rgba' | 'yuv420p'
 }
 
 export class VirtualCameraSink {
@@ -49,23 +48,8 @@ export class VirtualCameraSink {
   /**
    * Generates or returns cached 1080p dark standby slate buffer.
    * Dark slate matching DEFAULT_VIRTUAL_STUDIO_FALLBACK_COLOR (#17181b -> R:23, G:24, B:27, A:255).
-   * Supports both RGBA and zero-copy YUV420P slates.
    */
-  public getStandbySlateBuffer(width: number, height: number, format?: 'rgba' | 'yuv420p'): Buffer {
-    const isYuv = (format || this.options?.format) === 'yuv420p'
-    if (isYuv) {
-      const size = Math.floor(width * height * 1.5)
-      if (this.standbySlateBuffer && this.standbySlateBuffer.length === size) {
-        return this.standbySlateBuffer
-      }
-      const buf = Buffer.alloc(size)
-      const ySize = width * height
-      buf.fill(23, 0, ySize)
-      buf.fill(128, ySize, size)
-      this.standbySlateBuffer = buf
-      return buf
-    }
-
+  public getStandbySlateBuffer(width: number, height: number): Buffer {
     const size = width * height * 4
     if (this.standbySlateBuffer && this.standbySlateBuffer.length === size) {
       return this.standbySlateBuffer
@@ -125,7 +109,6 @@ export class VirtualCameraSink {
       height: options?.height || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.height,
       fps: options?.fps || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.fps,
       devicePath: options?.devicePath,
-      format: options?.format,
     }
 
     // If already in standby with identical configuration, keep running
@@ -135,7 +118,6 @@ export class VirtualCameraSink {
       this.options.width === standardizedOptions.width &&
       this.options.height === standardizedOptions.height &&
       this.options.fps === standardizedOptions.fps &&
-      this.options.format === standardizedOptions.format &&
       (!standardizedOptions.devicePath || this.options.devicePath === standardizedOptions.devicePath) &&
       this.ffmpegProcess &&
       !this.ffmpegProcess.killed
@@ -193,7 +175,6 @@ export class VirtualCameraSink {
       height: options.height || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.height,
       fps: options.fps || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.fps,
       devicePath: options.devicePath,
-      format: options.format,
     }
 
     // Seamless transition from standby slate to live frames without restarting FFmpeg
@@ -205,7 +186,6 @@ export class VirtualCameraSink {
       this.options.width === standardizedOptions.width &&
       this.options.height === standardizedOptions.height &&
       this.options.fps === standardizedOptions.fps &&
-      this.options.format === standardizedOptions.format &&
       (!standardizedOptions.devicePath || this.options.devicePath === standardizedOptions.devicePath)
     ) {
       log.info('[VirtualCameraSink] Seamlessly switching from standby slate to live frames')
@@ -223,7 +203,6 @@ export class VirtualCameraSink {
       this.options.width === standardizedOptions.width &&
       this.options.height === standardizedOptions.height &&
       this.options.fps === standardizedOptions.fps &&
-      this.options.format === standardizedOptions.format &&
       (!standardizedOptions.devicePath || this.options.devicePath === standardizedOptions.devicePath) &&
       this.ffmpegProcess &&
       !this.ffmpegProcess.killed
@@ -271,62 +250,38 @@ export class VirtualCameraSink {
 
     try {
       const ffmpegPath = getFFmpegPath()
-      const isYuv = options.format === 'yuv420p'
-      const args = isYuv
-        ? [
-            '-y',
-            '-f',
-            'rawvideo',
-            '-pix_fmt',
-            'yuv420p',
-            '-s',
-            `${options.width}x${options.height}`,
-            '-r',
-            String(options.fps || 30),
-            '-i',
-            'pipe:0',
-            '-f',
-            'v4l2',
-            '-pix_fmt',
-            'yuv420p',
-            '-threads',
-            '1',
-            '-flush_packets',
-            '1',
-            device,
-          ]
-        : [
-            '-y',
-            '-f',
-            'rawvideo',
-            '-pix_fmt',
-            'rgba',
-            '-s',
-            `${options.width}x${options.height}`,
-            '-r',
-            String(options.fps || 30),
-            '-i',
-            'pipe:0',
-            '-vf',
-            'scale=out_color_matrix=bt709:out_range=pc:flags=bicubic',
-            '-color_range',
-            'pc',
-            '-colorspace',
-            'bt709',
-            '-color_primaries',
-            'bt709',
-            '-color_trc',
-            'bt709',
-            '-f',
-            'v4l2',
-            '-pix_fmt',
-            'yuv420p',
-            '-threads',
-            '2',
-            '-flush_packets',
-            '1',
-            device,
-          ]
+      const args = [
+        '-y',
+        '-f',
+        'rawvideo',
+        '-pix_fmt',
+        'rgba',
+        '-s',
+        `${options.width}x${options.height}`,
+        '-r',
+        String(options.fps || 30),
+        '-i',
+        'pipe:0',
+        '-vf',
+        'scale=out_color_matrix=bt709:out_range=pc:flags=bicubic',
+        '-color_range',
+        'pc',
+        '-colorspace',
+        'bt709',
+        '-color_primaries',
+        'bt709',
+        '-color_trc',
+        'bt709',
+        '-f',
+        'v4l2',
+        '-pix_fmt',
+        'yuv420p',
+        '-threads',
+        '2',
+        '-flush_packets',
+        '1',
+        device,
+      ]
 
       log.info(`[VirtualCameraSink] Spawning Linux FFmpeg sink -> ${device}: ${ffmpegPath} ${args.join(' ')}`)
       const proc = spawn(ffmpegPath, args)
@@ -415,22 +370,6 @@ export class VirtualCameraSink {
         buffer = Buffer.from(payload.data.buffer, payload.data.byteOffset, payload.data.byteLength)
       } else {
         buffer = Buffer.from(payload.data)
-      }
-
-      // Check if format needs dynamic switch on Linux
-      const payloadFormat =
-        payload.format || (buffer.length === Math.floor(payload.width * payload.height * 1.5) ? 'yuv420p' : 'rgba')
-      const targetFormat: 'rgba' | 'yuv420p' = payloadFormat === 'yuv420p' ? 'yuv420p' : 'rgba'
-      if (
-        this.options &&
-        this.options.format &&
-        targetFormat !== this.options.format &&
-        process.platform === 'linux' &&
-        this.ffmpegProcess &&
-        !this.ffmpegProcess.killed
-      ) {
-        log.info(`[VirtualCameraSink] Switching sink format from ${this.options.format} to ${targetFormat}`)
-        await this.start({ ...this.options, format: targetFormat })
       }
 
       if (this.ffmpegProcess && this.ffmpegProcess.stdin.writable) {

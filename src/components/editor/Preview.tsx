@@ -703,11 +703,6 @@ export const Preview = memo(
       drawInFlight.current = true
       try {
         const state = useEditorStore.getState()
-        // Pipelined scheduling: request the next hardware video frame callback immediately
-        // so hardware decoding and canvas drawing/IPC stream run concurrently in parallel.
-        if (state.isPlaying) {
-          scheduleNextRender()
-        }
         const canvas = canvasRef.current
         const video = videoRef.current
         const webcamVideo = webcamVideoRef.current
@@ -741,6 +736,9 @@ export const Preview = memo(
         }
       } finally {
         drawInFlight.current = false
+        if (useEditorStore.getState().isPlaying) {
+          scheduleNextRender()
+        }
       }
     }, [videoRef, bgImage, syncClipVideos, isVirtualStudioActive, scheduleNextRender])
 

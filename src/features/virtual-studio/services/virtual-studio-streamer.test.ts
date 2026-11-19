@@ -1,10 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import {
-  VirtualStudioStreamer,
-  mirrorYuv420,
-  type VirtualStudioIPC,
-  type StreamerDependencies,
-} from './virtual-studio-streamer'
+import { VirtualStudioStreamer, type VirtualStudioIPC, type StreamerDependencies } from './virtual-studio-streamer'
 import type { VirtualStudioConfig } from '../../../../shared/virtual-camera-types'
 import { useEditorStore } from '../../../store/editorStore'
 import {
@@ -1256,19 +1251,7 @@ describe('VirtualStudioStreamer', () => {
     })
   })
 
-  describe('Hardware Pass-Through & YUV420 Mirroring', () => {
-    it('mirrorYuv420 inverts horizontal rows across Y, U, and V planar memory', () => {
-      // 4x2 frame: Y (8 bytes), U (2 bytes), V (2 bytes)
-      const buf = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 10, 20, 30, 40])
-
-      mirrorYuv420(buf, 4, 2)
-
-      // Y rows mirrored: [4, 3, 2, 1], [8, 7, 6, 5]
-      // U row mirrored: [20, 10]
-      // V row mirrored: [40, 30]
-      expect(Array.from(buf)).toEqual([4, 3, 2, 1, 8, 7, 6, 5, 20, 10, 40, 30])
-    })
-
+  describe('Hardware Webcam Stream Exposure', () => {
     it('exposes getWebcamStream() when camera is active and null when stopped', async () => {
       const mockStream = {
         getTracks: vi.fn(() => [{ stop: vi.fn() }]),

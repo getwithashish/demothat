@@ -231,38 +231,4 @@ describe('VirtualCameraSink', () => {
     expect(sink.isActive()).toBe(false)
     expect(mockProc.kill).toHaveBeenCalledWith('SIGTERM')
   })
-
-  it('spawns FFmpeg in zero-copy pass-through mode when format is yuv420p', async () => {
-    const res = await sink.start({ width: 1920, height: 1080, fps: 30, format: 'yuv420p' })
-    expect(res.success).toBe(true)
-    expect(sink.isActive()).toBe(true)
-
-    expect(spawn).toHaveBeenCalledWith(
-      '/mock/bin/ffmpeg',
-      expect.arrayContaining([
-        '-pix_fmt',
-        'yuv420p',
-        '-s',
-        '1920x1080',
-        '-r',
-        '30',
-        '-i',
-        'pipe:0',
-        '-f',
-        'v4l2',
-        '-pix_fmt',
-        'yuv420p',
-        '-threads',
-        '1',
-        '-flush_packets',
-        '1',
-        '/dev/video10',
-      ]),
-    )
-
-    // Ensure software scaling filter -vf is NOT present in zero-copy pass-through mode
-    const spawnCalls = vi.mocked(spawn).mock.calls
-    const lastCallArgs = spawnCalls[spawnCalls.length - 1][1] as string[]
-    expect(lastCallArgs).not.toContain('-vf')
-  })
 })

@@ -141,9 +141,8 @@ export class VirtualStudioStreamer {
   private webcamVideo: HTMLVideoElement | null = null
   private webcamVideoContainer: HTMLDivElement | null = null
   private webcamStream: MediaStream | null = null
-  private webcamTrackReader: unknown = null
-  private isProcessingWebcamTrack = false
-  private preallocatedYuvBuffer: Uint8Array | null = null
+  private webcamTimer: ReturnType<typeof setTimeout> | null = null
+  private webcamRvfcHandle: number | null = null
   private scratchCanvas: HTMLCanvasElement | null = null
   private scratchCtx: CanvasRenderingContext2D | null = null
   private hudThumbnailCanvas: HTMLCanvasElement | null = null
@@ -598,14 +597,9 @@ export class VirtualStudioStreamer {
     // Apply initial auto-return states
     this.applyInstantAutoReturn()
 
-    // Start frame grabber interval or hardware track processor
-    if (
-      this.activeSource === 'webcam' &&
-      typeof window !== 'undefined' &&
-      'MediaStreamTrackProcessor' in window &&
-      this.webcamStream
-    ) {
-      this.startWebcamTrackProcessor()
+    // Start webcam capture or frame loop
+    if (this.activeSource === 'webcam') {
+      this.scheduleWebcamCapture()
     } else {
       this.startFrameLoop()
     }
@@ -629,7 +623,7 @@ export class VirtualStudioStreamer {
    */
   public async stop(): Promise<VirtualStudioActionResult> {
     this.active = false
-    this.stopWebcamTrackProcessor()
+    this.cancelWebcamCapture()
     this.stopFrameLoop()
     this.stopWebcam()
     this.stopMicrophone()
@@ -680,18 +674,12 @@ export class VirtualStudioStreamer {
 
     // Manage frame capture according to activeSource:
     // When canvas: do not poll timer loop; frames are delivered event-driven by pushRenderedCanvas.
-    // When webcam: use hardware track processor or keep timer loop running at target FPS.
+    // When webcam: schedule hardware-synced webcam capture.
     if (this.activeSource === 'canvas') {
-      this.stopWebcamTrackProcessor()
+      this.cancelWebcamCapture()
       this.stopFrameLoop()
     } else {
-      if (typeof window !== 'undefined' && 'MediaStreamTrackProcessor' in window && this.webcamStream) {
-        this.stopFrameLoop()
-        this.startWebcamTrackProcessor()
-      } else {
-        this.stopWebcamTrackProcessor()
-        this.startFrameLoop()
-      }
+      this.scheduleWebcamCapture()
     }
 
     // Immediately trigger a frame render
@@ -1085,7 +1073,7 @@ export class VirtualStudioStreamer {
     if (!this.mediaDevices?.getUserMedia) return
 
     try {
-      this.stopWebcamTrackProcessor()
+      this.cancelWebcamCapture()
       if (this.webcamStream) {
         this.webcamStream.getTracks().forEach((track) => track.stop())
         this.webcamStream = null
@@ -1123,13 +1111,8 @@ export class VirtualStudioStreamer {
         this.webcamVideoContainer.appendChild(this.webcamVideo)
       }
 
-      if (
-        this.activeSource === 'webcam' &&
-        this.active &&
-        typeof window !== 'undefined' &&
-        'MediaStreamTrackProcessor' in window
-      ) {
-        this.startWebcamTrackProcessor()
+      if (this.activeSource === 'webcam' && this.active) {
+        this.scheduleWebcamCapture()
       }
     } catch (err) {
       console.warn('[VirtualStudioStreamer] Failed to capture physical webcam:', err)
@@ -1137,7 +1120,8 @@ export class VirtualStudioStreamer {
   }
 
   private stopWebcam(): void {
-    this.stopWebcamTrackProcessor()
+    this.cancelWebcamCapture()
+    this.stopFrameLoop()
     if (this.webcamStream) {
       this.webcamStream.getTracks().forEach((track) => track.stop())
       this.webcamStream = null
@@ -1159,142 +1143,74 @@ export class VirtualStudioStreamer {
     }
   }
 
-  private startWebcamTrackProcessor(): void {
-    this.stopWebcamTrackProcessor()
-    if (!this.webcamStream || this.activeSource !== 'webcam' || !this.active) return
+  private scheduleWebcamCapture(): void {
+    this.cancelWebcamCapture()
+    if (!this.active || this.activeSource !== 'webcam') return
 
-    const videoTrack = this.webcamStream.getVideoTracks()[0]
+    const video = this.webcamVideo
     if (
-      !videoTrack ||
-      typeof window === 'undefined' ||
-      !('MediaStreamTrackProcessor' in window) ||
-      typeof (window as unknown as { MediaStreamTrackProcessor?: unknown }).MediaStreamTrackProcessor !== 'function'
+      video &&
+      'requestVideoFrameCallback' in video &&
+      typeof (video as HTMLVideoElement & { requestVideoFrameCallback?: unknown }).requestVideoFrameCallback ===
+        'function' &&
+      !video.paused
     ) {
-      this.startFrameLoop()
+      this.webcamRvfcHandle = (
+        video as HTMLVideoElement & {
+          requestVideoFrameCallback: (callback: (now: number, metadata: unknown) => void) => number
+        }
+      ).requestVideoFrameCallback(() => {
+        this.webcamRvfcHandle = null
+        if (this.webcamTimer !== null) {
+          clearTimeout(this.webcamTimer)
+          this.webcamTimer = null
+        }
+        if (this.active && this.activeSource === 'webcam') {
+          this.captureTick()
+          this.scheduleWebcamCapture()
+        }
+      })
+
+      // Safety watchdog: if rVFC does not fire within 50ms (~20 FPS floor),
+      // execute capture anyway to prevent stalling if window is minimized or occluded
+      this.webcamTimer = setTimeout(() => {
+        this.webcamTimer = null
+        if (this.webcamRvfcHandle !== null && video && 'cancelVideoFrameCallback' in video) {
+          try {
+            ;(
+              video as HTMLVideoElement & { cancelVideoFrameCallback: (handle: number) => void }
+            ).cancelVideoFrameCallback(this.webcamRvfcHandle)
+          } catch {
+            // Ignore
+          }
+          this.webcamRvfcHandle = null
+        }
+        if (this.active && this.activeSource === 'webcam') {
+          this.captureTick()
+          this.scheduleWebcamCapture()
+        }
+      }, 50)
       return
     }
 
-    try {
-      type VideoFrameLike = {
-        displayWidth: number
-        displayHeight: number
-        timestamp: number
-        allocationSize: (options?: { format?: string }) => number
-        copyTo: (destination: Uint8Array | BufferSource, options?: { format?: string }) => Promise<unknown>
-        close: () => void
-      }
-      type ProcessorConstructor = new (init: { track: MediaStreamTrack }) => {
-        readable: ReadableStream<VideoFrameLike>
-      }
-
-      const ProcessorClass = (window as unknown as { MediaStreamTrackProcessor: ProcessorConstructor })
-        .MediaStreamTrackProcessor
-      const processor = new ProcessorClass({ track: videoTrack })
-      const reader = processor.readable.getReader()
-      this.webcamTrackReader = reader
-      this.isProcessingWebcamTrack = true
-
-      const { width, height } = this.outputResolution
-      const expectedSize = Math.floor(width * height * 1.5)
-      if (!this.preallocatedYuvBuffer || this.preallocatedYuvBuffer.length !== expectedSize) {
-        this.preallocatedYuvBuffer = new Uint8Array(expectedSize)
-      }
-
-      const processNextFrame = async () => {
-        if (!this.isProcessingWebcamTrack || this.webcamTrackReader !== reader) return
-        try {
-          const { value: frame, done } = await reader.read()
-          if (done || !frame) return
-
-          if (this.active && this.activeSource === 'webcam') {
-            const frameW = frame.displayWidth || width
-            const frameH = frame.displayHeight || height
-            const allocSize = frame.allocationSize({ format: 'I420' })
-            const yuvBuf =
-              this.preallocatedYuvBuffer && this.preallocatedYuvBuffer.length === allocSize
-                ? this.preallocatedYuvBuffer
-                : new Uint8Array(allocSize)
-            this.preallocatedYuvBuffer = yuvBuf
-
-            await frame.copyTo(yuvBuf, { format: 'I420' })
-
-            if (this.isMirrored) {
-              mirrorYuv420(yuvBuf, frameW, frameH)
-            }
-
-            this.ipcBridge.pushFrame({
-              data: yuvBuf,
-              width: frameW,
-              height: frameH,
-              format: 'yuv420p',
-              timestamp: frame.timestamp,
-            })
-
-            const isHudActive = this.isMiniHudVisible || this.previewListeners.size > 0
-            if (isHudActive) {
-              const now = performance.now()
-              if (this.lastThumbnailTime < 0 || now - this.lastThumbnailTime >= 350) {
-                this.lastThumbnailTime = now
-                this.emitWebcamThumbnail()
-              }
-            }
-          }
-          frame.close()
-        } catch {
-          // Ignore transient read errors
-        }
-
-        if (this.isProcessingWebcamTrack && this.webcamTrackReader === reader) {
-          void processNextFrame()
-        }
-      }
-
-      void processNextFrame()
-    } catch {
-      this.startFrameLoop()
-    }
+    // Fallback to high-precision timer loop if rVFC is not available
+    this.startFrameLoop()
   }
 
-  private stopWebcamTrackProcessor(): void {
-    this.isProcessingWebcamTrack = false
-    if (this.webcamTrackReader) {
+  private cancelWebcamCapture(): void {
+    if (this.webcamTimer !== null) {
+      clearTimeout(this.webcamTimer)
+      this.webcamTimer = null
+    }
+    if (this.webcamRvfcHandle !== null && this.webcamVideo && 'cancelVideoFrameCallback' in this.webcamVideo) {
       try {
-        const reader = this.webcamTrackReader as ReadableStreamDefaultReader
-        void reader.cancel()
-        reader.releaseLock()
+        ;(
+          this.webcamVideo as HTMLVideoElement & { cancelVideoFrameCallback: (handle: number) => void }
+        ).cancelVideoFrameCallback(this.webcamRvfcHandle)
       } catch {
         // Ignore
       }
-      this.webcamTrackReader = null
-    }
-  }
-
-  private emitWebcamThumbnail(): void {
-    if (!this.webcamVideo || this.webcamVideo.videoWidth <= 0) return
-    try {
-      if (!this.hudThumbnailCanvas) {
-        this.hudThumbnailCanvas = this.createCanvas()
-        this.hudThumbnailCanvas.width = 320
-        this.hudThumbnailCanvas.height = 180
-        this.hudThumbnailCtx = this.hudThumbnailCanvas.getContext?.('2d') ?? null
-      }
-      if (this.hudThumbnailCtx && typeof this.hudThumbnailCtx.drawImage === 'function') {
-        if (this.isMirrored && typeof this.hudThumbnailCtx.save === 'function') {
-          this.hudThumbnailCtx.save()
-          this.hudThumbnailCtx.translate(320, 0)
-          this.hudThumbnailCtx.scale(-1, 1)
-          this.hudThumbnailCtx.drawImage(this.webcamVideo, 0, 0, 320, 180)
-          this.hudThumbnailCtx.restore()
-        } else {
-          this.hudThumbnailCtx.drawImage(this.webcamVideo, 0, 0, 320, 180)
-        }
-        if (typeof this.hudThumbnailCanvas.toDataURL === 'function') {
-          const thumbnail = this.hudThumbnailCanvas.toDataURL('image/jpeg', 0.5)
-          this.ipcBridge.pushPreviewFrame?.(thumbnail)
-        }
-      }
-    } catch {
-      // Ignore thumbnail generation errors
+      this.webcamRvfcHandle = null
     }
   }
 
@@ -1582,48 +1498,3 @@ export class VirtualStudioStreamer {
 }
 
 export const virtualStudioStreamer = new VirtualStudioStreamer()
-
-/**
- * Fast in-place horizontal mirror transform for YUV420P (I420) frame buffers.
- * Operates on Y, U, and V planar memory without allocation.
- */
-export function mirrorYuv420(buf: Uint8Array, width: number, height: number): void {
-  // Mirror Y plane
-  for (let r = 0; r < height; r++) {
-    let left = r * width
-    let right = left + width - 1
-    while (left < right) {
-      const tmp = buf[left]
-      buf[left] = buf[right]
-      buf[right] = tmp
-      left++
-      right--
-    }
-  }
-
-  // Mirror U and V planes (each half width and half height)
-  const halfW = width >> 1
-  const halfH = height >> 1
-  const uStart = width * height
-  const vStart = uStart + halfW * halfH
-
-  for (let r = 0; r < halfH; r++) {
-    let leftU = uStart + r * halfW
-    let rightU = leftU + halfW - 1
-    let leftV = vStart + r * halfW
-    let rightV = leftV + halfW - 1
-    while (leftU < rightU) {
-      const tmpU = buf[leftU]
-      buf[leftU] = buf[rightU]
-      buf[rightU] = tmpU
-      leftU++
-      rightU--
-
-      const tmpV = buf[leftV]
-      buf[leftV] = buf[rightV]
-      buf[rightV] = tmpV
-      leftV++
-      rightV--
-    }
-  }
-}

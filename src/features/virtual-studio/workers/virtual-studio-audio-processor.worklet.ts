@@ -11,6 +11,12 @@ export const VIRTUAL_STUDIO_AUDIO_PROCESSOR_NAME = 'virtual-studio-audio-process
 
 export const WORKLET_PROCESSOR_CODE = `
 class VirtualStudioAudioProcessor extends AudioWorkletProcessor {
+  constructor() {
+    super()
+    this.buffer = new Int16Array(1024 * 2)
+    this.offset = 0
+  }
+
   process(inputs) {
     const input = inputs[0]
     if (!input || input.length === 0) {
@@ -24,17 +30,21 @@ class VirtualStudioAudioProcessor extends AudioWorkletProcessor {
 
     const right = input.length > 1 ? input[1] : left
     const length = left.length
-    const pcm16 = new Int16Array(length * 2)
 
     for (let i = 0; i < length; i++) {
       const sL = Math.max(-1, Math.min(1, left[i]))
-      pcm16[i * 2] = sL < 0 ? sL * 0x8000 : sL * 0x7fff
+      this.buffer[this.offset * 2] = sL < 0 ? sL * 0x8000 : sL * 0x7fff
       const sR = Math.max(-1, Math.min(1, right[i]))
-      pcm16[i * 2 + 1] = sR < 0 ? sR * 0x8000 : sR * 0x7fff
+      this.buffer[this.offset * 2 + 1] = sR < 0 ? sR * 0x8000 : sR * 0x7fff
+      this.offset++
+
+      if (this.offset >= 1024) {
+        const chunk = this.buffer.slice()
+        this.port.postMessage(chunk.buffer, [chunk.buffer])
+        this.offset = 0
+      }
     }
 
-    const buffer = pcm16.buffer
-    this.port.postMessage(buffer, [buffer])
     return true
   }
 }

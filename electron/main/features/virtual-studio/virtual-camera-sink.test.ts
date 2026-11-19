@@ -97,6 +97,35 @@ describe('VirtualCameraSink', () => {
     expect(mockStdin.write).toHaveBeenCalled()
   })
 
+  it('upscales stream resolution (1280x720) to output resolution (1920x1080) with fast_bilinear scale filter on Linux', async () => {
+    const res = await sink.start({ width: 1920, height: 1080, fps: 30, inputWidth: 1280, inputHeight: 720 })
+    expect(res.success).toBe(true)
+
+    expect(spawn).toHaveBeenCalledWith(
+      '/mock/bin/ffmpeg',
+      expect.arrayContaining([
+        '-s',
+        '1280x720',
+        '-vf',
+        'scale=1920:1080:out_color_matrix=bt709:out_range=pc:flags=fast_bilinear',
+        '-f',
+        'v4l2',
+        '-pix_fmt',
+        'yuv420p',
+      ]),
+    )
+
+    // Valid 720p frame should be accepted
+    const frame720p = new Uint8Array(1280 * 720 * 4)
+    const ok = await sink.pushFrame({ data: frame720p, width: 1280, height: 720 })
+    expect(ok).toBe(true)
+
+    // 1080p frame should be dropped because sink is expecting 720p on stdin
+    const frame1080p = new Uint8Array(1920 * 1080 * 4)
+    const rejected = await sink.pushFrame({ data: frame1080p, width: 1920, height: 1080 })
+    expect(rejected).toBe(false)
+  })
+
   it('safely slices buffers in pushFrame for ArrayBuffer views and ClampedArrays', async () => {
     await sink.start({ width: 1280, height: 720, fps: 30 })
     mockStdin.write.mockClear()

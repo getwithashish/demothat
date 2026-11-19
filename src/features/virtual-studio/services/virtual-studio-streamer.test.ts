@@ -439,22 +439,22 @@ describe('VirtualStudioStreamer', () => {
   describe('Frame Capture and Preview Notifications', () => {
     it('captures canvas preview when activeSource is canvas and broadcasts live thumbnail to IPC', async () => {
       await streamer.start()
-      const testCanvas = { width: 1920, height: 1080 } as HTMLCanvasElement
+      const testCanvas = { width: 1280, height: 720 } as HTMLCanvasElement
       streamer.attachCanvas(testCanvas)
 
       streamer.setPlaying(true) // activeSource = canvas
       streamer.captureTick()
 
-      expect(mockCtx.drawImage).toHaveBeenCalledWith(testCanvas, 0, 0, 1920, 1080)
+      expect(mockCtx.drawImage).toHaveBeenCalledWith(testCanvas, 0, 0, 1280, 720)
       expect(mockIpc.pushFrame).toHaveBeenCalledWith(
         expect.objectContaining({
-          width: 1920,
-          height: 1080,
+          width: 1280,
+          height: 720,
           format: 'rgba',
         }),
       )
       const pushCall = mockIpc.pushFrame.mock.calls[0][0]
-      expect(pushCall.data.byteLength).toBe(8294400) // 1920 * 1080 * 4 bytes
+      expect(pushCall.data.byteLength).toBe(1280 * 720 * 4) // 1280 * 720 * 4 bytes
       expect(mockIpc.pushPreviewFrame).toHaveBeenCalledWith('data:image/jpeg;base64,mockThumbnail')
     })
 
@@ -473,14 +473,14 @@ describe('VirtualStudioStreamer', () => {
       mockVideo.videoHeight = 0
       await streamer.start()
 
-      const testCanvas = { width: 1920, height: 1080 } as HTMLCanvasElement
+      const testCanvas = { width: 1280, height: 720 } as HTMLCanvasElement
       streamer.attachCanvas(testCanvas)
 
       streamer.setPlaying(false) // activeSource = webcam
       streamer.captureTick()
 
       // Should hold the last editor canvas preview frame!
-      expect(mockCtx.drawImage).toHaveBeenCalledWith(testCanvas, 0, 0, 1920, 1080)
+      expect(mockCtx.drawImage).toHaveBeenCalledWith(testCanvas, 0, 0, 1280, 720)
       expect(mockIpc.pushFrame).toHaveBeenCalled()
     })
 
@@ -493,7 +493,7 @@ describe('VirtualStudioStreamer', () => {
       streamer.setPlaying(false) // activeSource = webcam
       streamer.captureTick()
 
-      expect(mockCtx.fillRect).toHaveBeenCalledWith(0, 0, 1920, 1080)
+      expect(mockCtx.fillRect).toHaveBeenCalledWith(0, 0, 1280, 720)
       expect(mockIpc.pushFrame).toHaveBeenCalled()
     })
 
@@ -518,8 +518,8 @@ describe('VirtualStudioStreamer', () => {
       streamer.captureTick()
       const secondPayload = mockIpc.pushFrame.mock.calls[1][0]
 
-      expect(firstPayload.data.byteLength).toBe(1920 * 1080 * 4)
-      expect(secondPayload.data.byteLength).toBe(1920 * 1080 * 4)
+      expect(firstPayload.data.byteLength).toBe(1280 * 720 * 4)
+      expect(secondPayload.data.byteLength).toBe(1280 * 720 * 4)
       expect(firstPayload.data).toBeInstanceOf(Uint8Array)
       expect(secondPayload.data).toBeInstanceOf(Uint8Array)
     })
@@ -599,9 +599,9 @@ describe('VirtualStudioStreamer', () => {
       streamer.setPlaying(true) // activeSource = canvas
       streamer.captureTick()
 
-      // For 1920x1080 output and 1000x1000 input: scale = 1080/1000 = 1.08 -> dw = 1080, dh = 1080, dx = (1920-1080)/2 = 420, dy = 0
-      expect(mockCtx.fillRect).toHaveBeenCalledWith(0, 0, 1920, 1080)
-      expect(mockCtx.drawImage).toHaveBeenCalledWith(squareCanvas, 420, 0, 1080, 1080)
+      // For 1280x720 stream resolution and 1000x1000 input: scale = 720/1000 = 0.72 -> dw = 720, dh = 720, dx = (1280-720)/2 = 280, dy = 0
+      expect(mockCtx.fillRect).toHaveBeenCalledWith(0, 0, 1280, 720)
+      expect(mockCtx.drawImage).toHaveBeenCalledWith(squareCanvas, 280, 0, 720, 720)
     })
 
     it('enables medium-quality image smoothing on scratchCtx for high-performance HD video scaling', async () => {
@@ -635,14 +635,14 @@ describe('VirtualStudioStreamer', () => {
       streamer.setPlaying(true) // activeSource = 'canvas'
       mockIpc.pushFrame.mockClear()
 
-      const testCanvas = { width: 1920, height: 1080 } as HTMLCanvasElement
+      const testCanvas = { width: 1280, height: 720 } as HTMLCanvasElement
       streamer.pushRenderedCanvas(testCanvas, 42.5)
 
       expect(mockIpc.pushFrame).toHaveBeenCalledTimes(1)
       expect(mockIpc.pushFrame).toHaveBeenCalledWith(
         expect.objectContaining({
-          width: 1920,
-          height: 1080,
+          width: 1280,
+          height: 720,
           format: 'rgba',
           timestamp: 42.5,
         }),
@@ -654,7 +654,7 @@ describe('VirtualStudioStreamer', () => {
       streamer.setPlaying(false) // activeSource = 'webcam'
       mockIpc.pushFrame.mockClear()
 
-      const testCanvas = { width: 1920, height: 1080 } as HTMLCanvasElement
+      const testCanvas = { width: 1280, height: 720 } as HTMLCanvasElement
       streamer.pushRenderedCanvas(testCanvas)
 
       expect(mockIpc.pushFrame).not.toHaveBeenCalled()
@@ -666,7 +666,7 @@ describe('VirtualStudioStreamer', () => {
       await streamer.stop()
       mockIpc.pushFrame.mockClear()
 
-      const testCanvas = { width: 1920, height: 1080 } as HTMLCanvasElement
+      const testCanvas = { width: 1280, height: 720 } as HTMLCanvasElement
       streamer.pushRenderedCanvas(testCanvas)
 
       expect(mockIpc.pushFrame).not.toHaveBeenCalled()
@@ -678,12 +678,12 @@ describe('VirtualStudioStreamer', () => {
       mockCtx.fillRect.mockClear()
       mockCtx.drawImage.mockClear()
 
-      const testCanvas = { width: 1920, height: 1080 } as HTMLCanvasElement
+      const testCanvas = { width: 1280, height: 720 } as HTMLCanvasElement
       streamer.pushRenderedCanvas(testCanvas)
 
       // 1:1 direct blit: no fillRect call, direct drawImage
       expect(mockCtx.fillRect).not.toHaveBeenCalled()
-      expect(mockCtx.drawImage).toHaveBeenCalledWith(testCanvas, 0, 0, 1920, 1080)
+      expect(mockCtx.drawImage).toHaveBeenCalledWith(testCanvas, 0, 0, 1280, 720)
     })
 
     it('falls back to letterboxing fillRect when source canvas dimensions do not match output resolution', async () => {
@@ -696,8 +696,8 @@ describe('VirtualStudioStreamer', () => {
       streamer.pushRenderedCanvas(oddCanvas)
 
       // Aspect fit letterboxing requires background fillRect
-      expect(mockCtx.fillRect).toHaveBeenCalledWith(0, 0, 1920, 1080)
-      expect(mockCtx.drawImage).toHaveBeenCalledWith(oddCanvas, 420, 0, 1080, 1080)
+      expect(mockCtx.fillRect).toHaveBeenCalledWith(0, 0, 1280, 720)
+      expect(mockCtx.drawImage).toHaveBeenCalledWith(oddCanvas, 280, 0, 720, 720)
     })
 
     it('preserves horizontal mirroring during 1:1 direct blit when isMirrored is true', async () => {
@@ -711,14 +711,14 @@ describe('VirtualStudioStreamer', () => {
       mockCtx.scale.mockClear()
       mockCtx.restore.mockClear()
 
-      const testCanvas = { width: 1920, height: 1080 } as HTMLCanvasElement
+      const testCanvas = { width: 1280, height: 720 } as HTMLCanvasElement
       streamer.pushRenderedCanvas(testCanvas)
 
       expect(mockCtx.fillRect).not.toHaveBeenCalled()
       expect(mockCtx.save).toHaveBeenCalled()
-      expect(mockCtx.translate).toHaveBeenCalledWith(1920, 0)
+      expect(mockCtx.translate).toHaveBeenCalledWith(1280, 0)
       expect(mockCtx.scale).toHaveBeenCalledWith(-1, 1)
-      expect(mockCtx.drawImage).toHaveBeenCalledWith(testCanvas, 0, 0, 1920, 1080)
+      expect(mockCtx.drawImage).toHaveBeenCalledWith(testCanvas, 0, 0, 1280, 720)
       expect(mockCtx.restore).toHaveBeenCalled()
     })
 
@@ -745,7 +745,7 @@ describe('VirtualStudioStreamer', () => {
       expect(mockIpc.pushPreviewFrame).toHaveBeenCalledTimes(1)
       mockIpc.pushPreviewFrame.mockClear()
 
-      const testCanvas = { width: 1920, height: 1080 } as HTMLCanvasElement
+      const testCanvas = { width: 1280, height: 720 } as HTMLCanvasElement
 
       // Subsequent tick within 200ms (< 350ms) is throttled
       vi.advanceTimersByTime(200)
@@ -820,7 +820,7 @@ describe('VirtualStudioStreamer', () => {
     it('alternates workers in round-robin and tracks busy state', async () => {
       await streamer.start()
       streamer.setPlaying(true)
-      const testCanvas = { width: 1920, height: 1080 } as HTMLCanvasElement
+      const testCanvas = { width: 1280, height: 720 } as HTMLCanvasElement
 
       // Dispatch frame 0 -> should assign to Worker 0
       streamer.pushRenderedCanvas(testCanvas)
@@ -862,7 +862,7 @@ describe('VirtualStudioStreamer', () => {
       await streamer.start()
       streamer.setPlaying(true)
       mockIpc.pushFrame.mockClear()
-      const testCanvas = { width: 1920, height: 1080 } as HTMLCanvasElement
+      const testCanvas = { width: 1280, height: 720 } as HTMLCanvasElement
 
       // Dispatch Frame 0 and Frame 1
       streamer.pushRenderedCanvas(testCanvas, 100)
@@ -881,8 +881,8 @@ describe('VirtualStudioStreamer', () => {
         success: true,
         sequenceId: 1,
         workerIndex: 1,
-        width: 1920,
-        height: 1080,
+        width: 1280,
+        height: 720,
         timestamp: 200,
         buffer: buffer1,
       })
@@ -897,8 +897,8 @@ describe('VirtualStudioStreamer', () => {
         success: true,
         sequenceId: 0,
         workerIndex: 0,
-        width: 1920,
-        height: 1080,
+        width: 1280,
+        height: 720,
         timestamp: 100,
         buffer: buffer0,
       })
@@ -907,13 +907,13 @@ describe('VirtualStudioStreamer', () => {
       expect(mockIpc.pushFrame).toHaveBeenCalledTimes(2)
       expect(mockIpc.pushFrame.mock.calls[0][0]).toMatchObject({
         timestamp: 100,
-        width: 1920,
-        height: 1080,
+        width: 1280,
+        height: 720,
       })
       expect(mockIpc.pushFrame.mock.calls[1][0]).toMatchObject({
         timestamp: 200,
-        width: 1920,
-        height: 1080,
+        width: 1280,
+        height: 720,
       })
       expect(streamer.getWorkerBusyCount()).toBe(0)
     })
@@ -947,7 +947,7 @@ describe('VirtualStudioStreamer', () => {
 
       streamer.captureTick()
       expect(mockCtx.save).toHaveBeenCalled()
-      expect(mockCtx.translate).toHaveBeenCalledWith(1920, 0)
+      expect(mockCtx.translate).toHaveBeenCalledWith(1280, 0)
       expect(mockCtx.scale).toHaveBeenCalledWith(-1, 1)
       expect(mockCtx.restore).toHaveBeenCalled()
     })
@@ -1041,6 +1041,30 @@ describe('VirtualStudioStreamer', () => {
       await streamer.start()
       // Custom audio source node must be preserved and reconnected, taking precedence over videoElement
       expect(mockMasterNode.connect).toHaveBeenCalled()
+    })
+  })
+
+  describe('Resolution Configuration & Streaming Pipeline', () => {
+    it('defaults input resolution to 1280x720 and output resolution to 1920x1080', () => {
+      expect(streamer.getInputResolution()).toEqual({ width: 1280, height: 720 })
+      expect(streamer.getOutputResolution()).toEqual({ width: 1920, height: 1080, fps: 30 })
+    })
+
+    it('updates input resolution and adjusts scratch canvas dimensions', () => {
+      streamer.setInputResolution({ width: 1920, height: 1080 })
+      expect(streamer.getInputResolution()).toEqual({ width: 1920, height: 1080 })
+
+      streamer.setInputResolution({ width: 1280, height: 720 })
+      expect(streamer.getInputResolution()).toEqual({ width: 1280, height: 720 })
+    })
+
+    it('passes inputResolution to ipcBridge.start during initialization', async () => {
+      await streamer.start()
+      expect(mockIpc.start).toHaveBeenCalledWith(
+        expect.objectContaining({
+          inputResolution: { width: 1280, height: 720 },
+        }),
+      )
     })
   })
 
@@ -1461,8 +1485,8 @@ describe('VirtualStudioStreamer', () => {
 
       expect(mockIpc.pushFrame).toHaveBeenCalledWith(
         expect.objectContaining({
-          width: 1920,
-          height: 1080,
+          width: 1280,
+          height: 720,
           format: 'rgba',
         }),
       )

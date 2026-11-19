@@ -127,6 +127,8 @@ export class VirtualStudioManager {
           width: config.outputResolution?.width || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.width,
           height: config.outputResolution?.height || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.height,
           fps: config.outputResolution?.fps || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.fps,
+          inputWidth: config.inputResolution?.width,
+          inputHeight: config.inputResolution?.height,
         })
         if (!camRes.success) {
           log.warn('[VirtualStudioManager] Camera sink start warning:', camRes.error)
@@ -297,6 +299,8 @@ export class VirtualStudioManager {
             width: this.config?.outputResolution?.width || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.width,
             height: this.config?.outputResolution?.height || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.height,
             fps: this.config?.outputResolution?.fps || DEFAULT_VIRTUAL_STUDIO_RESOLUTION.fps,
+            inputWidth: this.config?.inputResolution?.width,
+            inputHeight: this.config?.inputResolution?.height,
           })
         } else {
           log.info('[VirtualStudioManager] Dynamically stopping camera sink while streaming')

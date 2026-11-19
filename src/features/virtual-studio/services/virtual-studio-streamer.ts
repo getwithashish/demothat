@@ -1,5 +1,6 @@
 import {
   DEFAULT_VIRTUAL_STUDIO_RESOLUTION,
+  DEFAULT_VIRTUAL_STUDIO_STREAM_RESOLUTION,
   DEFAULT_VIRTUAL_STUDIO_FALLBACK_COLOR,
   type VirtualStudioConfig,
   type VirtualStudioStatus,
@@ -130,6 +131,9 @@ export class VirtualStudioStreamer {
   private enableMic = true
   private outputResolution: { width: number; height: number; fps: number } = {
     ...DEFAULT_VIRTUAL_STUDIO_RESOLUTION,
+  }
+  private inputResolution: { width: number; height: number } = {
+    ...DEFAULT_VIRTUAL_STUDIO_STREAM_RESOLUTION,
   }
   private lastThumbnailTime = -1
   private isMiniHudVisible = true
@@ -272,6 +276,26 @@ export class VirtualStudioStreamer {
     }
   }
 
+  public getOutputResolution(): { width: number; height: number; fps: number } {
+    return { ...this.outputResolution }
+  }
+
+  public setOutputResolution(res: Partial<{ width: number; height: number; fps: number }>): void {
+    this.outputResolution = { ...this.outputResolution, ...res }
+  }
+
+  public getInputResolution(): { width: number; height: number } {
+    return { ...this.inputResolution }
+  }
+
+  public setInputResolution(res: Partial<{ width: number; height: number }>): void {
+    this.inputResolution = { ...this.inputResolution, ...res }
+    if (this.scratchCanvas) {
+      this.scratchCanvas.width = this.inputResolution.width
+      this.scratchCanvas.height = this.inputResolution.height
+    }
+  }
+
   public isMirrorEnabled(): boolean {
     return this.isMirrored
   }
@@ -362,7 +386,7 @@ export class VirtualStudioStreamer {
             }
             return
           }
-          const { width, height } = this.outputResolution
+          const { width, height } = this.inputResolution
           const postTime = typeof performance !== 'undefined' ? performance.now() : Date.now()
           worker.postMessage(
             {
@@ -645,6 +669,7 @@ export class VirtualStudioStreamer {
     }
 
     if (config.outputResolution) this.outputResolution = { ...this.outputResolution, ...config.outputResolution }
+    if (config.inputResolution) this.inputResolution = { ...this.inputResolution, ...config.inputResolution }
     if (config.enableCamera !== undefined) this.enableCamera = config.enableCamera
     if (config.enableMic !== undefined) this.enableMic = config.enableMic
     if (config.selectedWebcamId !== undefined) this.selectedCameraId = config.selectedWebcamId
@@ -673,8 +698,8 @@ export class VirtualStudioStreamer {
 
     // Initialize scratch canvas
     this.scratchCanvas = this.createCanvas()
-    this.scratchCanvas.width = this.outputResolution.width
-    this.scratchCanvas.height = this.outputResolution.height
+    this.scratchCanvas.width = this.inputResolution.width
+    this.scratchCanvas.height = this.inputResolution.height
     this.scratchCtx = this.scratchCanvas.getContext?.('2d') ?? null
     if (this.scratchCtx) {
       this.scratchCtx.imageSmoothingEnabled = true
@@ -716,6 +741,7 @@ export class VirtualStudioStreamer {
       selectedWebcamId: this.selectedCameraId ?? undefined,
       selectedMicId: this.selectedMicId ?? undefined,
       outputResolution: this.outputResolution,
+      inputResolution: this.inputResolution,
       enableLocalAudioMonitoring: this.isLocalAudioMonitoringEnabled,
       localMonitoringVolume: this.localMonitoringVolume,
     })
@@ -1617,7 +1643,7 @@ export class VirtualStudioStreamer {
   public captureTick(timestamp?: number): void {
     if (!this.active || !this.scratchCanvas || !this.scratchCtx) return
 
-    const { width, height } = this.outputResolution
+    const { width, height } = this.inputResolution
     if (width <= 0 || height <= 0) return
 
     this.scratchCtx.imageSmoothingEnabled = true

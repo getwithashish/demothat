@@ -42,8 +42,8 @@ export const DEFAULT_VIRTUAL_STUDIO_STREAM_RESOLUTION = {
 } as const
 
 export const DEFAULT_AV_SYNC_OFFSET_MS = 0
-export const MIN_AV_SYNC_OFFSET_MS = -1000
-export const MAX_AV_SYNC_OFFSET_MS = 1000
+export const MIN_AV_SYNC_OFFSET_MS = -2000
+export const MAX_AV_SYNC_OFFSET_MS = 3000
 
 export const DEFAULT_VIRTUAL_STUDIO_FALLBACK_COLOR = '#17181b'
 

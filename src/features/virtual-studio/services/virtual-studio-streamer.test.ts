@@ -1503,7 +1503,7 @@ describe('VirtualStudioStreamer', () => {
   })
 
   describe('A/V Lip Sync Offset & Precision Queues', () => {
-    it('initializes with default A/V sync offset and clamps updates to [-1000, 1000]', () => {
+    it('initializes with default A/V sync offset and clamps updates to [-2000, 3000]', () => {
       expect(streamer.getAvSyncOffsetMs()).toBe(0)
 
       streamer.setAvSyncOffsetMs(250)
@@ -1512,11 +1512,11 @@ describe('VirtualStudioStreamer', () => {
       streamer.setAvSyncOffsetMs(-150)
       expect(streamer.getAvSyncOffsetMs()).toBe(-150)
 
-      streamer.setAvSyncOffsetMs(1500)
-      expect(streamer.getAvSyncOffsetMs()).toBe(1000)
+      streamer.setAvSyncOffsetMs(4000)
+      expect(streamer.getAvSyncOffsetMs()).toBe(3000)
 
-      streamer.setAvSyncOffsetMs(-2000)
-      expect(streamer.getAvSyncOffsetMs()).toBe(-1000)
+      streamer.setAvSyncOffsetMs(-3000)
+      expect(streamer.getAvSyncOffsetMs()).toBe(-2000)
     })
 
     it('immediately dispatches frames and audio when offset is 0', async () => {
@@ -1584,6 +1584,63 @@ describe('VirtualStudioStreamer', () => {
         // Advance 80ms
         vi.advanceTimersByTime(85)
         expect(mockIpc.pushAudio).toHaveBeenCalledWith(audioBuffer)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('does not dispatch updateStatus to IPC on setAvSyncOffsetMs to prevent circular slider fighting loop', async () => {
+      await streamer.start()
+      mockIpc.updateStatus.mockClear()
+      streamer.setAvSyncOffsetMs(500)
+      expect(mockIpc.updateStatus).not.toHaveBeenCalledWith(expect.objectContaining({ avSyncOffsetMs: 500 }))
+    })
+
+    it('smoothly adjusts release times and flushes queue when avSyncOffsetMs is changed without dropping frames', async () => {
+      await streamer.start()
+      vi.useFakeTimers()
+      try {
+        mockIpc.pushFrame.mockClear()
+        streamer.setAvSyncOffsetMs(500)
+
+        const frameData = {
+          data: new Uint8Array(10),
+          width: 1920,
+          height: 1080,
+          format: 'rgba' as const,
+          timestamp: 100,
+        }
+
+        streamer.dispatchFrame(frameData)
+        expect(mockIpc.pushFrame).not.toHaveBeenCalled()
+
+        // Nudge offset from 500 to 700: frame should now wait an extra 200ms
+        streamer.setAvSyncOffsetMs(700)
+
+        // Advance 550ms: with original 500ms it would have released, but now it waits for 700ms
+        vi.advanceTimersByTime(550)
+        expect(mockIpc.pushFrame).not.toHaveBeenCalled()
+
+        // Advance remaining 160ms (total 710ms) -> now released
+        vi.advanceTimersByTime(160)
+        expect(mockIpc.pushFrame).toHaveBeenCalledWith(frameData)
+
+        // Now set offset to 0: should immediately flush any queued frame
+        mockIpc.pushFrame.mockClear()
+        streamer.setAvSyncOffsetMs(1000)
+        const frameData2 = {
+          data: new Uint8Array(10),
+          width: 1920,
+          height: 1080,
+          format: 'rgba' as const,
+          timestamp: 200,
+        }
+        streamer.dispatchFrame(frameData2)
+        expect(mockIpc.pushFrame).not.toHaveBeenCalled()
+
+        // Setting to 0 flushes immediately
+        streamer.setAvSyncOffsetMs(0)
+        expect(mockIpc.pushFrame).toHaveBeenCalledWith(frameData2)
       } finally {
         vi.useRealTimers()
       }

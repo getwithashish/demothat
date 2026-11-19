@@ -21,6 +21,8 @@ export class VirtualAudioSink {
   private overflowCount = 0
   private totalWriteLatencyMs = 0
   private lastChunkTime = 0
+  private silenceTimer: NodeJS.Timeout | null = null
+  private silenceBuffer: Buffer | null = null
   private metricsTimer: NodeJS.Timeout | null = null
   private lastMetricsTime = 0
   private lastMetricsChunks = 0
@@ -113,6 +115,47 @@ export class VirtualAudioSink {
     }
   }
 
+  public getSilenceBuffer(): Buffer {
+    if (!this.silenceBuffer) {
+      // 1024 stereo 16-bit PCM samples = 1024 * 2 channels * 2 bytes = 4096 bytes
+      this.silenceBuffer = Buffer.alloc(4096)
+    }
+    return this.silenceBuffer
+  }
+
+  public startSilenceKeepAlive(): void {
+    this.stopSilenceKeepAlive()
+    // Watchdog checking every 60ms; if no audio chunk has arrived for >=120ms, write silence
+    this.silenceTimer = setInterval(() => {
+      if (!this.active || this.muted || !this.audioProcess || !this.audioProcess.stdin.writable) {
+        return
+      }
+      const now = Date.now()
+      if (this.lastChunkTime > 0 && now - this.lastChunkTime >= 120) {
+        try {
+          const silence = this.getSilenceBuffer()
+          this.audioProcess.stdin.write(silence)
+          this.lastChunkTime = now
+          this.chunksWritten++
+          this.totalBytesWritten += silence.length
+        } catch (err) {
+          log.debug('[VirtualAudioSink] Silence keep-alive write error:', err)
+        }
+      }
+    }, 60)
+
+    if (this.silenceTimer && typeof this.silenceTimer.unref === 'function') {
+      this.silenceTimer.unref()
+    }
+  }
+
+  public stopSilenceKeepAlive(): void {
+    if (this.silenceTimer) {
+      clearInterval(this.silenceTimer)
+      this.silenceTimer = null
+    }
+  }
+
   /**
    * Starts the virtual audio sink.
    */
@@ -167,6 +210,7 @@ export class VirtualAudioSink {
 
       if (result.success && this.active) {
         this.startMetricsTimer()
+        this.startSilenceKeepAlive()
       }
       return result
     } catch (err: unknown) {
@@ -174,6 +218,7 @@ export class VirtualAudioSink {
       // Best-effort active state so UI doesn't crash on stub systems
       this.active = true
       this.startMetricsTimer()
+      this.startSilenceKeepAlive()
       return { success: true }
     }
   }
@@ -211,6 +256,7 @@ export class VirtualAudioSink {
           this.active = false
           this.audioProcess = null
           this.stopMetricsTimer()
+          this.stopSilenceKeepAlive()
         }
       })
 
@@ -245,6 +291,7 @@ export class VirtualAudioSink {
             this.active = false
             this.audioProcess = null
             this.stopMetricsTimer()
+            this.stopSilenceKeepAlive()
           }
         })
         this.audioProcess = proc
@@ -335,6 +382,7 @@ export class VirtualAudioSink {
    */
   public async stop(): Promise<void> {
     this.stopMetricsTimer()
+    this.stopSilenceKeepAlive()
 
     if (!this.active && !this.audioProcess) {
       return

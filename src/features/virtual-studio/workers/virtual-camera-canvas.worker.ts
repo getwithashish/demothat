@@ -4,7 +4,7 @@
  *
  * Receives ImageBitmap instances from the editor canvas via zero-copy Transferable,
  * scales cleanly with aspect-fit onto an OffscreenCanvas, and extracts 1920x1080 RGBA pixels
- * on a background worker thread with <0.5ms UI thread footprint.
+ * on background worker threads with <0.5ms UI thread footprint.
  */
 
 export const VIRTUAL_CAMERA_CANVAS_WORKER_CODE = `
@@ -23,6 +23,8 @@ self.onmessage = function (e) {
   const targetH = data.height || 1080
   const isMirrored = Boolean(data.isMirrored)
   const timestamp = data.timestamp
+  const sequenceId = data.sequenceId
+  const workerIndex = data.workerIndex
   const postMessageTime = data.postMessageTime || timestamp
 
   try {
@@ -32,8 +34,15 @@ self.onmessage = function (e) {
     }
 
     if (ctx) {
-      ctx.imageSmoothingEnabled = true
-      ctx.imageSmoothingQuality = 'medium'
+      const bw = bitmap.width
+      const bh = bitmap.height
+      const isExact1080p = bw === targetW && bh === targetH
+
+      // When dimensions match 1:1, disable smoothing for fastest blit and crisp text
+      ctx.imageSmoothingEnabled = !isExact1080p
+      if (!isExact1080p) {
+        ctx.imageSmoothingQuality = 'medium'
+      }
 
       if (isMirrored) {
         ctx.save()
@@ -41,10 +50,7 @@ self.onmessage = function (e) {
         ctx.scale(-1, 1)
       }
 
-      const bw = bitmap.width
-      const bh = bitmap.height
-
-      if (bw === targetW && bh === targetH) {
+      if (isExact1080p) {
         ctx.drawImage(bitmap, 0, 0, targetW, targetH)
       } else {
         const scale = Math.min(targetW / bw, targetH / bh)
@@ -70,9 +76,9 @@ self.onmessage = function (e) {
       if (typeof console !== 'undefined' && console.debug) {
         if (renderEndTime - lastDevLogTime >= 2000 || workerFrameCount % 60 === 0) {
           lastDevLogTime = renderEndTime
-          const transferLatency = postMessageTime ? (renderStartTime - postMessageTime).toFixed(2) : '0.00'
+          const tag = workerIndex !== undefined ? ' #' + workerIndex : ''
           console.debug(
-            \`[VirtualCameraCanvasWorker] Frame #\${workerFrameCount}: render \${renderDurationMs.toFixed(2)}ms | transfer latency \${transferLatency}ms (\${targetW}x\${targetH})\`
+            \`[VirtualCameraCanvasWorker\${tag}] Frame #\${workerFrameCount}: render \${renderDurationMs.toFixed(2)}ms (\${targetW}x\${targetH})\`
           )
         }
       }
@@ -81,12 +87,14 @@ self.onmessage = function (e) {
       self.postMessage(
         {
           success: true,
+          sequenceId: sequenceId,
+          workerIndex: workerIndex,
           width: targetW,
           height: targetH,
           format: 'rgba',
           timestamp: timestamp,
+          postMessageTime: postMessageTime,
           renderDurationMs: renderDurationMs,
-          workerTransferStartTime: renderEndTime,
           buffer: imgData.data.buffer,
         },
         [imgData.data.buffer]
@@ -95,6 +103,8 @@ self.onmessage = function (e) {
   } catch (err) {
     self.postMessage({
       success: false,
+      sequenceId: sequenceId,
+      workerIndex: workerIndex,
       error: err instanceof Error ? err.message : String(err),
     })
   } finally {

@@ -158,4 +158,57 @@ describe('VirtualAudioSink', () => {
     mockProc.emit('close', 0)
     await stopPromise
   })
+
+  it('writes silence buffer to stdin when silence keep-alive interval detects gap >= 120ms', async () => {
+    vi.useFakeTimers()
+    try {
+      await sink.start()
+      mockStdin.write.mockClear()
+
+      // Push initial audio chunk to establish lastChunkTime
+      const buf = Buffer.from([1, 2, 3, 4])
+      await sink.pushAudio(buf)
+      expect(mockStdin.write).toHaveBeenCalledWith(buf)
+      mockStdin.write.mockClear()
+
+      // Advance time by 60ms: gap is 60ms (<120ms threshold), no silence should be written yet
+      vi.advanceTimersByTime(60)
+      expect(mockStdin.write).not.toHaveBeenCalled()
+
+      // Advance time by another 70ms (total gap: 130ms >= 120ms threshold): silence watchdog should fire
+      vi.advanceTimersByTime(70)
+      expect(mockStdin.write).toHaveBeenCalledTimes(1)
+      const silenceArg = mockStdin.write.mock.calls[0][0] as Buffer
+      expect(Buffer.isBuffer(silenceArg)).toBe(true)
+      expect(silenceArg.length).toBe(4096)
+      // Verify silence is all zeroes
+      expect(silenceArg.every((byte) => byte === 0)).toBe(true)
+    } finally {
+      const stopPromise = sink.stop()
+      mockProc.emit('close', 0)
+      await stopPromise
+      vi.useRealTimers()
+    }
+  })
+
+  it('does not write silence buffer when audio sink is muted or inactive', async () => {
+    vi.useFakeTimers()
+    try {
+      await sink.start()
+      sink.setMuted(true)
+      mockStdin.write.mockClear()
+
+      // Push audio while muted
+      await sink.pushAudio(Buffer.from([1, 2, 3, 4]))
+
+      // Advance time past keep-alive threshold
+      vi.advanceTimersByTime(200)
+      expect(mockStdin.write).not.toHaveBeenCalled()
+    } finally {
+      const stopPromise = sink.stop()
+      mockProc.emit('close', 0)
+      await stopPromise
+      vi.useRealTimers()
+    }
+  })
 })

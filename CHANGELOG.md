@@ -1,3 +1,9 @@
+## [1.21.0-beta.16](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.15...v1.21.0-beta.16) (2026-11-19)
+
+### Performance Improvements
+
+* **virtual-studio:** shed audio backpressure and expand to 3-worker pool ([40a517f](https://github.com/getwithashish/DemoThat/commit/40a517f74d845642fc7acf55fcdf69bce9abce3d))
+
 ## [1.21.0-beta.15](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.14...v1.21.0-beta.15) (2026-11-19)
 
 ### Performance Improvements

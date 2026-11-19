@@ -731,14 +731,14 @@ export const Preview = memo(
           // Enforce high-quality image smoothing when Virtual Studio is active.
           { livePreview: state.isPlaying, isVirtualStudioActive },
         )
-        if (isVirtualStudioActive && canvas) {
-          virtualStudioStreamer.pushRenderedCanvas(canvas, video.currentTime)
-        }
       } finally {
         drawInFlight.current = false
         if (useEditorStore.getState().isPlaying) {
           scheduleNextRender()
         }
+      }
+      if (isVirtualStudioActive && canvasRef.current) {
+        virtualStudioStreamer.pushRenderedCanvas(canvasRef.current, videoRef.current?.currentTime)
       }
     }, [videoRef, bgImage, syncClipVideos, isVirtualStudioActive, scheduleNextRender])
 

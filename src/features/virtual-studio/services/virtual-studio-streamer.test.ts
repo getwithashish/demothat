@@ -1271,6 +1271,64 @@ describe('VirtualStudioStreamer', () => {
       expect(instance.getWebcamStream()).toBeNull()
     })
   })
+
+  describe('Native I420 Hardware Webcam Pipeline via MediaStreamTrackProcessor', () => {
+    it('uses MediaStreamTrackProcessor to pump native I420 frames directly to pushFrame', async () => {
+      const mockRead = vi
+        .fn()
+        .mockResolvedValueOnce({
+          value: {
+            displayWidth: 1920,
+            displayHeight: 1080,
+            allocationSize: () => 1920 * 1080 * 1.5,
+            copyTo: vi.fn().mockImplementation((buf: Uint8Array) => {
+              buf[0] = 42
+              return Promise.resolve()
+            }),
+            close: vi.fn(),
+            timestamp: 1000,
+          },
+          done: false,
+        })
+        .mockResolvedValueOnce({ done: true })
+
+      const mockReader = {
+        read: mockRead,
+        cancel: vi.fn(),
+      }
+
+      const mockTrackProcessor = vi.fn().mockImplementation(() => ({
+        readable: {
+          getReader: vi.fn().mockReturnValue(mockReader),
+        },
+      }))
+
+      vi.stubGlobal('MediaStreamTrackProcessor', mockTrackProcessor)
+
+      const instance = new VirtualStudioStreamer({
+        audioContext: mockContext as unknown as AudioContext,
+        mediaDevices: mockMediaDevices as unknown as MediaDevices,
+        ipcBridge: mockIpc,
+        createCanvas: () => mockCanvas,
+        createVideo: () => mockVideo as unknown as HTMLVideoElement,
+      })
+
+      await instance.start()
+      await vi.advanceTimersByTimeAsync(50)
+
+      expect(mockIpc.pushFrame).toHaveBeenCalledWith(
+        expect.objectContaining({
+          width: 1920,
+          height: 1080,
+          format: 'yuv420p',
+          timestamp: 1000,
+        }),
+      )
+
+      await instance.stop()
+      vi.unstubAllGlobals()
+    })
+  })
 })
 
 describe('VirtualStudioAudioProcessor', () => {

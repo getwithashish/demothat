@@ -56,7 +56,7 @@ describe('VirtualCameraSink', () => {
     sink = new VirtualCameraSink()
   })
 
-  it('standardizes resolution to DEFAULT_VIRTUAL_STUDIO_RESOLUTION and passes BT.709 bicubic scale flags on Linux', async () => {
+  it('standardizes resolution to DEFAULT_VIRTUAL_STUDIO_RESOLUTION and passes BT.709 yuv420p flags on Linux', async () => {
     const res = await sink.start({ width: 0, height: 0, fps: 0 })
     expect(res.success).toBe(true)
     expect(sink.isActive()).toBe(true)
@@ -71,12 +71,12 @@ describe('VirtualCameraSink', () => {
     expect(spawn).toHaveBeenCalledWith(
       '/mock/bin/ffmpeg',
       expect.arrayContaining([
+        '-pix_fmt',
+        'yuv420p',
         '-s',
         '1920x1080',
         '-r',
         '30',
-        '-vf',
-        'scale=out_color_matrix=bt709:out_range=pc:flags=bicubic',
         '-color_range',
         'pc',
         '-colorspace',

@@ -74,37 +74,49 @@ export const VirtualStudioMiniHud: React.FC = () => {
   // Handle webcam stream when activeSource === 'webcam'
   useEffect(() => {
     let localStream: MediaStream | null = null
+    let retryTimer: ReturnType<typeof setTimeout> | null = null
     const videoElement = webcamVideoRef.current
 
     if (isVirtualStudioActive && activeSource === 'webcam' && enableCamera && isMiniHudVisible) {
       // Reuse streamer webcam stream if available to avoid duplicate hardware device locks on /dev/video0
-      const streamerStream = virtualStudioStreamer.getWebcamStream?.()
-      if (streamerStream && videoElement) {
-        videoElement.srcObject = streamerStream
-        setStreamError(false)
-        return
-      }
-
-      const constraints: MediaStreamConstraints = {
-        video: selectedCameraId ? { deviceId: { exact: selectedCameraId } } : true,
-        audio: false,
-      }
-
-      navigator.mediaDevices
-        ?.getUserMedia(constraints)
-        .then((stream) => {
-          localStream = stream
-          if (videoElement) {
-            videoElement.srcObject = stream
-          }
+      const checkStreamer = () => {
+        const streamerStream = virtualStudioStreamer.getWebcamStream?.()
+        if (streamerStream && videoElement) {
+          videoElement.srcObject = streamerStream
           setStreamError(false)
-        })
-        .catch(() => {
-          setStreamError(true)
-        })
+          return true
+        }
+        return false
+      }
+
+      if (checkStreamer()) return
+
+      // Delay fallback getUserMedia briefly so streamer has time to provide shared hardware stream
+      retryTimer = setTimeout(() => {
+        if (checkStreamer()) return
+
+        const constraints: MediaStreamConstraints = {
+          video: selectedCameraId ? { deviceId: { exact: selectedCameraId } } : true,
+          audio: false,
+        }
+
+        navigator.mediaDevices
+          ?.getUserMedia(constraints)
+          .then((stream) => {
+            localStream = stream
+            if (videoElement) {
+              videoElement.srcObject = stream
+            }
+            setStreamError(false)
+          })
+          .catch(() => {
+            setStreamError(true)
+          })
+      }, 300)
     }
 
     return () => {
+      if (retryTimer !== null) clearTimeout(retryTimer)
       if (localStream) {
         localStream.getTracks().forEach((track) => track.stop())
       }

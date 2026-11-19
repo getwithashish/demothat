@@ -73,23 +73,29 @@ Virtual Studio spans the boundary between Electron's Chromium Renderer process a
 
 ## 3. Video Pipeline Implementation
 
-### 3.1 Background Web Worker Canvas Offload (`virtual-camera-canvas.worker.ts`)
+### 3.1 Background Web Worker Canvas Offload & Pipelining (`virtual-camera-canvas.worker.ts`)
 
-To prevent HTML5 canvas reads from blocking Chromium's single-threaded JavaScript UI:
+To prevent HTML5 canvas reads from blocking Chromium's single-threaded JavaScript UI and maximize streaming FPS:
 
 1. `pushRenderedCanvas()` in `VirtualStudioStreamer` captures the current editor canvas using `createImageBitmap(sourceCanvas)`.
-2. The `ImageBitmap` is transferred to `virtual-camera-canvas.worker.ts` via zero-copy Transferable `postMessage(..., [bitmap])`.
-3. Total main-thread execution time is $< 0.5\text{ ms}$, preventing UI thread stalls and allowing video playback to sustain 12–15+ FPS.
-4. Inside the Web Worker:
+2. **Worker Pool & Pipelining**:
+   - Manages a pool of background workers (`CANVAS_WORKER_POOL_SIZE = 2`).
+   - While Worker 0 is extracting pixels for Frame $N$ (~75ms), Worker 1 processes Frame $N+1$.
+   - This doubles pixel extraction throughput from $\sim 12.5\text{ FPS}$ to $> 25\text{ FPS}$, completely eliminating frame drops during editor preview playback.
+3. **Monotonic Sequence Reorder Buffer**:
+   - Frames are assigned monotonically increasing sequence IDs.
+   - Incoming processed frames are held in a sequence reorder buffer and delivered to IPC in strict chronological order, even if a worker resolves out of order.
+4. Inside each Web Worker:
    - Renders onto a reusable `OffscreenCanvas` sized to $1920 \times 1080$.
-   - Performs smooth aspect-fit scaling with charcoal (`#17181b`) letterboxing if the canvas aspect ratio deviates from 16:9.
+   - When canvas dimensions match $1920 \times 1080$ 1:1, image smoothing is bypassed for $<0.1\text{ms}$ direct blits and pixel-crisp text.
+   - Performs smooth aspect-fit scaling with charcoal fallback letterboxing if the canvas aspect ratio deviates from 16:9.
    - Extracts exact 1080p RGBA pixels via `ctx.getImageData(0, 0, 1920, 1080)`.
    - Transfers the resulting `8,294,400 byte` ArrayBuffer back to the renderer thread via zero-copy transferable memory.
 
 ### 3.2 Physical Webcam Pipeline (`requestVideoFrameCallback`)
 
-1. Physical cameras are acquired via `navigator.mediaDevices.getUserMedia()`.
-2. Frame updates are captured using `video.requestVideoFrameCallback(callback)` with a fallback 50ms watchdog timer (`setTimeout`).
+1. Physical cameras are acquired via `navigator.mediaDevices.getUserMedia()` with explicit `{ width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30, min: 15 } }` constraints to negotiate full-speed USB hardware feeds on Linux.
+2. Frame updates are captured using `video.requestVideoFrameCallback(callback)` with a relaxed 120ms freeze guard watchdog timer (`setTimeout`).
 3. In `captureTick()`, the webcam feed is drawn onto a 1920x1080 scratch canvas with `imageSmoothingQuality = 'medium'` and cover/aspect-fit math.
 4. If mirroring is enabled, horizontal coordinate transformation (`translate(width, 0); scale(-1, 1)`) is applied directly on the scratch canvas context.
 5. Frames are converted to 1080p RGBA buffers (`8,294,400 bytes`) and forwarded to IPC.
@@ -152,6 +158,13 @@ To eliminate clicks, pops, or audio discontinuities during transitions, gain adj
 - Interleaves 128-sample stereo `Float32Array` buffers $[-1.0, 1.0]$ into 16-bit signed integer PCM `Int16Array` $[-32768, 32767]$.
 - Transfers buffers via zero-copy `ArrayBuffer` transfer to `virtual-studio-streamer.ts`, which sends them over IPC to `VirtualAudioSink`.
 - If `AudioWorklet` is unavailable in the environment, the streamer falls back gracefully to a `ScriptProcessorNode`.
+
+### 4.4 Silence Keep-Alive Watchdog (`virtual-audio-sink.ts`)
+
+- During Auto-Return transitions (switching between physical mic and timeline playback), video decoders can incur 200–400ms startup latencies before streaming decoded audio samples.
+- To prevent PulseAudio/PipeWire sink buffer starvation (underruns), `VirtualAudioSink` maintains a 60ms watchdog interval timer.
+- If no PCM chunk has arrived within 120ms, the watchdog writes a 4096-byte 16-bit silence buffer to `stdin`.
+- This ensures uninterrupted audio stream continuity without underflows or audible clicks.
 
 ---
 

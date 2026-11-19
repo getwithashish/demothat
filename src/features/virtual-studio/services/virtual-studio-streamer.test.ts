@@ -759,6 +759,153 @@ describe('VirtualStudioStreamer', () => {
     })
   })
 
+  describe('Pipelined Canvas Worker Pool & In-Order Delivery', () => {
+    class MockWorker {
+      static instances: MockWorker[] = []
+      onmessage: ((e: MessageEvent) => void) | null = null
+      onerror: (() => void) | null = null
+      terminated = false
+      postedMessages: unknown[] = []
+
+      constructor(_url: string) {
+        MockWorker.instances.push(this)
+      }
+
+      postMessage(data: unknown) {
+        this.postedMessages.push(data)
+      }
+
+      terminate() {
+        this.terminated = true
+      }
+
+      simulateMessage(data: unknown) {
+        this.onmessage?.({ data } as MessageEvent)
+      }
+    }
+
+    const originalWorker = global.Worker
+    const originalCreateImageBitmap = global.createImageBitmap
+
+    beforeEach(() => {
+      MockWorker.instances = []
+      // @ts-expect-error Mocking worker constructor in test environment
+      global.Worker = MockWorker
+      global.createImageBitmap = vi.fn().mockImplementation((canvas) =>
+        Promise.resolve({
+          width: canvas.width || 1920,
+          height: canvas.height || 1080,
+          close: vi.fn(),
+        }),
+      )
+    })
+
+    afterEach(() => {
+      global.Worker = originalWorker
+      global.createImageBitmap = originalCreateImageBitmap
+    })
+
+    it('initializes a pool of 2 workers on start and cleans up on stop', async () => {
+      await streamer.start()
+      expect(streamer.getWorkerPoolSize()).toBe(2)
+      expect(MockWorker.instances.length).toBe(2)
+
+      await streamer.stop()
+      expect(streamer.getWorkerPoolSize()).toBe(0)
+      expect(MockWorker.instances[0].terminated).toBe(true)
+      expect(MockWorker.instances[1].terminated).toBe(true)
+    })
+
+    it('alternates workers in round-robin and tracks busy state', async () => {
+      await streamer.start()
+      streamer.setPlaying(true)
+      const testCanvas = { width: 1920, height: 1080 } as HTMLCanvasElement
+
+      // Dispatch frame 0 -> should assign to Worker 0
+      streamer.pushRenderedCanvas(testCanvas)
+      // Allow Promise.resolve for createImageBitmap
+      await Promise.resolve()
+
+      expect(MockWorker.instances[0].postedMessages.length).toBe(1)
+      expect(MockWorker.instances[1].postedMessages.length).toBe(0)
+      expect(streamer.getWorkerBusyCount()).toBe(1)
+
+      // Dispatch frame 1 -> should assign to Worker 1
+      streamer.pushRenderedCanvas(testCanvas)
+      await Promise.resolve()
+
+      expect(MockWorker.instances[0].postedMessages.length).toBe(1)
+      expect(MockWorker.instances[1].postedMessages.length).toBe(1)
+      expect(streamer.getWorkerBusyCount()).toBe(2)
+
+      // Dispatch frame 2 while both workers busy -> backpressure drops frame
+      streamer.pushRenderedCanvas(testCanvas)
+      await Promise.resolve()
+      expect(MockWorker.instances[0].postedMessages.length).toBe(1)
+      expect(MockWorker.instances[1].postedMessages.length).toBe(1)
+    })
+
+    it('guarantees in-order frame delivery even when worker completion is out-of-order', async () => {
+      await streamer.start()
+      streamer.setPlaying(true)
+      mockIpc.pushFrame.mockClear()
+      const testCanvas = { width: 1920, height: 1080 } as HTMLCanvasElement
+
+      // Dispatch Frame 0 and Frame 1
+      streamer.pushRenderedCanvas(testCanvas, 100)
+      await Promise.resolve()
+      streamer.pushRenderedCanvas(testCanvas, 200)
+      await Promise.resolve()
+
+      const msg0 = MockWorker.instances[0].postedMessages[0] as { sequenceId: number }
+      const msg1 = MockWorker.instances[1].postedMessages[0] as { sequenceId: number }
+      expect(msg0.sequenceId).toBe(0)
+      expect(msg1.sequenceId).toBe(1)
+
+      // Simulate Worker 1 (Frame 1) finishing FIRST (out of order!)
+      const buffer1 = new ArrayBuffer(16)
+      MockWorker.instances[1].simulateMessage({
+        success: true,
+        sequenceId: 1,
+        workerIndex: 1,
+        width: 1920,
+        height: 1080,
+        timestamp: 200,
+        buffer: buffer1,
+      })
+
+      // Frame 1 should NOT be pushed yet because Frame 0 is still pending!
+      expect(mockIpc.pushFrame).not.toHaveBeenCalled()
+      expect(streamer.getWorkerBusyCount()).toBe(1) // Worker 1 is now free, Worker 0 still busy
+
+      // Now simulate Worker 0 (Frame 0) finishing
+      const buffer0 = new ArrayBuffer(16)
+      MockWorker.instances[0].simulateMessage({
+        success: true,
+        sequenceId: 0,
+        workerIndex: 0,
+        width: 1920,
+        height: 1080,
+        timestamp: 100,
+        buffer: buffer0,
+      })
+
+      // BOTH frames must now be delivered in exact sequence order: Frame 0 then Frame 1!
+      expect(mockIpc.pushFrame).toHaveBeenCalledTimes(2)
+      expect(mockIpc.pushFrame.mock.calls[0][0]).toMatchObject({
+        timestamp: 100,
+        width: 1920,
+        height: 1080,
+      })
+      expect(mockIpc.pushFrame.mock.calls[1][0]).toMatchObject({
+        timestamp: 200,
+        width: 1920,
+        height: 1080,
+      })
+      expect(streamer.getWorkerBusyCount()).toBe(0)
+    })
+  })
+
   describe('Video Mirroring', () => {
     it('initializes with mirroring disabled and updates state and IPC on toggle', async () => {
       await streamer.start()

@@ -139,4 +139,23 @@ describe('VirtualAudioSink', () => {
     expect(sink.isActive()).toBe(false)
     expect(mockProc.kill).toHaveBeenCalledWith('SIGTERM')
   })
+
+  it('tracks audio buffer metrics, total bytes written, and queue depth', async () => {
+    await sink.start()
+    const buf = Buffer.from([1, 2, 3, 4, 5, 6, 7, 8])
+
+    await sink.pushAudio(buf)
+    expect(sink.getChunksWritten()).toBe(1)
+    expect(sink.getTotalBytesWritten()).toBe(8)
+
+    const metrics = sink.getMetrics()
+    expect(metrics.chunksWritten).toBe(1)
+    expect(metrics.totalBytesWritten).toBe(8)
+    expect(metrics.underflowCount).toBe(0)
+    expect(metrics.overflowCount).toBe(0)
+
+    const stopPromise = sink.stop()
+    mockProc.emit('close', 0)
+    await stopPromise
+  })
 })

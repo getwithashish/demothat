@@ -20,6 +20,10 @@ import { usePreviewAudioMixer } from '../../hooks/usePreviewAudioMixer'
 import { mapSourceTimeToExportTime } from '../../lib/utils'
 import { mediaUrl } from '../../../shared/media-url'
 import { virtualStudioStreamer } from '../../features/virtual-studio'
+import { createScopedLogger } from '../../lib/logger'
+
+const logger = createScopedLogger('Preview')
+const isDev = Boolean(import.meta.env.DEV || process.env.NODE_ENV !== 'production')
 
 export const Preview = memo(
   ({
@@ -117,6 +121,9 @@ export const Preview = memo(
     const nextFrameTimeRef = useRef<number>(0)
     const renderCanvasRef = useRef<() => Promise<void>>()
     const drawInFlight = useRef(false)
+    const fpsRenderedFramesRef = useRef(0)
+    const fpsDroppedFramesRef = useRef(0)
+    const fpsLastLogTimeRef = useRef(0)
     // Preview backing store, sized to the DISPLAYED area (×dpr), NOT the 1080p
     // source: drawing a 1920×1080 scene to show ~900px burns ~4× the pixels per
     // frame for no on-screen benefit. drawScene adapts to whatever size the
@@ -699,9 +706,17 @@ export const Preview = memo(
       // While playing, drop a frame instead of queueing one when the previous
       // draw is still in flight. While paused (seek/scrub), never drop: a
       // trailing draw must follow or the frame would stay stale.
-      if (drawInFlight.current && useEditorStore.getState().isPlaying) return
+      if (drawInFlight.current && useEditorStore.getState().isPlaying) {
+        if (isDev) {
+          fpsDroppedFramesRef.current++
+        }
+        return
+      }
       drawInFlight.current = true
       try {
+        if (isDev && useEditorStore.getState().isPlaying) {
+          fpsRenderedFramesRef.current++
+        }
         const state = useEditorStore.getState()
         const canvas = canvasRef.current
         const video = videoRef.current
@@ -743,6 +758,39 @@ export const Preview = memo(
     }, [videoRef, bgImage, syncClipVideos, isVirtualStudioActive, scheduleNextRender])
 
     renderCanvasRef.current = renderCanvas
+
+    // Live playback/rendering FPS telemetry in development: calculate frames rendered
+    // per second during playback, log FPS, playhead timestamp, and dropped frames every 3–5 seconds.
+    useEffect(() => {
+      if (!isDev || !isPlaying) return
+
+      fpsRenderedFramesRef.current = 0
+      fpsDroppedFramesRef.current = 0
+      fpsLastLogTimeRef.current = performance.now()
+
+      const intervalId = setInterval(() => {
+        const now = performance.now()
+        const elapsedSec = (now - fpsLastLogTimeRef.current) / 1000
+        if (elapsedSec <= 0) return
+
+        const rendered = fpsRenderedFramesRef.current
+        const dropped = fpsDroppedFramesRef.current
+        const fps = (rendered / elapsedSec).toFixed(1)
+        const playhead = videoRef.current?.currentTime ?? useEditorStore.getState().currentTime ?? 0
+
+        logger.info(
+          `[Playback Telemetry] FPS: ${fps} | Playhead: ${playhead.toFixed(3)}s | Dropped: ${dropped} frames (${rendered} rendered in ${elapsedSec.toFixed(1)}s)`,
+        )
+
+        fpsRenderedFramesRef.current = 0
+        fpsDroppedFramesRef.current = 0
+        fpsLastLogTimeRef.current = now
+      }, 3500)
+
+      return () => {
+        clearInterval(intervalId)
+      }
+    }, [isPlaying, videoRef])
 
     useEffect(() => {
       if (isPlaying) {

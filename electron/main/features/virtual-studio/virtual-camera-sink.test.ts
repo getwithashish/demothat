@@ -254,4 +254,30 @@ describe('VirtualCameraSink', () => {
     expect(sink.isActive()).toBe(false)
     expect(mockProc.kill).toHaveBeenCalledWith('SIGTERM')
   })
+
+  it('tracks throughput metrics, dropped frames, and drain events', async () => {
+    await sink.start({ width: 1920, height: 1080, fps: 30 })
+
+    // Valid frame pushes
+    const validBuf = new Uint8Array(1920 * 1080 * 4)
+    await sink.pushFrame({ data: validBuf, width: 1920, height: 1080 })
+    expect(sink.getFrameCount()).toBe(1)
+
+    // Dropped frame (mismatched resolution)
+    await sink.pushFrame({ data: validBuf, width: 1280, height: 720 })
+    expect(sink.getDroppedFrames()).toBe(1)
+
+    // Dropped frame (mismatched length)
+    await sink.pushFrame({ data: new Uint8Array(460800), width: 1920, height: 1080 })
+    expect(sink.getDroppedFrames()).toBe(2)
+
+    const metrics = sink.getMetrics()
+    expect(metrics.frameCount).toBe(1)
+    expect(metrics.droppedFrames).toBe(2)
+    expect(metrics.isActive).toBe(true)
+
+    const stopPromise = sink.stop()
+    mockProc.emit('close', 0)
+    await stopPromise
+  })
 })

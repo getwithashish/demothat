@@ -35,10 +35,23 @@ protocol.registerSchemesAsPrivileged([
 // --- Initialization ---
 setupLogging()
 
+log.info('[App] ========================================')
+log.info('[App] Starting DemoThat Main Process')
+log.info(
+  `[App] Environment: Platform=${process.platform} (${process.arch}), Node=${process.versions.node}, Electron=${process.versions.electron}, Chrome=${process.versions.chrome}`,
+)
+log.info(`[App] Process PID=${process.pid}, Executable=${process.execPath}`)
+log.info(`[App] Command-line arguments:`, process.argv)
+log.info(
+  `[App] Runtime flags: NODE_ENV=${process.env.NODE_ENV ?? 'undefined'}, DEMOTHAT_ENV=${process.env.DEMOTHAT_ENV ?? 'undefined'}, isPackaged=${app.isPackaged}`,
+)
+log.info('[App] ========================================')
+
 // Enable system audio loopback capture on macOS (12.3+ via ScreenCaptureKit,
 // 14.4+ via CoreAudio Taps with `forceCoreAudioTap: true`). Must run before
 // `app.whenReady()` because it appends Chromium feature flags.
 // See: https://github.com/alectrocute/electron-audio-loopback
+log.info('[App] Initializing audio loopback flags...')
 initAudioLoopback({ forceCoreAudioTap: true })
 
 // Prevent Chromium from throttling hidden/background render worker windows during export
@@ -47,6 +60,7 @@ app.commandLine.appendSwitch('disable-background-timer-throttling')
 app.commandLine.appendSwitch('disable-backgrounding-occluded-windows')
 // Allow Web Audio graph and media playback without requiring window click gestures
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
+log.info('[App] Chromium switches appended (renderer backgrounding disabled, autoplay gesture bypassed).')
 
 // --- Single instance ---
 // A second launch (for example from a `.dthat` file association) must hand the
@@ -58,13 +72,16 @@ app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
 // quit — and because the child's stdio is 'ignore', the launch looks dead. So
 // the parent validates single-instance first and hands the lock to the child,
 // rather than letting the child be the one that discovers a stale lock.
+log.info('[App] Requesting single-instance lock...')
 const gotTheLock = app.requestSingleInstanceLock()
 
 if (!gotTheLock) {
-  log.info('[App] Another instance is already running. Quitting this one.')
+  log.warn('[App] Single-instance lock denied: another instance is already running. Quitting this instance.')
   app.quit()
 } else {
-  app.on('second-instance', (_event, argv) => {
+  log.info(`[App] Single-instance lock acquired successfully (PID ${process.pid}).`)
+  app.on('second-instance', (_event, argv, workingDirectory) => {
+    log.info(`[App] Lifecycle event: 'second-instance' received. WorkingDir: ${workingDirectory}, Argv:`, argv)
     const projectPath = findProjectArg(argv)
     if (projectPath) {
       log.info(`[App] Second instance requested to open a project: ${projectPath}`)
@@ -74,9 +91,12 @@ if (!gotTheLock) {
     // No project argument: just surface the existing window.
     const win = appState.editorWin ?? appState.recorderWin
     if (win && !win.isDestroyed()) {
+      log.info(`[App] Second instance: restoring and focusing existing window (isMinimized=${win.isMinimized()})`)
       if (win.isMinimized()) win.restore()
       win.show()
       win.focus()
+    } else {
+      log.warn('[App] Second instance: no active window found to focus.')
     }
   })
 
@@ -84,7 +104,7 @@ if (!gotTheLock) {
   // registered before the app is ready; requests are queued until then.
   app.on('open-file', (event, filePath) => {
     event.preventDefault()
-    log.info(`[App] open-file received: ${filePath}`)
+    log.info(`[App] Lifecycle event: 'open-file' received: ${filePath}`)
     requestOpenProject(filePath)
   })
 }
@@ -147,24 +167,39 @@ if (gotTheLock && process.platform === 'linux' && session.wayland) {
 
 // --- App Lifecycle Events ---
 app.on('window-all-closed', () => {
-  log.info('[App] All windows closed. Quitting.')
+  const windowCount = BrowserWindow.getAllWindows().length
+  log.info(
+    `[App] Lifecycle event: 'window-all-closed' received. Open windows count: ${windowCount}. Quitting application.`,
+  )
   app.quit()
 })
 
+app.on('before-quit', () => {
+  log.info("[App] Lifecycle event: 'before-quit' triggered. Initiating graceful shutdown...")
+})
 app.on('before-quit', onAppQuit)
 app.on('before-quit', () => {
+  log.info('[App] before-quit: Cleaning up Virtual Studio...')
   void virtualStudioManager.cleanupOnExit()
 })
 
 // Quitting is the other data-loss point. The guard runs once per quit; the
 // window's own close handler then lets the window go without asking again.
 app.on('before-quit', (event) => {
-  if (isQuitApproved()) return
+  if (isQuitApproved()) {
+    log.info('[App] before-quit: Quit already approved by user or session guard. Proceeding.')
+    return
+  }
   const editor = appState.editorWin
-  if (!editor || editor.isDestroyed()) return
+  if (!editor || editor.isDestroyed()) {
+    log.info('[App] before-quit: No active editor window found. Proceeding with quit.')
+    return
+  }
 
+  log.info('[App] before-quit: Editor window is active. Prompting user to confirm session save/discard.')
   event.preventDefault()
   void confirmReplaceSession('quit').then((proceed) => {
+    log.info(`[App] before-quit: Session confirmation verdict: proceed=${proceed}`)
     if (!proceed) return
     markQuitApproved()
     app.quit()
@@ -172,20 +207,48 @@ app.on('before-quit', (event) => {
 })
 
 app.on('will-quit', () => {
+  log.info("[App] Lifecycle event: 'will-quit'. Unregistering recording shortcuts and terminating background tasks.")
   // Release the global recording shortcuts before the process goes away.
   unregisterRecordingShortcuts()
   void virtualStudioManager.cleanupOnExit()
 })
 
 app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
+  const windowCount = BrowserWindow.getAllWindows().length
+  log.info(`[App] Lifecycle event: 'activate' received. Open windows: ${windowCount}`)
+  if (windowCount === 0) {
+    log.info('[App] activate: No open windows found. Creating recorder window.')
     createRecorderWindow()
   }
 })
 
 app.whenReady().then(async () => {
   if (!gotTheLock) return
-  log.info('[App] Ready. Initializing...')
+  log.info("[App] Lifecycle event: 'whenReady' resolved. App is ready.")
+
+  try {
+    log.info(`[App] User Data Path: ${app.getPath('userData')}`)
+    log.info(`[App] App Path: ${app.getAppPath()}`)
+    log.info(`[App] Logs Path: ${app.getPath('logs')}`)
+  } catch (err) {
+    log.warn('[App] Could not query app paths:', err)
+  }
+
+  // Enumerate displays and log geometry
+  try {
+    const displays = screen.getAllDisplays()
+    const primary = screen.getPrimaryDisplay()
+    log.info(
+      `[App] Screens detected: ${displays.length}. Primary display ID: ${primary.id}, Bounds: ${primary.bounds.width}x${primary.bounds.height}, WorkArea: ${primary.workArea.width}x${primary.workArea.height}, ScaleFactor: ${primary.scaleFactor}`,
+    )
+    displays.forEach((d, idx) => {
+      log.info(
+        `[App] Screen #${idx + 1}: ID=${d.id}, Bounds=(${d.bounds.x}, ${d.bounds.y}, ${d.bounds.width}x${d.bounds.height}), ScaleFactor=${d.scaleFactor}${d.id === primary.id ? ' [Primary]' : ''}`,
+      )
+    })
+  } catch (err) {
+    log.warn('[App] Could not enumerate displays:', err)
+  }
 
   // Set Dock Menu on macOS
   if (process.platform === 'darwin') {
@@ -283,7 +346,7 @@ app.whenReady().then(async () => {
       filePath = resourcePath
     }
     if (!filePath) {
-      log.error(`[Protocol] Could not find file: ${decodedUrl}`)
+      log.warn(`[Protocol:media] Resource not found: ${decodedUrl}`)
       return new Response('Not found', { status: 404 })
     }
 
@@ -315,6 +378,7 @@ app.whenReady().then(async () => {
       if (range) {
         const match = /^bytes=(\d*)-(\d*)$/.exec(range.trim())
         if (!match) {
+          log.warn(`[Protocol:media] Malformed Range header '${range}' for ${filePath}`)
           return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${size}` } })
         }
         let start = match[1] === '' ? 0 : Number.parseInt(match[1], 10)
@@ -322,6 +386,7 @@ app.whenReady().then(async () => {
         if (Number.isNaN(start)) start = 0
         if (Number.isNaN(end)) end = size - 1
         if (start > end || start >= size || end >= size) {
+          log.warn(`[Protocol:media] Unsatisfiable range ${start}-${end} (file size ${size}) for ${filePath}`)
           return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${size}` } })
         }
         const length = end - start + 1
@@ -348,11 +413,12 @@ app.whenReady().then(async () => {
         headers: { ...baseHeaders, 'Content-Length': String(size) },
       })
     } catch (error) {
-      log.error(`[Protocol] Failed to serve ${decodedUrl}: ${String(error)}`)
+      log.error(`[Protocol:media] Failed to serve ${decodedUrl}: ${String(error)}`)
       return new Response('Not found', { status: 404 })
     }
   })
 
+  log.info('[App] Registering IPC handlers, shortcuts, and creating recorder window...')
   registerIpcHandlers()
   registerRecordingShortcuts()
   createRecorderWindow()
@@ -361,5 +427,9 @@ app.whenReady().then(async () => {
   // passed on this launch.
   markAppReadyForProjects()
   const startupProject = findProjectArg(process.argv)
-  if (startupProject) requestOpenProject(startupProject)
+  if (startupProject) {
+    log.info(`[App] Startup project argument detected: ${startupProject}. Requesting open.`)
+    requestOpenProject(startupProject)
+  }
+  log.info('[App] Initialization complete. DemoThat is running.')
 })

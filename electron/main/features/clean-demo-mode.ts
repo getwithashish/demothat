@@ -14,6 +14,8 @@ import log from 'electron-log/main'
 import { execFile } from 'node:child_process'
 import { app } from 'electron'
 
+const logger = typeof log.scope === 'function' ? log.scope('clean-demo-mode') : log
+
 interface MacState {
   dockHidden: boolean
   activationPolicy: 'regular' | 'accessory' | 'prohibited'
@@ -33,7 +35,7 @@ const run = (command: string, args: string[]): Promise<string> =>
   new Promise((resolve) => {
     execFile(command, args, { timeout: 10000 }, (error, stdout) => {
       if (error) {
-        log.warn(`[CleanDemo] ${command} ${args.join(' ')} failed: ${error.message}`)
+        logger.warn(`[CleanDemo] ${command} ${args.join(' ')} failed: ${error.message}`)
         resolve('')
         return
       }
@@ -69,8 +71,9 @@ async function applyMac(): Promise<void> {
 
   try {
     state.activationPolicy = (app as any).getActivationPolicy?.() ?? 'regular'
+    logger.debug(`[CleanDemo] Current activation policy: ${state.activationPolicy}`)
   } catch (error) {
-    log.warn('[CleanDemo] Could not read activation policy:', error)
+    logger.warn('[CleanDemo] Could not read activation policy:', error)
   }
 
   // 1. Remember which apps are on screen, then hide all of them except us.
@@ -85,34 +88,37 @@ async function applyMac(): Promise<void> {
       .map((name) => name.trim())
       .filter(Boolean)
     if (state.hiddenApps.length > 0) {
+      logger.info(`[CleanDemo] Hiding ${state.hiddenApps.length} other applications: ${state.hiddenApps.join(', ')}`)
       await run('/usr/bin/osascript', [
         '-e',
         `tell application "System Events" to set visible of every process whose name is in {${state.hiddenApps.map(applescriptString).join(', ')}} to false`,
       ])
     }
   } catch (error) {
-    log.warn('[CleanDemo] Could not hide other applications:', error)
+    logger.warn('[CleanDemo] Could not hide other applications:', error)
   }
 
   // 2. Dock icon (and our own menu bar) go away while we are an accessory app.
   try {
     state.dockHidden = app.dock?.isVisible() ?? false
+    logger.info(`[CleanDemo] Hiding Dock (was visible: ${state.dockHidden})`)
     app.dock?.hide()
     app.setActivationPolicy('accessory')
   } catch (error) {
-    log.warn('[CleanDemo] Could not hide the Dock:', error)
+    logger.warn('[CleanDemo] Could not hide the Dock:', error)
   }
 
   // 3. Desktop icons live in Finder; turn them off and bounce Finder so the
   //    change takes effect immediately.
   try {
     state.desktopIconsDefault = await readDefault('com.apple.finder', 'CreateDesktop')
+    logger.info(`[CleanDemo] Hiding desktop icons (previous CreateDesktop=${state.desktopIconsDefault})`)
     if (state.desktopIconsDefault !== '0' && state.desktopIconsDefault !== 'false') {
       await writeDefault('com.apple.finder', 'CreateDesktop', '-bool false')
       await run('/usr/bin/killall', ['Finder'])
     }
   } catch (error) {
-    log.warn('[CleanDemo] Could not hide desktop icons:', error)
+    logger.warn('[CleanDemo] Could not hide desktop icons:', error)
   }
 
   // 4. Menu bar auto-hide (there is no public API for this; the private
@@ -120,10 +126,11 @@ async function applyMac(): Promise<void> {
   //    bounced so it applies right away.
   try {
     state.menuBarAutoHideDefault = await readDefault('NSGlobalDomain', '_HIHideMenuBar')
+    logger.info(`[CleanDemo] Auto-hiding menu bar (previous _HIHideMenuBar=${state.menuBarAutoHideDefault})`)
     await writeDefault('NSGlobalDomain', '_HIHideMenuBar', '-bool true')
     await run('/usr/bin/killall', ['SystemUIServer'])
   } catch (error) {
-    log.warn('[CleanDemo] Could not hide the menu bar:', error)
+    logger.warn('[CleanDemo] Could not hide the menu bar:', error)
   }
 
   macState = state
@@ -136,41 +143,46 @@ async function restoreMac(): Promise<void> {
 
   // Menu bar first so the user can see what is happening.
   try {
+    logger.info(`[CleanDemo] Restoring menu bar (_HIHideMenuBar=${state.menuBarAutoHideDefault})`)
     if (state.menuBarAutoHideDefault === null) await deleteDefault('NSGlobalDomain', '_HIHideMenuBar')
     else await writeDefault('NSGlobalDomain', '_HIHideMenuBar', state.menuBarAutoHideDefault)
     await run('/usr/bin/killall', ['SystemUIServer'])
   } catch (error) {
-    log.warn('[CleanDemo] Could not restore the menu bar:', error)
+    logger.warn('[CleanDemo] Could not restore the menu bar:', error)
   }
 
   try {
+    logger.info(`[CleanDemo] Restoring desktop icons (CreateDesktop=${state.desktopIconsDefault})`)
     if (state.desktopIconsDefault === null) await deleteDefault('com.apple.finder', 'CreateDesktop')
     else await writeDefault('com.apple.finder', 'CreateDesktop', state.desktopIconsDefault)
     await run('/usr/bin/killall', ['Finder'])
   } catch (error) {
-    log.warn('[CleanDemo] Could not restore desktop icons:', error)
+    logger.warn('[CleanDemo] Could not restore desktop icons:', error)
   }
 
   try {
+    logger.info(`[CleanDemo] Restoring activation policy to ${state.activationPolicy} and Dock visibility`)
     app.setActivationPolicy(state.activationPolicy)
     if (state.dockHidden) app.dock?.show()
   } catch (error) {
-    log.warn('[CleanDemo] Could not restore the Dock:', error)
+    logger.warn('[CleanDemo] Could not restore the Dock:', error)
   }
 
   try {
     if (state.hiddenApps.length > 0) {
+      logger.info(`[CleanDemo] Restoring ${state.hiddenApps.length} applications visibility`)
       await run('/usr/bin/osascript', [
         '-e',
         `tell application "System Events" to set visible of every process whose name is in {${state.hiddenApps.map(applescriptString).join(', ')}} to true`,
       ])
     }
   } catch (error) {
-    log.warn('[CleanDemo] Could not restore other applications:', error)
+    logger.warn('[CleanDemo] Could not restore other applications:', error)
   }
 }
 
 async function applyWindows(): Promise<void> {
+  logger.info('[CleanDemo] Minimizing non-recording windows on Windows.')
   // Best effort: minimize every window on the desktop. The recorder window is
   // already minimized while recording, so nothing of ours disappears.
   await run('powershell.exe', [
@@ -185,6 +197,7 @@ async function applyWindows(): Promise<void> {
 async function restoreWindows(): Promise<void> {
   if (!windowsMinimized) return
   windowsMinimized = false
+  logger.info('[CleanDemo] Restoring windows on Windows.')
   await run('powershell.exe', [
     '-NoProfile',
     '-NonInteractive',
@@ -199,7 +212,7 @@ const GNOME_DESKTOP_ICON_SCHEMAS = ['org.gnome.shell.extensions.ding', 'org.gnom
 async function applyLinux(): Promise<void> {
   const hasGsettings = (await run('/usr/bin/which', ['gsettings'])) !== ''
   if (!hasGsettings) {
-    log.info('[CleanDemo] gsettings not available — nothing to hide on this desktop.')
+    logger.info('[CleanDemo] gsettings not available — nothing to hide on this desktop.')
     return
   }
   for (const schema of GNOME_DESKTOP_ICON_SCHEMAS) {
@@ -207,10 +220,11 @@ async function applyLinux(): Promise<void> {
     if (!current) continue
     linuxDesktopIconsSchema = schema
     linuxDesktopIconsDefault = current
+    logger.info(`[CleanDemo] Hiding Linux desktop icons via ${schema} (previous=${current})`)
     await run('/usr/bin/gsettings', ['set', schema, 'show-home', 'false'])
     return
   }
-  log.info('[CleanDemo] No supported desktop-icon setting found on this desktop.')
+  logger.info('[CleanDemo] No supported desktop-icon setting found on this desktop.')
 }
 
 async function restoreLinux(): Promise<void> {
@@ -219,6 +233,7 @@ async function restoreLinux(): Promise<void> {
   const value = linuxDesktopIconsDefault
   linuxDesktopIconsSchema = null
   linuxDesktopIconsDefault = null
+  logger.info(`[CleanDemo] Restoring Linux desktop icons via ${schema} (value=${value})`)
   await run('/usr/bin/gsettings', ['set', schema, 'show-home', value])
 }
 
@@ -229,13 +244,14 @@ async function restoreLinux(): Promise<void> {
 export async function applyCleanDemoMode(): Promise<void> {
   if (active) return
   active = true
-  log.info(`[CleanDemo] Applying clean demo mode on ${process.platform}.`)
+  logger.info(`[CleanDemo] Applying clean demo mode on ${process.platform}.`)
   try {
     if (process.platform === 'darwin') await applyMac()
     else if (process.platform === 'win32') await applyWindows()
     else await applyLinux()
+    logger.info('[CleanDemo] Clean demo mode applied successfully.')
   } catch (error) {
-    log.error('[CleanDemo] Failed to apply clean demo mode:', error)
+    logger.error('[CleanDemo] Failed to apply clean demo mode:', error)
   }
 }
 
@@ -246,13 +262,14 @@ export async function applyCleanDemoMode(): Promise<void> {
 export async function restoreCleanDemoMode(): Promise<void> {
   if (!active) return
   active = false
-  log.info('[CleanDemo] Restoring desktop.')
+  logger.info('[CleanDemo] Restoring desktop.')
   try {
     if (process.platform === 'darwin') await restoreMac()
     else if (process.platform === 'win32') await restoreWindows()
     else await restoreLinux()
+    logger.info('[CleanDemo] Desktop restoration complete.')
   } catch (error) {
-    log.error('[CleanDemo] Failed to restore clean demo mode:', error)
+    logger.error('[CleanDemo] Failed to restore clean demo mode:', error)
   }
 }
 

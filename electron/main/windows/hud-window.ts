@@ -42,6 +42,47 @@ export function createHudWindow(): BrowserWindow {
       backgroundThrottling: false,
     },
   })
+  log.info(`[HudWindow] Mini-HUD BrowserWindow created at (${x ?? 'auto'}, ${y ?? 'auto'})`)
+
+  // Window event listeners
+  hudWin.on('show', () => {
+    log.info('[HudWindow] Window event: show')
+  })
+  hudWin.on('hide', () => {
+    log.info('[HudWindow] Window event: hide')
+  })
+  hudWin.on('focus', () => {
+    log.debug('[HudWindow] Window event: focus')
+  })
+  hudWin.on('blur', () => {
+    log.debug('[HudWindow] Window event: blur')
+  })
+  hudWin.on('unresponsive', () => {
+    log.warn('[HudWindow] Window became unresponsive')
+  })
+  hudWin.on('responsive', () => {
+    log.info('[HudWindow] Window responsive again')
+  })
+
+  // WebContents event listeners (safely guarded for test environments)
+  if (hudWin.webContents && typeof hudWin.webContents.on === 'function') {
+    hudWin.webContents.on('did-start-loading', () => {
+      log.info('[HudWindow] webContents: did-start-loading')
+    })
+    hudWin.webContents.on('did-finish-load', () => {
+      log.info(`[HudWindow] webContents: did-finish-load (URL: ${hudWin?.webContents?.getURL?.() ?? 'unknown'})`)
+    })
+    hudWin.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+      log.error(
+        `[HudWindow] webContents: did-fail-load (code: ${errorCode}, error: ${errorDescription}, URL: ${validatedURL})`,
+      )
+    })
+    hudWin.webContents.on('render-process-gone', (_event, details) => {
+      log.error(
+        `[HudWindow] webContents: render-process-gone (reason: ${details.reason}, exitCode: ${details.exitCode})`,
+      )
+    })
+  }
 
   hudWin.setAlwaysOnTop(true, 'screen-saver')
   try {
@@ -71,15 +112,17 @@ export function createHudWindow(): BrowserWindow {
 }
 
 export function showHudWindow(): void {
+  log.info('[HudWindow] showHudWindow called')
   const win = getHudWindow() ?? createHudWindow()
   if (!win.isDestroyed()) {
     win.show()
     win.setAlwaysOnTop(true, 'screen-saver')
-    log.info('[HudWindow] Mini-HUD window shown')
+    log.info('[HudWindow] Mini-HUD window shown and pinned to screen-saver level')
   }
 }
 
 export function hideHudWindow(): void {
+  log.info('[HudWindow] hideHudWindow called')
   if (hudWin && !hudWin.isDestroyed() && hudWin.isVisible()) {
     hudWin.hide()
     log.info('[HudWindow] Mini-HUD window hidden')
@@ -87,6 +130,7 @@ export function hideHudWindow(): void {
 }
 
 export function toggleHudWindow(): void {
+  log.info('[HudWindow] toggleHudWindow called')
   if (hudWin && !hudWin.isDestroyed() && hudWin.isVisible()) {
     hideHudWindow()
   } else {
@@ -102,11 +146,13 @@ export function getHudWindow(): BrowserWindow | null {
 }
 
 export function destroyHudWindow(): void {
+  log.info('[HudWindow] destroyHudWindow called')
   if (hudWin && !hudWin.isDestroyed()) {
     try {
       hudWin.destroy()
-    } catch {
-      // ignore
+      log.info('[HudWindow] Mini-HUD window destroyed successfully')
+    } catch (err) {
+      log.warn('[HudWindow] Error destroying Mini-HUD window:', err)
     }
     hudWin = null
   }

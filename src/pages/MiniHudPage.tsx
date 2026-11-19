@@ -17,8 +17,10 @@ import { Button } from '../components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip'
 import { cn } from '../lib/utils'
 import type { VirtualStudioStatus } from '../../shared/virtual-camera-types'
+import { usePageLifecycle } from '../hooks/usePageLifecycle'
 
 export function MiniHudPage() {
+  usePageLifecycle('MiniHudPage')
   const [status, setStatus] = useState<Partial<VirtualStudioStatus>>({
     isStreaming: true,
     activeSource: 'webcam',

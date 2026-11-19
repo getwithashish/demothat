@@ -5,10 +5,13 @@
 // unit tested and extended (see Phase 3: 8K render cap, HEVC).
 
 import path from 'path'
+import log from 'electron-log/main'
 import type { ResolutionKey } from '../../../shared/export-resolutions'
 import { selectExportCodec } from '../../../shared/export-codec'
 import { encoderToH264Args, videoEncodeArgs, type ExportQuality } from './export-video-args'
 import { buildAudioTimelineSegments, buildRecordingAudioChains, timelineDuration } from './audio-timeline'
+
+const logger = typeof log.scope === 'function' ? log.scope('build-export-args') : log
 
 export interface ExportRegion {
   startTime: number
@@ -231,6 +234,9 @@ export function planChunkSlices(
     const chunkPath = path.join(sessionDir, `chunk_${i}.mp4`)
     chunks.push({ index: i, startFrame, endFrame, chunkFrames, chunkDuration, chunkPath })
   }
+  logger.info(
+    `[BuildExportArgs] Planned ${chunks.length} chunk slices for ${totalFrames} frames (${numWorkers} workers @ ${fps}fps)`,
+  )
   return chunks
 }
 
@@ -482,6 +488,10 @@ export function buildChunkExportArgs(options: BuildChunkExportArgsOptions): stri
   args.push(...encodeArgs)
 
   args.push('-progress', 'pipe:1', '-nostats', outputPath)
+  logger.debug(
+    `[BuildExportArgs] Chunk args built (encoder=${encoder}, threads=${threads}, quality=${quality}):`,
+    args.join(' '),
+  )
   return args
 }
 
@@ -533,6 +543,7 @@ export function buildConcatExportArgs(options: BuildConcatExportArgsOptions): st
   }
 
   args.push('-movflags', '+faststart', '-progress', 'pipe:1', '-nostats', outputPath)
+  logger.info(`[BuildExportArgs] Concat export args built (output: ${outputPath}):`, args.join(' '))
   return args
 }
 
@@ -659,5 +670,6 @@ export function buildExportArgs(options: BuildExportArgsOptions): string[] {
 
   ffmpegArgs.push('-progress', 'pipe:1', '-nostats')
   ffmpegArgs.push(outputPath)
+  logger.info(`[BuildExportArgs] Single export args built (output: ${outputPath}):`, ffmpegArgs.join(' '))
   return ffmpegArgs
 }

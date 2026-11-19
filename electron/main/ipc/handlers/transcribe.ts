@@ -48,11 +48,14 @@ export interface TranscribeStatus {
  * use the cloud at all, and the price and limits the server publishes.
  */
 export async function handleTranscribeStatus(): Promise<TranscribeStatus> {
+  log.info('[TranscribeIPC] Checking transcription capabilities and status...')
   if (!getStoredToken()) {
+    log.info('[TranscribeIPC] Device not activated: no license token stored.')
     return { configured: false, transcription: null, capabilities: null, error: null }
   }
   try {
     const capabilities = await fetchCapabilities()
+    log.info('[TranscribeIPC] Fetched capabilities successfully.')
     return {
       configured: true,
       transcription: capabilities.transcription ?? null,
@@ -61,7 +64,7 @@ export async function handleTranscribeStatus(): Promise<TranscribeStatus> {
     }
   } catch (error) {
     const message = error instanceof CloudError ? error.message : String(error)
-    log.warn(`[Transcribe] Capabilities unavailable: ${message}`)
+    log.warn(`[TranscribeIPC] Capabilities unavailable: ${message}`)
     return { configured: true, transcription: null, capabilities: null, error: message }
   }
 }
@@ -127,6 +130,7 @@ export async function handleTranscribeStart(
   event: IpcMainInvokeEvent,
   request: TranscribeStartRequest,
 ): Promise<TranscribeOutcome> {
+  log.info(`[TranscribeIPC] handleTranscribeStart invoked for '${request.sourcePath}'`)
   const window = BrowserWindow.fromWebContents(event.sender)
   const cancel: CloudCancellation = { cancelled: false }
   // The same registry the cloud export uses: only one cloud job can be in flight,
@@ -137,6 +141,7 @@ export async function handleTranscribeStart(
   // A transcript the caller did not ask to keep is ours to delete.
   const transcriptPath = request.transcriptPath ?? tempTranscriptPath(request.sourcePath)
   const ownsTranscript = request.transcriptPath === undefined
+  log.info(`[TranscribeIPC] Temp audio path: ${audioPath}, Transcript path: ${transcriptPath} (owns=${ownsTranscript})`)
   try {
     await fsp.mkdir(path.dirname(audioPath), { recursive: true })
     await fsp.mkdir(path.dirname(transcriptPath), { recursive: true })
@@ -190,10 +195,12 @@ export async function handleTranscribeStart(
 }
 
 export function handleTranscribeCancel(): boolean {
+  log.info('[TranscribeIPC] handleTranscribeCancel invoked. Canceling active transcription...')
   return cancelActiveCloudWork()
 }
 
 export function registerTranscribeHandlers(): void {
+  log.info('[TranscribeIPC] Registering cloud transcription IPC handlers...')
   ipcMain.handle('transcribe:status', handleTranscribeStatus)
   ipcMain.handle('transcribe:start', handleTranscribeStart)
   ipcMain.on('transcribe:cancel', handleTranscribeCancel)

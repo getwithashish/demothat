@@ -74,11 +74,22 @@ export async function generateFastIntraProxy(options: FastIntraProxyOptions): Pr
       outputPath,
     ]
 
+    log.info(`[FastIntraProxy] Spawning FFmpeg for ${label} with args: ${args.join(' ')}`)
     const proc = spawn(ffmpegPath, args)
 
     let stderr = ''
+    let lastSpeed = ''
     proc.stderr.on('data', (chunk) => {
-      stderr += chunk.toString()
+      const text = chunk.toString()
+      stderr += text
+      const speedMatch = text.match(/speed=\s*([\d.]+x)/)
+      const timeMatch = text.match(/time=(\d{2}:\d{2}:\d{2}\.\d{2})/)
+      if (speedMatch && speedMatch[1] && speedMatch[1] !== lastSpeed) {
+        lastSpeed = speedMatch[1]
+        log.info(
+          `[FastIntraProxy] Transcoding progress for ${label}: time=${timeMatch ? timeMatch[1] : 'unknown'}, speed=${speedMatch[1]} realtime`,
+        )
+      }
     })
 
     proc.on('error', (err) => {
@@ -90,8 +101,9 @@ export async function generateFastIntraProxy(options: FastIntraProxyOptions): Pr
       const elapsedMs = Date.now() - startTime
       if (code === 0 && fs.existsSync(outputPath)) {
         const stats = fs.statSync(outputPath)
+        const speedInfo = lastSpeed ? ` at ${lastSpeed} realtime` : ''
         log.info(
-          `[FastIntraProxy] All-intra proxy generated successfully in ${elapsedMs}ms (${(stats.size / 1024 / 1024).toFixed(2)} MB).`,
+          `[FastIntraProxy] All-intra proxy generated successfully in ${elapsedMs}ms (${(stats.size / 1024 / 1024).toFixed(2)} MB)${speedInfo}.`,
         )
         resolve(outputPath)
       } else {

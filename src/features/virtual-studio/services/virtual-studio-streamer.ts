@@ -8,11 +8,14 @@ import {
   type VirtualStudioActionResult,
 } from '../../../../shared/virtual-camera-types'
 import { useEditorStore } from '../../../store/editorStore'
+import { createScopedLogger } from '../../../lib/logger'
 import {
   VIRTUAL_STUDIO_AUDIO_PROCESSOR_NAME,
   createAudioWorkletBlobUrl,
 } from '../workers/virtual-studio-audio-processor.worklet'
 import { createVirtualCameraCanvasWorkerUrl } from '../workers/virtual-camera-canvas.worker'
+
+const logger = createScopedLogger('VirtualStudioStreamer')
 
 export interface VirtualStudioIPC {
   getStatus: () => Promise<VirtualStudioStatus>
@@ -154,6 +157,14 @@ export class VirtualStudioStreamer {
   private frameTimer: ReturnType<typeof setTimeout> | null = null
   private previewListeners: Set<PreviewFrameCallback> = new Set()
 
+  // Telemetry & FPS Tracking State
+  private rvfcFrameCount = 0
+  private lastRvfcFpsTime = 0
+  private lastRvfcFrames = 0
+  private canvasWorkerFramesReceived = 0
+  private lastCanvasWorkerFpsTime = 0
+  private lastCanvasWorkerFrames = 0
+
   // Dual-Output Audio Graph State
   private micStream: MediaStream | null = null
   private micSourceNode: MediaStreamAudioSourceNode | AudioNode | null = null
@@ -229,6 +240,20 @@ export class VirtualStudioStreamer {
 
   public getMonitoringVolume(): number {
     return this.localMonitoringVolume
+  }
+
+  public getTelemetry(): {
+    rvfcFrameCount: number
+    canvasWorkerFramesReceived: number
+    activeSource: 'webcam' | 'canvas'
+    isPlaying: boolean
+  } {
+    return {
+      rvfcFrameCount: this.rvfcFrameCount,
+      canvasWorkerFramesReceived: this.canvasWorkerFramesReceived,
+      activeSource: this.activeSource,
+      isPlaying: this.isPlaying,
+    }
   }
 
   public isMirrorEnabled(): boolean {
@@ -313,6 +338,7 @@ export class VirtualStudioStreamer {
             return
           }
           const { width, height } = this.outputResolution
+          const postTime = typeof performance !== 'undefined' ? performance.now() : Date.now()
           this.canvasWorker.postMessage(
             {
               bitmap,
@@ -320,7 +346,8 @@ export class VirtualStudioStreamer {
               height,
               isMirrored: this.isMirrored,
               fallbackColor: DEFAULT_VIRTUAL_STUDIO_FALLBACK_COLOR,
-              timestamp: timestamp ?? performance.now(),
+              timestamp: timestamp ?? postTime,
+              postMessageTime: postTime,
             },
             [bitmap],
           )
@@ -700,8 +727,10 @@ export class VirtualStudioStreamer {
    */
   public setPlaying(isPlaying: boolean): void {
     if (this.isPlaying === isPlaying) return
+    const prevSource = this.activeSource
     this.isPlaying = isPlaying
     this.activeSource = isPlaying ? 'canvas' : 'webcam'
+    logger.info(`Instant Auto-Return transition: ${prevSource} -> ${this.activeSource} (isPlaying: ${isPlaying})`)
 
     if (isPlaying) {
       this.playbackMicUnmuted = false
@@ -1077,6 +1106,9 @@ export class VirtualStudioStreamer {
       setParam(this.videoToVirtualMicGain, 0.0)
       setParam(this.localMonitoringGain, 1.0)
       setParam(this.micGainNode, 0.0)
+      logger.info(
+        'Audio graph cross-fading: Studio inactive -> videoToVirtualMic=0.0, localMonitoring=1.0, physicalMic=0.0 (15ms cross-fade)',
+      )
       return
     }
 
@@ -1091,6 +1123,9 @@ export class VirtualStudioStreamer {
       // 3. Default-muted during demo video unless user explicitly clicked unmute:
       const micActive = this.playbackMicUnmuted && !this.isMicMuted
       setParam(this.micGainNode, micActive ? 1.0 : 0.0)
+      logger.info(
+        `Audio graph cross-fading: Playback active -> videoToVirtualMic=1.0, localMonitoring=${monitorVol.toFixed(2)}, physicalMic=${micActive ? '1.0' : '0.0'} (15ms cross-fade)`,
+      )
     } else {
       // 1. Video audio to virtual mic is MUTED
       setParam(this.videoToVirtualMicGain, 0.0)
@@ -1099,7 +1134,11 @@ export class VirtualStudioStreamer {
       setParam(this.localMonitoringGain, 0.0)
 
       // 3. Physical mic is UNMUTED (unless manual mic mute is active)
-      setParam(this.micGainNode, this.isMicMuted ? 0.0 : 1.0)
+      const micGain = this.isMicMuted ? 0.0 : 1.0
+      setParam(this.micGainNode, micGain)
+      logger.info(
+        `Audio graph cross-fading: Auto-return to webcam -> videoToVirtualMic=0.0, localMonitoring=0.0, physicalMic=${micGain.toFixed(1)} (15ms cross-fade)`,
+      )
     }
   }
 
@@ -1127,6 +1166,10 @@ export class VirtualStudioStreamer {
         this.webcamStream = null
       }
 
+      logger.info(
+        `Starting physical webcam capture (selectedCameraId: ${this.selectedCameraId || 'default'}, target: ${this.outputResolution.width}x${this.outputResolution.height})`,
+      )
+
       const constraints: MediaStreamConstraints = {
         video: this.selectedCameraId
           ? { deviceId: { exact: this.selectedCameraId } }
@@ -1134,6 +1177,8 @@ export class VirtualStudioStreamer {
       }
 
       this.webcamStream = await this.mediaDevices.getUserMedia(constraints)
+      const trackCount = this.webcamStream.getVideoTracks?.()?.length ?? this.webcamStream.getTracks?.()?.length ?? 1
+      logger.info(`Hardware webcam stream acquired (stream id: ${this.webcamStream.id}, tracks: ${trackCount})`)
 
       if (!this.webcamVideo) {
         this.webcamVideo = this.createVideo()
@@ -1171,7 +1216,9 @@ export class VirtualStudioStreamer {
     this.cancelWebcamCapture()
     this.stopFrameLoop()
     if (this.webcamStream) {
-      this.webcamStream.getTracks().forEach((track) => track.stop())
+      const trackCount = this.webcamStream.getVideoTracks?.()?.length ?? this.webcamStream.getTracks?.()?.length ?? 0
+      logger.info(`Hardware webcam stopped (${trackCount} tracks stopped)`)
+      this.webcamStream.getTracks?.().forEach((track) => track.stop())
       this.webcamStream = null
     }
     if (this.webcamVideo) {
@@ -1213,6 +1260,23 @@ export class VirtualStudioStreamer {
           clearTimeout(this.webcamTimer)
           this.webcamTimer = null
         }
+
+        this.rvfcFrameCount++
+        const now = typeof performance !== 'undefined' ? performance.now() : Date.now()
+        if (this.lastRvfcFpsTime === 0) {
+          this.lastRvfcFpsTime = now
+          this.lastRvfcFrames = this.rvfcFrameCount
+        } else if (now - this.lastRvfcFpsTime >= 3000) {
+          const elapsedSec = (now - this.lastRvfcFpsTime) / 1000
+          const frames = this.rvfcFrameCount - this.lastRvfcFrames
+          const fps = (frames / elapsedSec).toFixed(1)
+          logger.info(
+            `Webcam rVFC stream: ${fps} FPS (${frames} frames in ${elapsedSec.toFixed(1)}s, total: ${this.rvfcFrameCount})`,
+          )
+          this.lastRvfcFpsTime = now
+          this.lastRvfcFrames = this.rvfcFrameCount
+        }
+
         if (this.active && this.activeSource === 'webcam') {
           this.captureTick()
           this.scheduleWebcamCapture()
@@ -1311,6 +1375,26 @@ export class VirtualStudioStreamer {
           if (!this.active || this.activeSource !== 'canvas') return
           const data = e.data
           if (data && data.success && data.buffer) {
+            this.canvasWorkerFramesReceived++
+            const now = typeof performance !== 'undefined' ? performance.now() : Date.now()
+            if (this.lastCanvasWorkerFpsTime === 0) {
+              this.lastCanvasWorkerFpsTime = now
+              this.lastCanvasWorkerFrames = this.canvasWorkerFramesReceived
+            } else if (now - this.lastCanvasWorkerFpsTime >= 3000) {
+              const elapsedSec = (now - this.lastCanvasWorkerFpsTime) / 1000
+              const frames = this.canvasWorkerFramesReceived - this.lastCanvasWorkerFrames
+              const fps = (frames / elapsedSec).toFixed(1)
+              const renderTime = data.renderDurationMs ? `${data.renderDurationMs.toFixed(1)}ms` : 'n/a'
+              const transferTime = data.workerTransferStartTime
+                ? `${(now - data.workerTransferStartTime).toFixed(1)}ms`
+                : 'n/a'
+              logger.info(
+                `Canvas worker throughput: ${fps} FPS (${frames} frames in ${elapsedSec.toFixed(1)}s, total: ${this.canvasWorkerFramesReceived}, render: ${renderTime}, transfer: ${transferTime})`,
+              )
+              this.lastCanvasWorkerFpsTime = now
+              this.lastCanvasWorkerFrames = this.canvasWorkerFramesReceived
+            }
+
             this.ipcBridge.pushFrame({
               data: new Uint8Array(data.buffer),
               width: data.width,

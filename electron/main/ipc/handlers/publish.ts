@@ -138,10 +138,14 @@ export async function handlePublishStart(
   event: IpcMainInvokeEvent,
   request: PublishStartRequest,
 ): Promise<PublishOutcome> {
+  log.info(
+    `[PublishIPC] handlePublishStart invoked: file='${request?.filePath}', kind=${request?.kind}, storageDays=${request?.storageDays}`,
+  )
   const window = BrowserWindow.fromWebContents(event.sender)
 
   const invalid = await validateRequest(request)
   if (invalid !== null) {
+    log.warn(`[PublishIPC] Request validation failed: ${invalid}`)
     emit(window, 'publish:complete', { success: false, error: invalid, reason: 'rejected' })
     return { ok: false, reason: 'rejected', error: invalid }
   }
@@ -269,6 +273,7 @@ export async function handlePublishAnalytics(
 }
 
 export function handlePublishCancel(): boolean {
+  log.info('[PublishIPC] handlePublishCancel invoked. Canceling active cloud work...')
   return cancelActiveCloudWork()
 }
 
@@ -283,16 +288,20 @@ export async function handlePublishProbe(
   _event: IpcMainInvokeEvent,
   request: { filePath: string },
 ): Promise<{ ok: true; sizeBytes: number } | { ok: false; error: string }> {
+  log.info(`[PublishIPC] Probing video file size: ${request?.filePath}`)
   try {
     const stat = await fsp.stat(request.filePath)
     if (!stat.isFile()) return { ok: false, error: 'That video is not a file this app can read.' }
+    log.info(`[PublishIPC] Probed video file size: ${stat.size} bytes`)
     return { ok: true, sizeBytes: stat.size }
   } catch {
+    log.warn(`[PublishIPC] Video file could not be found: ${request?.filePath}`)
     return { ok: false, error: 'That video could not be found on disk.' }
   }
 }
 
 export function registerPublishHandlers(): void {
+  log.info('[PublishIPC] Registering instant publishing IPC handlers...')
   ipcMain.handle('publish:status', handlePublishStatus)
   ipcMain.handle('publish:start', handlePublishStart)
   ipcMain.handle('publish:probe', handlePublishProbe)

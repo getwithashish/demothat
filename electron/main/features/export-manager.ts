@@ -216,10 +216,24 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
 
   const { width: renderWidth, height: renderHeight } =
     useCloud && cloudRender ? cloudRender : applyRenderCap(targetWidth, targetHeight)
-  log.info(`[ExportManager] Target ${targetWidth}x${targetHeight}, rendering at ${renderWidth}x${renderHeight}.`)
 
   const exportDuration = computeExportDuration(projectState)
   const totalFrames = Math.floor(exportDuration * exportSettings.fps)
+
+  log.info('[ExportManager] Starting export process with settings:', {
+    outputPath,
+    resolution: exportSettings.resolution,
+    format: exportSettings.format,
+    fps: exportSettings.fps,
+    quality: exportSettings.quality,
+    targetWidth,
+    targetHeight,
+    renderWidth,
+    renderHeight,
+    exportDuration,
+    totalFrames,
+    useCloud,
+  })
 
   // Materialise the built-in click sound when click sounds are on and no custom
   // sound is set, so buildExportArgs can stay pure.
@@ -338,6 +352,15 @@ export async function runParallelExport(options: ParallelExportOptions) {
   ])
 
   const chunks = planChunkSlices(totalFrames, numWorkers, exportSettings.fps, sessionDir)
+  log.info(
+    `[ExportManager] Parallel export chunk slices (${chunks.length} chunks planned):`,
+    chunks.map((c) => ({
+      chunk: c.index,
+      frames: `[${c.startFrame}..${c.endFrame}) (${c.chunkFrames})`,
+      duration: `${c.chunkDuration.toFixed(2)}s`,
+      path: c.chunkPath,
+    })),
+  )
 
   // Spawn FFmpeg chunk processes with dedicated thread budget per worker to avoid CPU cache thrashing
   const chunkProcesses: ChildProcessWithoutNullStreams[] = []
@@ -488,6 +511,9 @@ export async function runParallelExport(options: ParallelExportOptions) {
     })
   })
 
+  let lastParallelSpeedLogTime = Date.now()
+  let lastParallelSpeedFrameCount = 0
+
   const frameHandler = async (
     _event: IpcMainInvokeEvent,
     { frame, chunkIndex }: { frame: Uint8Array; progress: number; chunkIndex?: number },
@@ -535,6 +561,24 @@ export async function runParallelExport(options: ParallelExportOptions) {
     )
     const result = await currentWrite
     emitParallelProgress()
+
+    const now = Date.now()
+    if (now - lastParallelSpeedLogTime >= 1000) {
+      const elapsedSec = (now - lastParallelSpeedLogTime) / 1000
+      const totalWritten = chunkFramesWritten.reduce((a, b) => a + b, 0)
+      const deltaFrames = totalWritten - lastParallelSpeedFrameCount
+      const currentFps = deltaFrames / elapsedSec
+      const overallElapsed = Math.max(0.001, (now - perfStartedAt) / 1000)
+      const overallFps = totalWritten / overallElapsed
+      log.info(
+        `[ExportManager] Parallel frame rendering speed: ${currentFps.toFixed(1)} fps ` +
+          `(avg: ${overallFps.toFixed(1)} fps, ${totalWritten}/${totalFrames} frames, ` +
+          `${((totalWritten / Math.max(1, totalFrames)) * 100).toFixed(1)}%)`,
+      )
+      lastParallelSpeedLogTime = now
+      lastParallelSpeedFrameCount = totalWritten
+    }
+
     return result
   }
 
@@ -673,6 +717,12 @@ export async function runParallelExport(options: ParallelExportOptions) {
     if (concatCode === 0) {
       const elapsedSeconds = Math.max(0.001, (Date.now() - perfStartedAt) / 1000)
       const totalWritten = chunkFramesWritten.reduce((a, b) => a + b, 0)
+      const outStat = await fsPromises.stat(outputPath).catch(() => null)
+      log.info(
+        `[ExportManager] Parallel export completed successfully in ${elapsedSeconds.toFixed(2)}s: ` +
+          `${totalWritten} frames rendered (${(totalWritten / elapsedSeconds).toFixed(1)} fps), ` +
+          `output: ${outputPath} (${outStat ? `${outStat.size} bytes / ${(outStat.size / (1024 * 1024)).toFixed(2)} MB` : 'unknown size'})`,
+      )
       if (totalWritten > 0) {
         recordExportPerf({
           resolution: exportSettings.resolution,
@@ -853,6 +903,7 @@ async function runSingleExport(options: SingleExportOptions) {
   }
 
   let progressBuffer = ''
+  let lastLoggedEncodeProgress = 0
   const handleProgressOutput = (chunk: Buffer) => {
     progressBuffer += chunk.toString()
     const lines = progressBuffer.split('\n')
@@ -866,10 +917,15 @@ async function runSingleExport(options: SingleExportOptions) {
         if (exportDuration > 0 && Number.isFinite(microseconds) && microseconds >= 0) {
           encodeProgress = Math.max(encodeProgress, (microseconds / 1_000_000 / exportDuration) * 100)
           changed = true
+          if (encodeProgress - lastLoggedEncodeProgress >= 15 || encodeProgress >= 99) {
+            lastLoggedEncodeProgress = encodeProgress
+            log.info(`[ExportManager] FFmpeg encoding/muxing progress: ${encodeProgress.toFixed(1)}%`)
+          }
         }
       } else if (key === 'progress' && value === 'end') {
         encodeProgress = 100
         changed = true
+        log.info('[ExportManager] FFmpeg encoding/muxing reached 100% (progress=end).')
       }
     }
     if (changed) emitProgress()
@@ -925,6 +981,8 @@ async function runSingleExport(options: SingleExportOptions) {
     })
 
   let writeQueue: Promise<void> = Promise.resolve()
+  let lastSingleSpeedLogTime = Date.now()
+  let lastSingleSpeedFrameCount = 0
 
   const frameHandler = async (
     _event: IpcMainInvokeEvent,
@@ -939,6 +997,23 @@ async function runSingleExport(options: SingleExportOptions) {
     if (!result.aborted) framesWritten += 1
     frameProgress = Math.max(frameProgress, Number(progress) || 0)
     emitProgress()
+
+    const now = Date.now()
+    if (now - lastSingleSpeedLogTime >= 1000) {
+      const elapsedSec = (now - lastSingleSpeedLogTime) / 1000
+      const deltaFrames = framesWritten - lastSingleSpeedFrameCount
+      const currentFps = deltaFrames / elapsedSec
+      const overallElapsed = Math.max(0.001, (now - perfStartedAt) / 1000)
+      const overallFps = framesWritten / overallElapsed
+      log.info(
+        `[ExportManager] Single frame rendering speed: ${currentFps.toFixed(1)} fps ` +
+          `(avg: ${overallFps.toFixed(1)} fps, ${framesWritten}/${totalFrames} frames, ` +
+          `${((framesWritten / Math.max(1, totalFrames)) * 100).toFixed(1)}%)`,
+      )
+      lastSingleSpeedLogTime = now
+      lastSingleSpeedFrameCount = framesWritten
+    }
+
     return result
   }
 
@@ -1035,6 +1110,20 @@ async function runSingleExport(options: SingleExportOptions) {
           })
         }
       } else if (code === 0) {
+        const elapsedSeconds = Math.max(0.001, (Date.now() - perfStartedAt) / 1000)
+        let outStat: fs.Stats | null = null
+        try {
+          if (fs.existsSync(outputPath)) {
+            outStat = fs.statSync(outputPath)
+          }
+        } catch {
+          outStat = null
+        }
+        log.info(
+          `[ExportManager] Single export completed successfully in ${elapsedSeconds.toFixed(2)}s: ` +
+            `${framesWritten} frames rendered (${(framesWritten / elapsedSeconds).toFixed(1)} fps), ` +
+            `output: ${outputPath} (${outStat ? `${outStat.size} bytes / ${(outStat.size / (1024 * 1024)).toFixed(2)} MB` : 'unknown size'})`,
+        )
         if (framesWritten > 0) {
           const elapsedSeconds = Math.max(0.001, (Date.now() - perfStartedAt) / 1000)
           recordExportPerf({

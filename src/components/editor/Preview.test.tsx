@@ -103,4 +103,24 @@ describe('Preview Virtual Studio canvas attachment', () => {
     // In virtual studio active playback, setTimeout should be used instead of requestAnimationFrame for the render loop
     expect(setTimeoutSpy).toHaveBeenCalled()
   })
+
+  it('sets up periodic playback FPS telemetry interval during playback', async () => {
+    act(() => {
+      useEditorStore.setState({ isPlaying: false })
+    })
+
+    const setIntervalSpy = vi.spyOn(globalThis, 'setInterval')
+    const videoRef = { current: document.createElement('video') }
+
+    await renderAsync(<Preview videoRef={videoRef} onSeekFrame={vi.fn()} />)
+
+    setIntervalSpy.mockClear()
+
+    act(() => {
+      useEditorStore.setState({ isPlaying: true })
+    })
+
+    expect(setIntervalSpy).toHaveBeenCalledWith(expect.any(Function), 3500)
+    setIntervalSpy.mockRestore()
+  })
 })

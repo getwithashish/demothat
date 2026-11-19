@@ -18,7 +18,10 @@
 // FFmpeg accepts them is a separate question, answered against the real binary in the
 // integration suite.
 
+import log from 'electron-log/main'
 import type { ExportProjectState, ExportRegion, ExportSpeedRegion } from './build-export-args'
+
+const logger = typeof log.scope === 'function' ? log.scope('audio-timeline') : log
 
 /** The speeds the editor offers, and the range `atempo` can do in one pass. */
 const MIN_SPEED = 0.5
@@ -136,6 +139,10 @@ export function buildAudioTimelineSegments(projectState: ExportProjectState): Au
     }
   }
 
+  logger.debug(
+    `[AudioTimeline] Segmented audio timeline: ${duration}s duration, ${cuts.length} cuts, ${speeds.length} speed regions -> ${segments.length} segment(s)`,
+  )
+
   return segments
 }
 
@@ -202,6 +209,9 @@ export function buildRecordingAudioChains(options: BuildRecordingAudioOptions): 
     labels.push(`[${segmentLabel}]`)
   })
   chains.push(`${labels.join('')}concat=n=${segments.length}:v=0:a=1,volume=${gain}[${label}]`)
+  logger.debug(
+    `[AudioTimeline] Built recording audio chains for [${inputIndex}:a:${streamIndex}] -> [${label}]: ${chains.length} chain(s)`,
+  )
 
   return chains
 }

@@ -14,7 +14,7 @@ import { CursorTheme } from '../../types'
 
 export function getDisplays() {
   const primaryDisplay = screen.getPrimaryDisplay()
-  return screen.getAllDisplays().map((display, index) => {
+  const displays = screen.getAllDisplays().map((display, index) => {
     // Fix for #135: Use scaleFactor to get physical pixel dimensions
     // display.bounds returns screen coordinates (scaled), but we need physical pixels
     // for accurate screen capture with FFmpeg
@@ -33,10 +33,14 @@ export function getDisplays() {
       scaleFactor,
     }
   })
+  log.info(`[DesktopIpc] getDisplays returned ${displays.length} displays (Primary: ${primaryDisplay.id})`)
+  return displays
 }
 
 export function handleGetCursorScale() {
-  return getCursorScale()
+  const scale = getCursorScale()
+  log.debug(`[DesktopIpc] handleGetCursorScale: ${scale}`)
+  return scale
 }
 
 // --- Interface zoom -------------------------------------------------------
@@ -267,6 +271,7 @@ export function handleMapCursorNameToIDC(_event: IpcMainInvokeEvent, name: strin
 export async function handleOpenAudioFile(
   event: IpcMainInvokeEvent,
 ): Promise<{ canceled: boolean; filePath?: string; fileName?: string }> {
+  log.info('[DesktopIpc] handleOpenAudioFile invoked. Opening file dialog...')
   // showOpenDialog takes either (window, options) or (options): pick the overload that
   // matches whether the invoking window still exists.
   const parent = BrowserWindow.fromWebContents(event.sender)
@@ -276,18 +281,23 @@ export async function handleOpenAudioFile(
     filters: [{ name: 'Audio', extensions: ['mp3', 'wav', 'm4a', 'aac', 'ogg', 'opus', 'flac', 'aiff', 'wma'] }],
   }
   const result = await (parent ? dialog.showOpenDialog(parent, options) : dialog.showOpenDialog(options))
-  if (result.canceled || result.filePaths.length === 0) return { canceled: true }
+  if (result.canceled || result.filePaths.length === 0) {
+    log.info('[DesktopIpc] Open audio file dialog canceled.')
+    return { canceled: true }
+  }
   const sourcePath = result.filePaths[0]
   const assetDirectory = path.join(app.getPath('userData'), 'audio-assets')
   await fs.mkdir(assetDirectory, { recursive: true })
   const importedPath = path.join(assetDirectory, `${Date.now()}-${path.basename(sourcePath)}`)
   await fs.copyFile(sourcePath, importedPath)
+  log.info(`[DesktopIpc] Imported audio file from ${sourcePath} to ${importedPath}`)
   return { canceled: false, filePath: importedPath, fileName: path.basename(sourcePath) }
 }
 
 export async function handleOpenVideoFiles(
   event: IpcMainInvokeEvent,
 ): Promise<{ canceled: boolean; files?: { filePath: string; fileName: string }[] }> {
+  log.info('[DesktopIpc] handleOpenVideoFiles invoked. Opening video dialog...')
   const parent = BrowserWindow.fromWebContents(event.sender)
   const options: Electron.OpenDialogOptions = {
     title: 'Import video clips',
@@ -295,7 +305,10 @@ export async function handleOpenVideoFiles(
     filters: [{ name: 'Video', extensions: ['mp4', 'mov', 'mkv', 'webm', 'avi', 'm4v'] }],
   }
   const result = await (parent ? dialog.showOpenDialog(parent, options) : dialog.showOpenDialog(options))
-  if (result.canceled || result.filePaths.length === 0) return { canceled: true }
+  if (result.canceled || result.filePaths.length === 0) {
+    log.info('[DesktopIpc] Open video file dialog canceled.')
+    return { canceled: true }
+  }
   const assetDirectory = path.join(app.getPath('userData'), 'video-assets')
   await fs.mkdir(assetDirectory, { recursive: true })
   const files: { filePath: string; fileName: string }[] = []
@@ -307,6 +320,7 @@ export async function handleOpenVideoFiles(
     await fs.copyFile(sourcePath, importedPath)
     files.push({ filePath: importedPath, fileName: path.basename(sourcePath) })
   }
+  log.info(`[DesktopIpc] Imported ${files.length} video clip(s) to ${assetDirectory}`)
   return { canceled: false, files }
 }
 

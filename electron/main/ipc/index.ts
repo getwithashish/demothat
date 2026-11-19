@@ -16,8 +16,12 @@ import * as settingsHandlers from './handlers/settings'
 import * as shellHandlers from './handlers/shell'
 import * as aiHandlers from './handlers/ai'
 import * as virtualStudioHandlers from './handlers/virtual-studio'
+import { instrumentIpcMain } from './instrument'
 
 export function registerIpcHandlers() {
+  log.info('[IPC] Initializing IPC instrumentation and telemetry...')
+  instrumentIpcMain(ipcMain)
+
   // Renderer diagnostics → main log. The packaged app has no devtools console,
   // so without this the only place failures could be seen was nowhere.
   ipcMain.on('diagnostic:log', (_event, scope: string, message: string) => {
@@ -177,4 +181,6 @@ export function registerIpcHandlers() {
 
   // Virtual Camera & Microphone Studio
   virtualStudioHandlers.registerVirtualStudioHandlers()
+
+  log.info('[IPC] All IPC channels and handlers successfully registered.')
 }

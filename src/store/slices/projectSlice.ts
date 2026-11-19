@@ -18,6 +18,9 @@ import { projectNameFromPath } from '../../lib/recent-projects'
 import { audioTracksFromManifest, legacyTracks } from '../../../shared/audio-tracks'
 import { mediaUrl } from '../../../shared/media-url'
 import type { EditorState } from '../../types'
+import { createScopedLogger } from '../../lib/logger'
+
+const logger = createScopedLogger('store:project')
 
 export const initialProjectState: ProjectState = {
   videoPath: null,
@@ -292,6 +295,7 @@ async function prepareMacOSCursorBitmaps(theme: CursorTheme, scale: number): Pro
 export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get) => ({
   ...initialProjectState,
   loadProject: async ({ videoPath, metadataPath, webcamVideoPath }) => {
+    logger.info(`loadProject initiated: video=${videoPath}, metadata=${metadataPath}`)
     // The recorded files live under the userData dir ("Application Support" on
     // macOS, spaces and other URL-hostile characters included), so the path must
     // be percent-encoded or the <video> never loads and the preview stays blank.
@@ -417,7 +421,7 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
         })
       }
     } catch (error) {
-      console.error('Failed to process metadata file:', error)
+      logger.error('Failed to process metadata file:', error)
     }
 
     set((state) => {
@@ -426,6 +430,7 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
       state.saveError = null
     })
     markProjectClean(get())
+    logger.info(`loadProject complete: duration=${get().duration}s, audioTracks=${get().audioTracks.length}`)
   },
   setVideoDimensions: (dims) =>
     set((state) => {
@@ -448,6 +453,7 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
       })
     }),
   resetProjectState: () => {
+    logger.info('resetProjectState')
     set((state) => {
       Object.assign(state, initialProjectState)
       state.zoomRegions = {}
@@ -601,11 +607,12 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
     })
   },
   applyOpenedProject: async (project, projectPath, options) => {
+    logger.info(`applyOpenedProject initiated: path=${projectPath}, asUntitled=${options?.asUntitled}`)
     const opened = project as unknown as Partial<EditorState>
     const videoPath = typeof opened.videoPath === 'string' ? opened.videoPath : null
     const metadataPath = typeof opened.metadataPath === 'string' ? opened.metadataPath : null
     if (!videoPath || !metadataPath) {
-      console.error('[ProjectSlice] Opened project is missing its media paths.')
+      logger.error('[ProjectSlice] Opened project is missing its media paths.')
       return
     }
 
@@ -661,10 +668,16 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
     } else {
       markProjectClean(get())
     }
+    logger.info(`applyOpenedProject applied successfully: path=${projectPath}`)
   },
   saveProject: async (options) => {
     const current = get()
     if (!current.videoPath) return { canceled: true }
+    logger.info('saveProject initiated', {
+      auto: options?.auto,
+      saveAs: options?.saveAs,
+      path: current.currentProjectPath,
+    })
 
     const previousStatus = current.saveStatus
     // Capture the dirty baseline BEFORE the payload is collected. A save takes
@@ -694,6 +707,7 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
 
           if (result.canceled) {
             // Nothing was written (the user dismissed the save dialog).
+            logger.info('saveProject dismissed by user')
             setStatus(previousStatus)
             return result
           }
@@ -701,7 +715,7 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
           if (result.recovery) {
             // Only the crash-recovery copy was written: the project is still
             // unsaved, so leave currentProjectPath and the dirty flag alone.
-            console.info('[ProjectSlice] Auto-saved a recovery copy to', result.path)
+            logger.info('[ProjectSlice] Auto-saved a recovery copy to', result.path)
             set((state) => {
               const now = Date.now()
               state.lastRecoveryAt = now
@@ -740,12 +754,13 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
           })
           if (shouldDiscardRecovery) {
             void window.electronAPI.discardRecoveryCopy().catch((error) => {
-              console.warn('[ProjectSlice] Could not remove the recovery copy:', error)
+              logger.warn('[ProjectSlice] Could not remove the recovery copy:', error)
             })
           }
+          logger.info(`saveProject saved successfully: path=${result.path}`)
           return result
         } catch (error) {
-          console.error('[ProjectSlice] Failed to save the project:', error)
+          logger.error('[ProjectSlice] Failed to save the project:', error)
           setStatus('error', (error as Error)?.message ?? 'The save failed.')
           throw error
         }
@@ -756,6 +771,7 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
   saveProjectCopy: async () => {
     const current = get()
     if (!current.videoPath) return { canceled: true }
+    logger.info('saveProjectCopy initiated')
 
     // A copy is a snapshot. It never becomes the file being edited, so the
     // project path, the dirty flag and the save status are all left untouched.
@@ -764,6 +780,7 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
     return window.electronAPI.saveProjectCopy({ project: payload, suggestedName })
   },
   renameCurrentProject: async (newName) => {
+    logger.info(`renameCurrentProject: newName=${newName}`)
     const currentPath = get().currentProjectPath
     if (!currentPath) return { ok: false, error: 'Save the project before renaming it' }
 

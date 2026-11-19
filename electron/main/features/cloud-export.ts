@@ -73,11 +73,20 @@ export type CloudPreflightResult =
 
 /** capabilities → credit preflight → job (which reserves the credits). */
 export async function preflightCloudExport(request: CloudPreflightRequest): Promise<CloudPreflightResult> {
+  log.info('[CloudExport] Starting preflight request:', {
+    targetWidth: request.targetWidth,
+    targetHeight: request.targetHeight,
+    renderWidth: request.renderWidth,
+    renderHeight: request.renderHeight,
+    fps: request.fps,
+    durationSec: request.durationSec,
+  })
   let capabilities: CloudCapabilities
   try {
     capabilities = await fetchCapabilities()
   } catch (error) {
     const cloudError = error instanceof CloudError ? error : new CloudError(String(error), 'unreachable')
+    log.warn(`[CloudExport] Failed to reach capabilities endpoint: ${cloudError.message}`)
     return {
       ok: false,
       code: cloudError.code,
@@ -86,6 +95,7 @@ export async function preflightCloudExport(request: CloudPreflightRequest): Prom
   }
 
   if (capabilities.cloudEnabled === false) {
+    log.warn('[CloudExport] Cloud upscaling is currently disabled by server capabilities.')
     return { ok: false, code: 'cloud_disabled', error: 'Cloud upscaling is temporarily unavailable.' }
   }
 
@@ -99,12 +109,14 @@ export async function preflightCloudExport(request: CloudPreflightRequest): Prom
       targetWidth: request.targetWidth,
       targetHeight: request.targetHeight,
     })
+    log.info(`[CloudExport] Preflight approved. Job ${job.jobId} created with estimatedCost=${job.estimatedCost}`)
     return { ok: true, job, capabilities, cost: job.estimatedCost }
   } catch (error) {
     const cloudError = error as CloudError
     const details = (cloudError.details ?? {}) as { cost?: number; balance?: number; estimatedCost?: number }
     if (cloudError.code === 'insufficient_credits') {
       const cost = details.cost ?? details.estimatedCost ?? 0
+      log.warn(`[CloudExport] Preflight refused: insufficient credits (needs ${cost}, has ${details.balance ?? 0})`)
       return {
         ok: false,
         code: 'insufficient_credits',
@@ -113,6 +125,7 @@ export async function preflightCloudExport(request: CloudPreflightRequest): Prom
         balance: details.balance,
       }
     }
+    log.error(`[CloudExport] Preflight failed (${cloudError.code}): ${cloudError.message}`)
     return { ok: false, code: cloudError.code, error: `Could not start the cloud upscale: ${cloudError.message}` }
   }
 }
@@ -182,6 +195,9 @@ export async function runCloudExport(request: RunCloudExportRequest): Promise<Cl
 
   try {
     // --- Upload ---------------------------------------------------------------
+    log.info(
+      `[CloudExport] Starting upload of ${intermediatePath} for job ${job.jobId} (uploadType=${job.upload.type})`,
+    )
     onProgress({ stage: 'Uploading', stagePercent: 0 })
     const resume = getUploadResume(job.jobId)
     const uploaded = await uploadIntermediate(job.upload, intermediatePath, {
@@ -202,17 +218,29 @@ export async function runCloudExport(request: RunCloudExportRequest): Promise<Cl
     await completeUpload(job.jobId, uploaded.parts)
     onProgress({ stage: 'Uploading', stagePercent: 100 })
     clearUploadResume(job.jobId)
+    log.info(
+      `[CloudExport] Intermediate upload complete for job ${job.jobId} (${uploaded.parts.length} parts uploaded).`,
+    )
 
     // --- Start + validate -----------------------------------------------------
+    log.info(`[CloudExport] Starting processing on remote GPU cluster for job ${job.jobId}`)
     await startJob(job.jobId)
     onProgress({ stage: 'Validating', stagePercent: 0 })
 
+    let lastLoggedStage: CloudStage | null = null
     const view = await pollJob(job.jobId, {
       cancel,
       onUpdate: (polled) => {
         lastView = polled
         const stage = stageFromJobStatus(polled.status)
         if (!stage) return
+        if (stage !== lastLoggedStage) {
+          lastLoggedStage = stage
+          log.info(
+            `[CloudExport] Job ${job.jobId} stage transition: -> "${stage}" (progress=${polled.progress ?? 0}%, ` +
+              `framesDone=${polled.framesDone ?? 0}/${polled.totalFrames ?? 0}, eta=${polled.etaSeconds ?? 'unknown'}s)`,
+          )
+        }
         onProgress({ stage, stagePercent: polled.progress ?? 0, ...progressFromView(polled) })
       },
     })
@@ -220,6 +248,7 @@ export async function runCloudExport(request: RunCloudExportRequest): Promise<Cl
 
     if (view.status === 'rejected') {
       clearActiveJob()
+      log.warn(`[CloudExport] Job ${job.jobId} rejected by server: cost=${view.cost}`)
       return {
         ok: false,
         reason: 'rejected',
@@ -232,6 +261,9 @@ export async function runCloudExport(request: RunCloudExportRequest): Promise<Cl
 
     if (view.status === 'canceled') {
       clearActiveJob()
+      log.info(
+        `[CloudExport] Job ${job.jobId} status is canceled. Settlement: charge=${view.charge ?? 0}, refund=${view.refund ?? 0}`,
+      )
       return {
         ok: false,
         reason: 'canceled',
@@ -245,6 +277,7 @@ export async function runCloudExport(request: RunCloudExportRequest): Promise<Cl
 
     if (view.status !== 'succeeded' || !view.downloadUrl) {
       clearActiveJob()
+      log.error(`[CloudExport] Job ${job.jobId} ended with status "${view.status}" (error code: ${view.error?.code})`)
       return {
         ok: false,
         reason: 'failed',
@@ -259,6 +292,7 @@ export async function runCloudExport(request: RunCloudExportRequest): Promise<Cl
     }
 
     // --- Download -------------------------------------------------------------
+    log.info(`[CloudExport] Downloading result for job ${job.jobId} from ${view.downloadUrl} to ${outputPath}`)
     onProgress({ stage: 'Downloading', stagePercent: 0 })
     await downloadResult(view.downloadUrl, outputPath, {
       cancel,
@@ -271,13 +305,20 @@ export async function runCloudExport(request: RunCloudExportRequest): Promise<Cl
       log.warn(`[CloudExport] Could not remove the intermediate: ${error}`)
     })
     onProgress({ stage: 'Done', stagePercent: 100, ...progressFromView(view) })
-    log.info(`[CloudExport] Job ${job.jobId} downloaded to ${outputPath}.`)
+    const outStat = await fsp.stat(outputPath).catch(() => null)
+    log.info(
+      `[CloudExport] Job ${job.jobId} downloaded successfully to ${outputPath} (${outStat ? `${outStat.size} bytes` : 'unknown size'}). Settlement: charge=${view.charge ?? view.cost}, refund=${view.refund ?? 0}`,
+    )
     return { ok: true, outputPath, charge: view.charge ?? view.cost, refund: view.refund ?? 0 }
   } catch (error) {
     const cloudError = error as CloudError
 
     if (cloudError.code === 'cancelled' || cancel.cancelled) {
+      log.warn(`[CloudExport] Job ${job.jobId} cancelled. Settling with server...`)
       const settled = await cancelAndSettle(job.jobId, lastView)
+      log.info(
+        `[CloudExport] Job ${job.jobId} cancellation settled: charge=${settled.charge}, refund=${settled.refund}`,
+      )
       return {
         ok: false,
         reason: 'canceled',
@@ -292,6 +333,7 @@ export async function runCloudExport(request: RunCloudExportRequest): Promise<Cl
     log.error(`[CloudExport] Job ${job.jobId} failed: ${cloudError.message}`)
     // Ask the server to settle, so the user gets the refund it owes them.
     const settled = await cancelAndSettle(job.jobId, lastView)
+    log.info(`[CloudExport] Job ${job.jobId} failure settled: charge=${settled.charge}, refund=${settled.refund}`)
     return {
       ok: false,
       reason: 'failed',

@@ -16,6 +16,15 @@ export class VirtualAudioSink {
   private sampleRate = 48000
   private channels = 2
   private chunksWritten = 0
+  private totalBytesWritten = 0
+  private underflowCount = 0
+  private overflowCount = 0
+  private totalWriteLatencyMs = 0
+  private lastChunkTime = 0
+  private metricsTimer: NodeJS.Timeout | null = null
+  private lastMetricsTime = 0
+  private lastMetricsChunks = 0
+  private lastMetricsBytes = 0
 
   public isActive(): boolean {
     return this.active
@@ -34,8 +43,74 @@ export class VirtualAudioSink {
     return this.chunksWritten
   }
 
+  public getTotalBytesWritten(): number {
+    return this.totalBytesWritten
+  }
+
+  public getUnderflowCount(): number {
+    return this.underflowCount
+  }
+
+  public getOverflowCount(): number {
+    return this.overflowCount
+  }
+
+  public getMetrics(): {
+    chunksWritten: number
+    totalBytesWritten: number
+    underflowCount: number
+    overflowCount: number
+    queueDepth: number
+    avgWriteLatencyMs: number
+  } {
+    return {
+      chunksWritten: this.chunksWritten,
+      totalBytesWritten: this.totalBytesWritten,
+      underflowCount: this.underflowCount,
+      overflowCount: this.overflowCount,
+      queueDepth: this.audioProcess?.stdin?.writableLength ?? 0,
+      avgWriteLatencyMs:
+        this.chunksWritten > 0 ? Number((this.totalWriteLatencyMs / this.chunksWritten).toFixed(2)) : 0,
+    }
+  }
+
   public getOptions(): AudioSinkOptions | null {
     return this.options
+  }
+
+  private startMetricsTimer(): void {
+    this.stopMetricsTimer()
+    this.lastMetricsTime = Date.now()
+    this.lastMetricsChunks = this.chunksWritten
+    this.lastMetricsBytes = this.totalBytesWritten
+    this.metricsTimer = setInterval(() => {
+      if (!this.active) return
+      const now = Date.now()
+      const elapsedSec = (now - this.lastMetricsTime) / 1000
+      if (elapsedSec <= 0) return
+      const chunksDelta = this.chunksWritten - this.lastMetricsChunks
+      const bytesDelta = this.totalBytesWritten - this.lastMetricsBytes
+      const queueDepth = this.audioProcess?.stdin?.writableLength ?? 0
+      const avgLatency = this.chunksWritten > 0 ? (this.totalWriteLatencyMs / this.chunksWritten).toFixed(2) : '0.00'
+      const kbps = ((bytesDelta * 8) / (elapsedSec * 1000)).toFixed(1)
+      log.info(
+        `[VirtualAudioSink Metrics] Audio throughput: ${chunksDelta} chunks (${bytesDelta} bytes, ${kbps} kbps in ${elapsedSec.toFixed(1)}s) | Queue depth: ${queueDepth} bytes | Avg write latency: ${avgLatency}ms | Underflows: ${this.underflowCount} | Overflows: ${this.overflowCount}`,
+      )
+      this.lastMetricsTime = now
+      this.lastMetricsChunks = this.chunksWritten
+      this.lastMetricsBytes = this.totalBytesWritten
+    }, 5000)
+
+    if (this.metricsTimer && typeof this.metricsTimer.unref === 'function') {
+      this.metricsTimer.unref()
+    }
+  }
+
+  private stopMetricsTimer(): void {
+    if (this.metricsTimer) {
+      clearInterval(this.metricsTimer)
+      this.metricsTimer = null
+    }
   }
 
   /**
@@ -67,22 +142,38 @@ export class VirtualAudioSink {
     this.sampleRate = targetSampleRate
     this.channels = targetChannels
     this.chunksWritten = 0
+    this.totalBytesWritten = 0
+    this.underflowCount = 0
+    this.overflowCount = 0
+    this.totalWriteLatencyMs = 0
+    this.lastChunkTime = 0
+
+    log.info(
+      `[VirtualAudioSink] Starting audio sink (sampleRate: ${targetSampleRate}Hz, channels: ${targetChannels}, deviceSinkName: ${options.deviceSinkName || 'demothat_mic'})`,
+    )
 
     try {
+      let result: { success: boolean; error?: string }
       if (process.platform === 'linux') {
-        return await this.startLinuxSink(options)
+        result = await this.startLinuxSink(options)
       } else if (process.platform === 'win32') {
-        return await this.startWindowsSink(options)
+        result = await this.startWindowsSink(options)
       } else if (process.platform === 'darwin') {
-        return await this.startMacSink(options)
+        result = await this.startMacSink(options)
       } else {
         this.active = true
-        return { success: true }
+        result = { success: true }
       }
+
+      if (result.success && this.active) {
+        this.startMetricsTimer()
+      }
+      return result
     } catch (err: unknown) {
       log.warn('[VirtualAudioSink] Failed to start virtual audio sink process:', err)
       // Best-effort active state so UI doesn't crash on stub systems
       this.active = true
+      this.startMetricsTimer()
       return { success: true }
     }
   }
@@ -92,6 +183,10 @@ export class VirtualAudioSink {
    */
   private async startLinuxSink(options: AudioSinkOptions): Promise<{ success: boolean; error?: string }> {
     const sinkName = options.deviceSinkName || 'demothat_mic'
+    log.info(
+      `[VirtualAudioSink] Setting up Linux PipeWire/PulseAudio sink for target: ${sinkName} (${this.sampleRate}Hz, ${this.channels}ch, s16le)`,
+    )
+
     try {
       // First try pacat directly
       const proc = spawn('pacat', [
@@ -115,6 +210,7 @@ export class VirtualAudioSink {
         if (this.audioProcess === proc) {
           this.active = false
           this.audioProcess = null
+          this.stopMetricsTimer()
         }
       })
 
@@ -140,6 +236,7 @@ export class VirtualAudioSink {
           'pulse',
           sinkName,
         ]
+        log.info(`[VirtualAudioSink] Spawning FFmpeg pulse sink: ${ffmpegPath} ${args.join(' ')}`)
         const proc = spawn(ffmpegPath, args)
         proc.stdin.on('error', () => {})
         proc.on('close', (code) => {
@@ -147,6 +244,7 @@ export class VirtualAudioSink {
           if (this.audioProcess === proc) {
             this.active = false
             this.audioProcess = null
+            this.stopMetricsTimer()
           }
         })
         this.audioProcess = proc
@@ -197,10 +295,34 @@ export class VirtualAudioSink {
           ? Buffer.from(chunk)
           : Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength)
 
+      const now = Date.now()
+      if (this.lastChunkTime > 0) {
+        const gapMs = now - this.lastChunkTime
+        if (gapMs > 250) {
+          this.underflowCount++
+          log.debug(
+            `[VirtualAudioSink] Audio underflow detected: ${gapMs}ms gap between chunks (underflow #${this.underflowCount})`,
+          )
+        }
+      }
+      this.lastChunkTime = now
+
       if (this.audioProcess && this.audioProcess.stdin.writable) {
+        const queueDepth = this.audioProcess.stdin.writableLength ?? 0
+        if (queueDepth > 64 * 1024) {
+          this.overflowCount++
+          log.warn(
+            `[VirtualAudioSink] Audio queue overflow/backpressure: stdin buffer length ${queueDepth} bytes > 64KB (overflow #${this.overflowCount})`,
+          )
+        }
+
+        const writeStart = performance.now()
         this.audioProcess.stdin.write(buffer)
+        const writeDuration = performance.now() - writeStart
+        this.totalWriteLatencyMs += writeDuration
       }
       this.chunksWritten++
+      this.totalBytesWritten += buffer.length
       return true
     } catch (err: unknown) {
       log.warn('[VirtualAudioSink] pushAudio error:', err instanceof Error ? err.message : String(err))
@@ -212,11 +334,15 @@ export class VirtualAudioSink {
    * Stops the virtual audio sink and cleanly awaits child process termination.
    */
   public async stop(): Promise<void> {
+    this.stopMetricsTimer()
+
     if (!this.active && !this.audioProcess) {
       return
     }
 
-    log.info('[VirtualAudioSink] Stopping virtual audio sink')
+    log.info(
+      `[VirtualAudioSink] Stopping virtual audio sink. Session summary: ${this.chunksWritten} chunks (${this.totalBytesWritten} bytes written), underflows: ${this.underflowCount}, overflows: ${this.overflowCount}`,
+    )
     this.active = false
     const proc = this.audioProcess
     this.audioProcess = null

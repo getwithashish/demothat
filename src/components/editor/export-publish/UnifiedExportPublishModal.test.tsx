@@ -146,11 +146,11 @@ describe('UnifiedExportPublishModal', () => {
     await click(publishTab)
 
     expect(host.textContent).toContain('Render & Publish')
-    expect(host.textContent).toContain('Link Format')
     expect(host.textContent).toContain('Hosting Duration')
+    expect(host.textContent).toContain('Publishes hosted landing page, responsive embed player')
   })
 
-  it('switches to Published Videos & Analytics tab and displays publications list', async () => {
+  it('switches to Published Videos & Analytics tab and displays publications list with individual copy buttons', async () => {
     const host = await render(<UnifiedExportPublishModal {...defaultProps()} />)
 
     const analyticsTab = Array.from(host.querySelectorAll('button')).find((b) =>
@@ -161,6 +161,41 @@ describe('UnifiedExportPublishModal', () => {
     expect(host.textContent).toContain('1 Published Video')
     expect(host.textContent).toContain('Test Published Video')
     expect(host.textContent).toContain('active')
+
+    // Click publication card to expand
+    const pubTitle = Array.from(host.querySelectorAll('span')).find((s) =>
+      s.textContent?.includes('Test Published Video'),
+    )
+    await click(pubTitle?.closest('.cursor-pointer') ?? pubTitle)
+
+    // Verify Share Links section and individual copy buttons are shown
+    expect(host.textContent).toContain('Share Links')
+    expect(host.textContent).toContain('Landing Page')
+    expect(host.textContent).toContain('Embed Player')
+    expect(host.textContent).toContain('Embed HTML Code')
+    expect(host.textContent).toContain('Direct Download')
+    expect(host.textContent).toContain('Viewer Analytics')
+  })
+
+  it('handles publication deletion safely without crashing', async () => {
+    const mockDelete = vi.fn().mockResolvedValue({ ok: true })
+    const host = await render(
+      <UnifiedExportPublishModal {...defaultProps()} initialTab="analytics" onDeletePublication={mockDelete} />,
+    )
+
+    expect(host.textContent).toContain('Test Published Video')
+
+    // Click trash button
+    const trashBtn = host.querySelector('button.hover\\:text-danger')
+    await click(trashBtn)
+
+    expect(host.textContent).toContain('Delete this publication?')
+
+    // Click confirm delete
+    const confirmBtn = Array.from(host.querySelectorAll('button')).find((b) => b.textContent === 'Delete')
+    await click(confirmBtn)
+
+    expect(mockDelete).toHaveBeenCalledWith('pub_1')
   })
 
   it('shows empty state when no publications exist in Analytics tab', async () => {

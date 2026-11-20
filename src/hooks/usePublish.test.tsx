@@ -273,6 +273,38 @@ describe('usePublish & renderAndPublish pipeline', () => {
     expect(outcome.ok).toBe(true)
   })
 
+  it('passes cloud parameter to startExport when cloud: true is requested', async () => {
+    await renderHook()
+
+    let outcomePromise: Promise<PublishOutcome>
+    act(() => {
+      outcomePromise = hookResult!.renderAndPublish({
+        projectState: sampleProjectState,
+        exportSettings: sampleExportSettings,
+        publishOptions: samplePublishOptions,
+        cloud: true,
+      })
+    })
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(mockStartExport).toHaveBeenCalledWith({
+      projectState: sampleProjectState,
+      exportSettings: sampleExportSettings,
+      outputPath: '/tmp/demothat-publish-12345.mp4',
+      cloud: {},
+    })
+
+    act(() => {
+      exportCompleteCb?.({ success: true })
+    })
+
+    const outcome = await act(async () => await outcomePromise)
+    expect(outcome.ok).toBe(true)
+  })
+
   it('saves rendered copy via saveRenderedCopy helper', async () => {
     await renderHook()
 
@@ -469,6 +501,7 @@ describe('usePublish & renderAndPublish pipeline', () => {
       const delRes = await hookResult!.remove('pub-existing-1')
       expect(delRes.ok).toBe(true)
     })
+    expect(hookResult!.publications).toHaveLength(0)
 
     let analyticsRes: { ok: boolean } | undefined
     await act(async () => {

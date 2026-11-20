@@ -158,6 +158,7 @@ export function captureProjectSignature(state: EditorState): string {
 /** True when the tracked fields differ from the last clean baseline. */
 export function projectIsDirty(state: EditorState): boolean {
   if (!state.videoPath) return false
+  if (state.isVirtualStudioActive) return false
   return projectSignature(state) !== cleanSignature
 }
 
@@ -702,7 +703,9 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
     set((state) => {
       state.avSyncOffsetMs = clamped
       state.syncOffset = clamped
-      state.isDirty = true
+      if (!state.isVirtualStudioActive && state.videoPath) {
+        state.isDirty = true
+      }
     })
   },
   saveProject: async (options) => {

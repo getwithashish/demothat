@@ -26,6 +26,7 @@ export const useEditorStore = create(
   temporal(
     immer<EditorStore>((set, get) => ({
       // Combine initial states from all slices
+      ...initialVirtualStudioState,
       ...initialProjectState,
       ...initialPlaybackState,
       ...initialFrameState,
@@ -36,9 +37,9 @@ export const useEditorStore = create(
       ...initialAudioState,
       ...initialLicenseState,
       ...initialPurchaseState,
-      ...initialVirtualStudioState,
 
       // Combine actions from all slices
+      ...createVirtualStudioSlice(set, get),
       ...createProjectSlice(set, get),
       ...createPlaybackSlice(set, get),
       ...createFrameSlice(set, get),
@@ -49,7 +50,6 @@ export const useEditorStore = create(
       ...createAudioSlice(set, get),
       ...createLicenseSlice(set, get),
       ...createPurchaseSlice(set, get),
-      ...createVirtualStudioSlice(set, get),
 
       // Global reset action
       reset: () =>

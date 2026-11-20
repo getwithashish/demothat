@@ -7,7 +7,7 @@ import { detectSession } from '../../../../shared/session'
 import { appState } from '../../state'
 import { createRecorderWindow } from '../../windows/recorder-window'
 
-export function handleGetPath(_event: IpcMainInvokeEvent, name: 'home' | 'userData' | 'desktop') {
+export function handleGetPath(_event: IpcMainInvokeEvent, name: 'home' | 'userData' | 'desktop' | 'temp') {
   return app.getPath(name)
 }
 

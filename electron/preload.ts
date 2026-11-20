@@ -516,6 +516,17 @@ export const electronAPI = {
   probePublishFile: (filePath: string): Promise<{ ok: true; sizeBytes: number } | { ok: false; error: string }> =>
     ipcRenderer.invoke('publish:probe', { filePath }),
 
+  /** Generates a unique temporary file path in the OS temp directory for pre-publish renders. */
+  getTempPublishPath: (prefix?: string): Promise<string> => ipcRenderer.invoke('publish:getTempPath', prefix),
+
+  /** Safely copies a temporary rendered file to a destination path. */
+  saveTempPublishFile: (tempPath: string, destinationPath: string): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('publish:saveTempFile', { tempPath, destinationPath }),
+
+  /** Cleans up a temporary rendered file. */
+  cleanupTempPublishFile: (tempPath: string): Promise<void> =>
+    ipcRenderer.invoke('publish:cleanupTempFile', { tempPath }),
+
   /** Everything this license has published, newest last. */
   listPublications: (): Promise<{ ok: true; publications: PublicationView[] } | { ok: false; error: string }> =>
     ipcRenderer.invoke('publish:list'),
@@ -659,7 +670,7 @@ export const electronAPI = {
     ipcRenderer.invoke('presets:save', presets),
   getSetting: <T = any>(key: string): Promise<T> => ipcRenderer.invoke('settings:get', key),
   setSetting: (key: string, value: unknown): void => ipcRenderer.send('settings:set', key, value),
-  getPath: (name: 'home' | 'userData' | 'desktop'): Promise<string> => ipcRenderer.invoke('app:getPath', name),
+  getPath: (name: 'home' | 'userData' | 'desktop' | 'temp'): Promise<string> => ipcRenderer.invoke('app:getPath', name),
   getCursorThemes: (): Promise<string[]> => ipcRenderer.invoke('desktop:get-cursor-themes'),
   loadCursorTheme: (themeName?: string): Promise<CursorTheme | null> =>
     ipcRenderer.invoke('desktop:load-cursor-theme', themeName),

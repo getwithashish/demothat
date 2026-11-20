@@ -117,8 +117,6 @@ export const createVirtualStudioSlice: Slice<VirtualStudioState, VirtualStudioAc
     logger.info(`setAvSyncOffsetMs: ${clamped}`)
     set((state) => {
       state.avSyncOffsetMs = clamped
-      state.syncOffset = clamped
-      state.isDirty = true
     })
   },
   setSelectedCameraId: (id: string | null) => {
@@ -148,7 +146,10 @@ export const createVirtualStudioSlice: Slice<VirtualStudioState, VirtualStudioAc
       if (status.isMirrored !== undefined) {
         state.isMirrored = status.isMirrored
       }
-      if (status.avSyncOffsetMs !== undefined) {
+      if (
+        status.avSyncOffsetMs !== undefined &&
+        (state.isVirtualStudioActive || status.isStreaming || !state.videoPath)
+      ) {
         const clampedSync = Math.max(
           MIN_AV_SYNC_OFFSET_MS,
           Math.min(MAX_AV_SYNC_OFFSET_MS, Math.round(status.avSyncOffsetMs)),

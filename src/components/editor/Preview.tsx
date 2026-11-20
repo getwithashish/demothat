@@ -830,9 +830,16 @@ export const Preview = memo(
     // Dedicated effect for instant still-frame rendering when scrubbing/seeking while paused
     useEffect(() => {
       if (!isPlaying) {
+        if (webcamVideoRef.current && videoRef.current) {
+          const offsetSec = (avSyncOffsetMs ?? syncOffset ?? 0) / 1000
+          const targetWebcamTime = Math.max(0, videoRef.current.currentTime - offsetSec)
+          if (Math.abs(webcamVideoRef.current.currentTime - targetWebcamTime) > 0.01) {
+            webcamVideoRef.current.currentTime = targetWebcamTime
+          }
+        }
         void renderCanvasRef.current?.()
       }
-    }, [isPlaying, currentTime])
+    }, [isPlaying, currentTime, avSyncOffsetMs, syncOffset, videoRef])
 
     useEffect(() => {
       const video = videoRef.current
@@ -1179,6 +1186,11 @@ export const Preview = memo(
             muted
             playsInline
             onLoadedMetadata={handleWebcamLoadedMetadata}
+            onSeeked={() => {
+              if (!isPlaying) {
+                void renderCanvasRef.current?.()
+              }
+            }}
             style={{
               position: 'absolute',
               top: 0,

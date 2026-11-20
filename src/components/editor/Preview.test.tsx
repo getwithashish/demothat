@@ -123,4 +123,31 @@ describe('Preview Virtual Studio canvas attachment', () => {
     expect(setIntervalSpy).toHaveBeenCalledWith(expect.any(Function), 3500)
     setIntervalSpy.mockRestore()
   })
+
+  it('synchronizes webcam video element time when seeking while paused with lip sync offset', async () => {
+    act(() => {
+      useEditorStore.setState({
+        isPlaying: false,
+        currentTime: 0,
+        webcamVideoUrl: 'blob:test-webcam',
+        avSyncOffsetMs: 250,
+        syncOffset: 250,
+      })
+    })
+
+    const videoRef = { current: document.createElement('video') }
+    const el = await renderAsync(<Preview videoRef={videoRef} onSeekFrame={vi.fn()} />)
+
+    const webcamVideo = el.querySelector<HTMLVideoElement>('video[src="blob:test-webcam"]')
+    expect(webcamVideo).not.toBeNull()
+
+    // Simulate timeline scrub to 2.0s
+    act(() => {
+      videoRef.current.currentTime = 2.0
+      useEditorStore.setState({ currentTime: 2.0 })
+    })
+
+    // Target webcam time = 2.0 - 0.25 = 1.75s
+    expect(webcamVideo!.currentTime).toBeCloseTo(1.75, 2)
+  })
 })

@@ -157,7 +157,7 @@ describe('A/V Lip Sync Store Integration', () => {
   })
 
   it('setAvSyncOffsetMs updates state, clamps to [-2000, 3000], and marks project dirty', () => {
-    useEditorStore.setState({ isDirty: false, videoPath: '/tmp/screen.mp4' })
+    useEditorStore.setState({ isDirty: false, videoPath: '/tmp/screen.mp4', isVirtualStudioActive: false })
     useEditorStore.getState().setAvSyncOffsetMs(500)
 
     expect(useEditorStore.getState().avSyncOffsetMs).toBe(500)
@@ -169,6 +169,29 @@ describe('A/V Lip Sync Store Integration', () => {
 
     useEditorStore.getState().setAvSyncOffsetMs(-3500)
     expect(useEditorStore.getState().avSyncOffsetMs).toBe(MIN_AV_SYNC_OFFSET_MS)
+  })
+
+  it('setAvSyncOffsetMs does NOT mark project dirty when Virtual Studio is active', () => {
+    useEditorStore.setState({ isDirty: false, videoPath: '/tmp/screen.mp4', isVirtualStudioActive: true })
+    useEditorStore.getState().setAvSyncOffsetMs(300)
+
+    expect(useEditorStore.getState().avSyncOffsetMs).toBe(300)
+    expect(useEditorStore.getState().syncOffset).toBe(300)
+    expect(useEditorStore.getState().isDirty).toBe(false)
+  })
+
+  it('inactive Virtual Studio background status does not clobber open editor project avSyncOffsetMs', () => {
+    useEditorStore.setState({
+      videoPath: '/tmp/screen.mp4',
+      isVirtualStudioActive: false,
+      avSyncOffsetMs: DEFAULT_WEBCAM_MIC_AV_SYNC_OFFSET_MS,
+      syncOffset: DEFAULT_WEBCAM_MIC_AV_SYNC_OFFSET_MS,
+    })
+
+    // Simulate background IPC status event (e.g. driver probe with default 0ms)
+    useEditorStore.getState().setVirtualStudioStatus({ avSyncOffsetMs: 0, isStreaming: false })
+
+    expect(useEditorStore.getState().avSyncOffsetMs).toBe(DEFAULT_WEBCAM_MIC_AV_SYNC_OFFSET_MS)
   })
 
   it('applyOpenedProject preserves avSyncOffsetMs and syncOffset', async () => {

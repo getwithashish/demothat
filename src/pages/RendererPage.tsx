@@ -332,7 +332,8 @@ export function RendererPage() {
 
           const preSeekPromises: Promise<void>[] = [seekVideo(video, initialSourceTimestamp, 5000)]
           if (hasWebcam && webcamVideo) {
-            const offsetSec = (Number(projectState.avSyncOffsetMs) || Number(projectState.syncOffset) || 0) / 1000
+            const rawOffset = projectState.avSyncOffsetMs ?? projectState.syncOffset ?? 0
+            const offsetSec = (Number.isFinite(rawOffset) ? Number(rawOffset) : 0) / 1000
             const webcamInitialTimestamp = Math.max(0, initialSourceTimestamp - offsetSec)
             preSeekPromises.push(seekVideo(webcamVideo, webcamInitialTimestamp, 5000))
           }
@@ -398,7 +399,8 @@ export function RendererPage() {
 
           // Create seek promises for all video elements using mid-interval seek time
           const mainSeek = seekVideo(video, seekSourceTimestamp)
-          const offsetSec = (Number(projectState.avSyncOffsetMs) || Number(projectState.syncOffset) || 0) / 1000
+          const rawOffset = projectState.avSyncOffsetMs ?? projectState.syncOffset ?? 0
+          const offsetSec = (Number.isFinite(rawOffset) ? Number(rawOffset) : 0) / 1000
           const webcamSeekTime = Math.max(0, seekSourceTimestamp - offsetSec)
           const webcamSeek = hasWebcam && webcamVideo ? seekVideo(webcamVideo, webcamSeekTime) : Promise.resolve()
 

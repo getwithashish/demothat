@@ -4,7 +4,9 @@ on:
   issue_comment:
     types: [created]
   pull_request_target:
-    types: [opened, synchronize, reopened]
+    # 'closed' is required so the action can clean up status checks when a PR
+    # is closed without merging (e.g. draft PRs, abandoned contributions).
+    types: [opened, synchronize, reopened, closed]
 
 permissions:
   actions: write
@@ -18,12 +20,27 @@ jobs:
     steps:
       - name: 'CLA Assistant'
         if: (github.event.comment.body == 'recheck' || github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA') || github.event_name == 'pull_request_target'
-        uses: contributor-assistant/github-action@v2.6.1
+        # Pinned to the full commit SHA of v2.6.1 to prevent supply-chain
+        # attacks via mutable tag manipulation.
+        uses: contributor-assistant/github-action@ca4a40a7d1004f18d9960b404b97e5f30a505a08 # v2.6.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PERSONAL_ACCESS_TOKEN: ${{ secrets.CLA_BOT_PAT || secrets.GITHUB_TOKEN }}
+          # CLA_BOT_PAT must be a fine-grained Personal Access Token with
+          # "Contents: Read & Write" and "Pull requests: Read & Write" on this
+          # repository. It is required to push the cla-signatures.json update
+          # to main (a protected branch) and to avoid token-loop issues.
+          # Create it at: Settings → Developer settings → Personal access tokens
+          # Then add it as a repository secret named CLA_BOT_PAT.
+          PERSONAL_ACCESS_TOKEN: ${{ secrets.CLA_BOT_PAT }}
         with:
+          # Signatures are stored on `main` — the permanent, stable branch —
+          # so the signed record cannot be lost due to staging branch resets.
           path-to-signatures: '.github/cla-signatures.json'
-          path-to-document: 'https://github.com/${{ github.repository }}/blob/staging/CLA.md'
-          branch: 'staging'
-          allowlist: bot*,dependabot*,semantic-release-bot*
+          branch: 'main'
+          # Point contributors to the stable CLA text on main, not the
+          # mutable staging branch.
+          path-to-document: 'https://github.com/${{ github.repository }}/blob/main/CLA.md'
+          # Exempt automated bots and the repository owner from signing.
+          allowlist: 'bot*,dependabot*,semantic-release-bot*,getwithashish'
+          custom-allsigned-pr-comment: |
+            ✅ All contributors have signed the DemoThat CLA. Thank you for your contribution!

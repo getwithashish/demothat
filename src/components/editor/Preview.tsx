@@ -57,6 +57,8 @@ export const Preview = memo(
       cursorBitmapsToRender,
       videoClips,
       subtitleCues,
+      avSyncOffsetMs,
+      syncOffset,
     } = useEditorStore(
       useShallow((state) => ({
         videoUrl: state.videoUrl,
@@ -82,6 +84,8 @@ export const Preview = memo(
         cursorBitmapsToRender: state.cursorBitmapsToRender,
         videoClips: state.videoClips,
         subtitleCues: state.subtitleCues,
+        avSyncOffsetMs: state.avSyncOffsetMs,
+        syncOffset: state.syncOffset,
       })),
     )
 
@@ -892,9 +896,11 @@ export const Preview = memo(
         video.pause()
       }
       if (webcamVideoRef.current) {
-        const drift = Math.abs(webcamVideoRef.current.currentTime - newTime)
-        if (drift > 0.15) {
-          webcamVideoRef.current.currentTime = newTime
+        const offsetSec = (avSyncOffsetMs ?? syncOffset ?? 0) / 1000
+        const targetWebcamTime = Math.max(0, newTime - offsetSec)
+        const drift = Math.abs(webcamVideoRef.current.currentTime - targetWebcamTime)
+        if (drift > 0.05) {
+          webcamVideoRef.current.currentTime = targetWebcamTime
         }
         webcamVideoRef.current.playbackRate = video.playbackRate // Sync webcam speed
       }
@@ -942,19 +948,24 @@ export const Preview = memo(
       const mainVideo = videoRef.current
       const webcamVideo = webcamVideoRef.current
       if (mainVideo && webcamVideo) {
-        webcamVideo.currentTime = mainVideo.currentTime
+        const offsetSec = (avSyncOffsetMs ?? syncOffset ?? 0) / 1000
+        webcamVideo.currentTime = Math.max(0, mainVideo.currentTime - offsetSec)
         if (mainVideo.paused) {
           webcamVideo.pause()
         } else {
           webcamVideo.play().catch(console.error)
         }
       }
-    }, [videoRef])
+    }, [videoRef, avSyncOffsetMs, syncOffset])
 
     const handleScrub = (value: number) => {
       if (videoRef.current) {
         videoRef.current.currentTime = value
         setCurrentTime(value)
+      }
+      if (webcamVideoRef.current) {
+        const offsetSec = (avSyncOffsetMs ?? syncOffset ?? 0) / 1000
+        webcamVideoRef.current.currentTime = Math.max(0, value - offsetSec)
       }
     }
 
@@ -965,7 +976,23 @@ export const Preview = memo(
       if (videoRef.current) {
         videoRef.current.currentTime = rewindTime
       }
+      if (webcamVideoRef.current) {
+        const offsetSec = (avSyncOffsetMs ?? syncOffset ?? 0) / 1000
+        webcamVideoRef.current.currentTime = Math.max(0, rewindTime - offsetSec)
+      }
     }
+
+    // Immediately re-sync webcam video when lip sync offset is adjusted while paused or playing
+    useEffect(() => {
+      const mainVideo = videoRef.current
+      const webcamVideo = webcamVideoRef.current
+      if (webcamVideo && mainVideo) {
+        const offsetSec = (avSyncOffsetMs ?? syncOffset ?? 0) / 1000
+        const targetTime = Math.max(0, mainVideo.currentTime - offsetSec)
+        webcamVideo.currentTime = targetTime
+        void renderCanvas()
+      }
+    }, [videoRef, avSyncOffsetMs, syncOffset, renderCanvas])
 
     // The caption under the playhead. The cues are in export time — they are what the
     // sidecar file will carry — and the preview plays the recording, so the playhead

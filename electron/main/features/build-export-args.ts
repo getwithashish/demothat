@@ -115,6 +115,8 @@ export interface ExportProjectState {
   cutRegions?: Record<string, ExportRegion>
   speedRegions?: Record<string, ExportSpeedRegion>
   audioClips?: ExportAudioClip[]
+  avSyncOffsetMs?: number
+  syncOffset?: number
 }
 
 export interface ExportSettingsInput {

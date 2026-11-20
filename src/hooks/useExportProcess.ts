@@ -165,6 +165,7 @@ export const useExportProcess = () => {
         cursorTheme: fullState.cursorTheme,
         cursorStyles: fullState.cursorStyles,
         syncOffset: fullState.syncOffset,
+        avSyncOffsetMs: fullState.avSyncOffsetMs ?? fullState.syncOffset ?? 0,
       }
 
       setResult(null)

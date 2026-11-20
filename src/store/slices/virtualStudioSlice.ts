@@ -117,6 +117,8 @@ export const createVirtualStudioSlice: Slice<VirtualStudioState, VirtualStudioAc
     logger.info(`setAvSyncOffsetMs: ${clamped}`)
     set((state) => {
       state.avSyncOffsetMs = clamped
+      state.syncOffset = clamped
+      state.isDirty = true
     })
   },
   setSelectedCameraId: (id: string | null) => {

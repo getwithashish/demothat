@@ -12,9 +12,15 @@ import { SegmentedControl } from '../../ui/segmented-control'
 import { Slider } from '../../ui/slider'
 import { ToggleRow } from '../../ui/toggle-row'
 import { ICON_SIZE, ICON_STROKE } from '../../ui/icons'
-import { formatTime } from '../../../lib/utils'
+import { cn, formatTime } from '../../../lib/utils'
 import { DEFAULTS } from '../../../lib/constants'
 import { PanelHeader } from '../PanelHeader'
+import {
+  DEFAULT_AV_SYNC_OFFSET_MS,
+  DEFAULT_WEBCAM_MIC_AV_SYNC_OFFSET_MS,
+  MIN_AV_SYNC_OFFSET_MS,
+  MAX_AV_SYNC_OFFSET_MS,
+} from '../../../../shared/virtual-camera-types'
 
 function ResetButton({ onClick, label }: { onClick: () => void; label: string }) {
   return (
@@ -38,6 +44,9 @@ export function AudioSettings() {
     duration,
     currentTime,
     videoPath,
+    webcamVideoUrl,
+    avSyncOffsetMs,
+    setAvSyncOffsetMs,
     audioClips,
     selectedRegionId,
     addAudioClip,
@@ -61,6 +70,9 @@ export function AudioSettings() {
       duration: state.duration,
       currentTime: state.currentTime,
       videoPath: state.videoPath,
+      webcamVideoUrl: state.webcamVideoUrl,
+      avSyncOffsetMs: state.avSyncOffsetMs,
+      setAvSyncOffsetMs: state.setAvSyncOffsetMs,
       audioClips: state.audioClips,
       selectedRegionId: state.selectedRegionId,
       addAudioClip: state.addAudioClip,
@@ -167,9 +179,14 @@ export function AudioSettings() {
       )
   }
 
+  const defaultSyncOffset =
+    webcamVideoUrl && hasAudioTrack ? DEFAULT_WEBCAM_MIC_AV_SYNC_OFFSET_MS : DEFAULT_AV_SYNC_OFFSET_MS
+  const currentSyncOffset = avSyncOffsetMs ?? DEFAULT_AV_SYNC_OFFSET_MS
+
   const handleResetVolume = () => {
     setVolume(DEFAULTS.AUDIO.VOLUME.defaultValue)
     setIsMuted(DEFAULTS.AUDIO.MUTED.defaultValue)
+    setAvSyncOffsetMs(defaultSyncOffset)
   }
   const handleResetClipMix = () => {
     if (selectedClip) updateAudioClip(selectedClip.id, { volume: 1, fadeIn: 0, fadeOut: 0, loop: false })
@@ -381,6 +398,97 @@ export function AudioSettings() {
               onChange={setVolume}
               formatValue={(value) => `${value.toFixed(2)}\u00d7`}
             />
+
+            {/* A/V Lip Sync Offset */}
+            <div className="space-y-2 border-t border-line pt-3.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <SectionLabel>A/V Lip Sync</SectionLabel>
+                  {currentSyncOffset !== 0 && (
+                    <span className="rounded bg-accent/15 px-1 py-0.5 text-[11px] font-mono text-accent">
+                      {currentSyncOffset > 0
+                        ? `+${currentSyncOffset}ms (Video delay)`
+                        : `${currentSyncOffset}ms (Audio delay)`}
+                    </span>
+                  )}
+                </div>
+                {currentSyncOffset !== defaultSyncOffset && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setAvSyncOffsetMs(defaultSyncOffset)}
+                    className="h-6 px-1.5 text-[11px] text-muted hover:text-fg"
+                    title={`Reset lip sync offset to ${defaultSyncOffset > 0 ? `+${defaultSyncOffset}ms` : '0ms'}`}
+                    aria-label="Reset lip sync offset"
+                  >
+                    Reset
+                  </Button>
+                )}
+              </div>
+
+              <Slider
+                label="Lip sync offset"
+                min={MIN_AV_SYNC_OFFSET_MS}
+                max={MAX_AV_SYNC_OFFSET_MS}
+                step={10}
+                value={currentSyncOffset}
+                onChange={(val) => setAvSyncOffsetMs(val)}
+                formatValue={(val) => (val === 0 ? '0 ms' : val > 0 ? `+${val} ms` : `${val} ms`)}
+                showValue
+                className="w-full"
+              />
+
+              <HelperText className="mt-1">
+                {currentSyncOffset === 0
+                  ? 'Audio and video play in default sync'
+                  : currentSyncOffset > 0
+                    ? 'Delays webcam video so late audio stays in sync'
+                    : 'Advances webcam video so late video stays in sync'}
+              </HelperText>
+
+              {/* Presets and Nudge controls */}
+              <div className="space-y-2 pt-1">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[11px] text-muted mr-1">Presets:</span>
+                  {[0, 250, 500, 1000, 1500, 2000].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setAvSyncOffsetMs(preset)}
+                      className={cn(
+                        'rounded-ctl border px-2 py-0.5 text-[11px] font-mono transition-colors focus-visible:outline-2 focus-visible:outline-accent',
+                        currentSyncOffset === preset
+                          ? 'border-accent bg-accent text-on-accent font-semibold'
+                          : 'border-line bg-ctl text-muted hover:bg-ctl-hover hover:text-fg',
+                      )}
+                      aria-label={`Set preset ${preset}ms`}
+                    >
+                      {preset === 0 ? '0ms' : `+${preset}ms`}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] text-muted mr-1">Nudge:</span>
+                  <button
+                    type="button"
+                    onClick={() => setAvSyncOffsetMs(Math.max(MIN_AV_SYNC_OFFSET_MS, currentSyncOffset - 100))}
+                    className="rounded-ctl border border-line bg-ctl px-2 py-0.5 text-[11px] font-mono text-muted hover:bg-ctl-hover hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
+                    aria-label="Nudge -100ms"
+                  >
+                    -100ms
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAvSyncOffsetMs(Math.min(MAX_AV_SYNC_OFFSET_MS, currentSyncOffset + 100))}
+                    className="rounded-ctl border border-line bg-ctl px-2 py-0.5 text-[11px] font-mono text-muted hover:bg-ctl-hover hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
+                    aria-label="Nudge +100ms"
+                  >
+                    +100ms
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </Section>
 

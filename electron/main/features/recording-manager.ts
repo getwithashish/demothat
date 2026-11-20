@@ -40,6 +40,7 @@ import {
 import { probeVideoSize } from '../lib/video-size'
 import { parseDuration } from '../lib/audio-info'
 import { computeCrop } from '../../../shared/wayland-crop'
+import { DEFAULT_AV_SYNC_OFFSET_MS, DEFAULT_WEBCAM_MIC_AV_SYNC_OFFSET_MS } from '../../../shared/virtual-camera-types'
 import { applyCleanDemoMode, restoreCleanDemoMode } from './clean-demo-mode'
 
 const FFMPEG_PATH = getFFmpegPath()
@@ -1613,18 +1614,24 @@ async function processAndSaveMetadata(session: RecordingSession): Promise<boolea
     // leaves the list empty, which reads as "no audio" — the same as a silent
     // recording, and never as a track the editor would have to guess at.
     const audioTracks = await probeAudioTracks(session.screenVideoPath)
+    const hasWebcamAndMic = Boolean(session.webcamVideoPath) && (Boolean(session.hasMicAudio) || audioTracks.length > 0)
+    const initialSyncOffset = hasWebcamAndMic ? DEFAULT_WEBCAM_MIC_AV_SYNC_OFFSET_MS : DEFAULT_AV_SYNC_OFFSET_MS
+
     const finalMetadata = {
       platform: process.platform,
       screenSize: primaryDisplay.size,
       geometry: session.recordingGeometry,
-      syncOffset: 0,
+      syncOffset: initialSyncOffset,
+      avSyncOffsetMs: initialSyncOffset,
       cursorImages: Object.fromEntries(appState.runtimeCursorImageMap || []),
       events: finalEvents,
       audioTracks,
     }
 
     await fsPromises.writeFile(session.metadataPath, JSON.stringify(finalMetadata))
-    log.info(`Metadata saved to ${session.metadataPath} (${audioTracks.length} audio track(s))`)
+    log.info(
+      `Metadata saved to ${session.metadataPath} (${audioTracks.length} audio track(s), avSyncOffsetMs: ${initialSyncOffset})`,
+    )
     return true
   } catch (err) {
     log.error(`Failed to process and save metadata: ${err}`)
@@ -1636,6 +1643,7 @@ async function processAndSaveMetadata(session: RecordingSession): Promise<boolea
       geometry: session.recordingGeometry,
       screenSize: screen.getPrimaryDisplay().size,
       syncOffset: 0,
+      avSyncOffsetMs: 0,
       // The probe is what failed, so there is nothing honest to put here.
       audioTracks: [],
     }
@@ -1799,6 +1807,7 @@ export async function loadVideoFromFile() {
         events: [],
         cursorImages: {},
         syncOffset: 0,
+        avSyncOffsetMs: 0,
       }),
       'utf-8',
     )

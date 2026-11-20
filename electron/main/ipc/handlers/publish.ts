@@ -9,8 +9,10 @@
 // that the API prices from a size it reads itself and refuses to activate a
 // publication the balance cannot cover.
 
+import fs from 'node:fs'
 import fsp from 'node:fs/promises'
-import { BrowserWindow, ipcMain, type IpcMainInvokeEvent } from 'electron'
+import path from 'node:path'
+import { app, BrowserWindow, ipcMain, type IpcMainInvokeEvent } from 'electron'
 import log from 'electron-log/main'
 import {
   CloudError,
@@ -300,6 +302,80 @@ export async function handlePublishProbe(
   }
 }
 
+export function handlePublishGetTempPath(
+  _event?: IpcMainInvokeEvent,
+  optionsOrPrefix?: string | { prefix?: string },
+): string {
+  let prefix: string | undefined
+  if (typeof optionsOrPrefix === 'string') {
+    prefix = optionsOrPrefix
+  } else if (typeof optionsOrPrefix === 'object' && optionsOrPrefix !== null) {
+    prefix = optionsOrPrefix.prefix
+  }
+  const cleanPrefix = typeof prefix === 'string' && prefix.trim().length > 0 ? prefix.trim() : 'demothat-publish'
+  const tempDir = app.getPath('temp')
+  const filename = `${cleanPrefix}-${Date.now()}.mp4`
+  let candidate = path.join(tempDir, filename)
+  if (fs.existsSync(candidate)) {
+    let index = 1
+    while (fs.existsSync(path.join(tempDir, `${cleanPrefix}-${Date.now()}-${index}.mp4`))) {
+      index++
+    }
+    candidate = path.join(tempDir, `${cleanPrefix}-${Date.now()}-${index}.mp4`)
+  }
+  return candidate
+}
+
+export async function handlePublishSaveTempFile(
+  _event: IpcMainInvokeEvent,
+  requestOrTempPath: { tempPath: string; destinationPath: string } | string,
+  maybeDestPath?: string,
+): Promise<{ ok: boolean; error?: string }> {
+  let tempPath: string
+  let destinationPath: string
+
+  if (typeof requestOrTempPath === 'object' && requestOrTempPath !== null) {
+    tempPath = requestOrTempPath.tempPath
+    destinationPath = requestOrTempPath.destinationPath
+  } else {
+    tempPath = requestOrTempPath
+    destinationPath = maybeDestPath ?? ''
+  }
+
+  if (!tempPath || !destinationPath) {
+    return { ok: false, error: 'Source or destination path is missing.' }
+  }
+
+  try {
+    await fsp.mkdir(path.dirname(destinationPath), { recursive: true })
+    await fsp.copyFile(tempPath, destinationPath)
+    return { ok: true }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    log.error(`[PublishIPC] Failed to copy temp file from '${tempPath}' to '${destinationPath}':`, message)
+    return { ok: false, error: message }
+  }
+}
+
+export async function handlePublishCleanupTempFile(
+  _event: IpcMainInvokeEvent,
+  requestOrTempPath: { tempPath: string } | string,
+): Promise<void> {
+  const tempPath =
+    typeof requestOrTempPath === 'object' && requestOrTempPath !== null ? requestOrTempPath.tempPath : requestOrTempPath
+
+  if (!tempPath || typeof tempPath !== 'string') return
+
+  try {
+    await fsp.unlink(tempPath)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code !== 'ENOENT') {
+      const message = error instanceof Error ? error.message : String(error)
+      log.warn(`[PublishIPC] Failed to clean up temp file '${tempPath}':`, message)
+    }
+  }
+}
+
 export function registerPublishHandlers(): void {
   log.info('[PublishIPC] Registering instant publishing IPC handlers...')
   ipcMain.handle('publish:status', handlePublishStatus)
@@ -309,6 +385,9 @@ export function registerPublishHandlers(): void {
   ipcMain.handle('publish:delete', handlePublishDelete)
   ipcMain.handle('publish:analytics', handlePublishAnalytics)
   ipcMain.on('publish:cancel', handlePublishCancel)
+  ipcMain.handle('publish:getTempPath', handlePublishGetTempPath)
+  ipcMain.handle('publish:saveTempFile', handlePublishSaveTempFile)
+  ipcMain.handle('publish:cleanupTempFile', handlePublishCleanupTempFile)
 }
 
 /** Exported for the renderer's own cap display, so the two cannot disagree. */

@@ -6,7 +6,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { ChevronDown, Clock, Copy, Folder, Pencil, Video } from 'tabler-icons-react'
+import { ChevronDown, Clock, Copy, Folder, Pencil, Share, Video } from 'tabler-icons-react'
 import { useEditorStore } from '../../store/editorStore'
 import {
   DropdownMenu,
@@ -41,6 +41,7 @@ export interface ProjectMenuProps {
   onOpenRecovery: () => void
   onShowInFolder: () => void
   onNewRecording: () => void
+  onOpenPublishedVideos?: () => void
 }
 
 export function ProjectMenu({
@@ -52,6 +53,7 @@ export function ProjectMenu({
   onOpenRecovery,
   onShowInFolder,
   onNewRecording,
+  onOpenPublishedVideos,
 }: ProjectMenuProps) {
   const { currentProjectPath, recentProjects, autoSaveEnabled, lastSavedAt, lastRecoveryAt, platform, recoveryCopy } =
     useEditorStore(
@@ -230,6 +232,13 @@ export function ProjectMenu({
           <Video size={16} strokeWidth={ICON_STROKE} className="text-muted" />
           New recording
         </DropdownMenuItem>
+
+        {onOpenPublishedVideos && (
+          <DropdownMenuItem onSelect={onOpenPublishedVideos}>
+            <Share size={16} strokeWidth={ICON_STROKE} className="text-muted" />
+            Published Videos & Analytics
+          </DropdownMenuItem>
+        )}
 
         <DropdownMenuSeparator />
 

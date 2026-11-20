@@ -6,9 +6,7 @@ import { Timeline } from '../components/editor/Timeline'
 import { PreviewControls } from '../components/editor/PreviewControls'
 import { UpdateNotification } from '../components/editor/UpdateNotification'
 import { ExportButton } from '../components/editor/ExportButton'
-import { ExportModal } from '../components/editor/ExportModal'
-import { PublishDialog } from '../components/editor/publish/PublishDialog'
-import { SharedLinksDialog } from '../components/editor/publish/SharedLinksDialog'
+import { UnifiedExportPublishModal } from '../components/editor/export-publish/UnifiedExportPublishModal'
 import { WindowControls } from '../components/editor/WindowControls'
 import { SaveStatusIndicator } from '../components/editor/SaveStatusIndicator'
 import { ProjectMenu } from '../components/editor/ProjectMenu'
@@ -25,7 +23,6 @@ import { firstPurchaseProductId } from '../../shared/pricing'
 import { Stack3, Loader2, Check, Settings, Share } from 'tabler-icons-react'
 import { ICON_SIZE, ICON_STROKE } from '../components/ui/icons'
 import { cn, formatTime } from '../lib/utils'
-import { projectNameFromPath } from '../lib/recent-projects'
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
 import { useAutoSave } from '../hooks/useAutoSave'
 import { useSessionGuard } from '../hooks/useSessionGuard'
@@ -72,9 +69,6 @@ export function EditorPage() {
     buyCreditsOpen,
     buyCreditsShortfall,
     waitingForPayment,
-    subtitleCues,
-    balance,
-    videoPath,
   } = useEditorStore(
     useShallow((state) => ({
       presetSaveStatus: state.presetSaveStatus,
@@ -85,9 +79,6 @@ export function EditorPage() {
       buyCreditsOpen: state.buyCreditsOpen,
       buyCreditsShortfall: state.buyCreditsShortfall,
       waitingForPayment: state.waitingForPayment,
-      subtitleCues: state.subtitleCues,
-      balance: state.balance,
-      videoPath: state.videoPath,
     })),
   )
   // Top-bar meta (DESIGN_SPEC §5 shows "project | timecode · resolution"). Display only.
@@ -97,18 +88,12 @@ export function EditorPage() {
       : null
   const { undo, redo } = useEditorStore.temporal.getState()
   const {
-    isModalOpen: isExportModalOpen,
     isExporting,
     progress: exportProgress,
-    cloudProgress: exportCloudProgress,
     result: exportResult,
     cloudResumeOffer,
-    openExportModal: openExportModalBase,
-    closeExportModal,
     startExport,
     cancelExport,
-    retryCloud,
-    fallbackToStandard,
     resumeCloudWatch,
     dismissCloudResume,
   } = useExportProcess()
@@ -125,6 +110,8 @@ export function EditorPage() {
     loadList: loadPublications,
     remove: removePublication,
     analytics: publicationAnalytics,
+    renderAndPublish,
+    saveRenderedCopy,
   } = usePublish()
 
   // Saves in the background while the project has unsaved changes.
@@ -162,41 +149,49 @@ export function EditorPage() {
   const [isSettingsModalOpen, setSettingsModalOpen] = useState(false)
   const [isActivateOpen, setActivateOpen] = useState(false)
   const [isDevicesOpen, setDevicesOpen] = useState(false)
-  const [isPublishOpen, setPublishOpen] = useState(false)
-  const [isSharedLinksOpen, setSharedLinksOpen] = useState(false)
   const [isCommandBarOpen, setIsCommandBarOpen] = useState(false)
-  const [publishTarget, setPublishTarget] = useState<{ path: string; sizeBytes: number } | null>(null)
   const [updateInfo, setUpdateInfo] = useState<{ version: string; url: string } | null>(null)
   const [platform, setPlatform] = useState<NodeJS.Platform | null>(null)
 
+  // Unified Export & Publish modal state
+  const [isUnifiedModalOpen, setUnifiedModalOpen] = useState(false)
+  const [unifiedModalInitialTab, setUnifiedModalInitialTab] = useState<'export-publish' | 'analytics'>('export-publish')
+  const [unifiedModalInitialMode, setUnifiedModalInitialMode] = useState<'local' | 'cloud'>('local')
+  const [unifiedModalTrigger, setUnifiedModalTrigger] = useState<string>('#export-trigger-btn')
+
+  const handleOpenExport = useCallback(() => {
+    setExportMinimized(false)
+    setUnifiedModalTrigger('#export-trigger-btn')
+    setUnifiedModalInitialTab('export-publish')
+    setUnifiedModalInitialMode('local')
+    setUnifiedModalOpen(true)
+  }, [])
+
+  const handleOpenPublish = useCallback(() => {
+    setExportMinimized(false)
+    setUnifiedModalTrigger('#publish-trigger-btn')
+    if (duration <= 0) {
+      setUnifiedModalInitialTab('analytics')
+    } else {
+      setUnifiedModalInitialTab('export-publish')
+      setUnifiedModalInitialMode('cloud')
+    }
+    setUnifiedModalOpen(true)
+  }, [duration])
+
+  const handleOpenAnalytics = useCallback(() => {
+    setExportMinimized(false)
+    setUnifiedModalTrigger('#publish-trigger-btn')
+    setUnifiedModalInitialTab('analytics')
+    setUnifiedModalOpen(true)
+  }, [])
+
   // Listen to AI tool executions from the main process
   useAIToolDispatcher()
-  const openExportModal = () => {
-    setExportMinimized(false)
-    openExportModalBase()
-  }
+  const openExportModal = handleOpenExport
   useEffect(() => {
     if (!isExporting) setExportMinimized(false)
   }, [isExporting])
-
-  // Publishing sends the most recent export when there is one, and otherwise the
-  // project's own recording. The size comes from the main process because the renderer
-  // cannot stat a file, and the price has to be quoted before anything is uploaded.
-  const publishTargetPath = exportResult?.outputPath ?? videoPath ?? null
-  useEffect(() => {
-    if (publishTargetPath === null) {
-      setPublishTarget(null)
-      return
-    }
-    let cancelled = false
-    void window.electronAPI.probePublishFile(publishTargetPath).then((result) => {
-      if (cancelled) return
-      setPublishTarget(result.ok ? { path: publishTargetPath, sizeBytes: result.sizeBytes } : null)
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [publishTargetPath, isPublishOpen])
 
   const handleDeleteSelectedRegion = useCallback(() => {
     if (useEditorStore.getState().selectedRegionId) {
@@ -472,19 +467,14 @@ export function EditorPage() {
         </kbd>
       </Button>,
       <VirtualStudioHeaderPill key="virtual-studio" />,
-      <ExportButton key="export" isExporting={isExporting} onClick={openExportModal} disabled={duration <= 0} />,
+      <ExportButton key="export" isExporting={isExporting} onClick={handleOpenExport} disabled={duration <= 0} />,
       <Button
         key="publish"
         id="publish-trigger-btn"
         variant="secondary"
         size="sm"
-        onClick={() => setPublishOpen(true)}
-        disabled={duration <= 0 || publishTarget === null}
-        title={
-          publishTarget === null
-            ? 'Export this project first — publishing sends the exported video'
-            : 'Publish this video behind a share link'
-        }
+        onClick={handleOpenPublish}
+        title={duration <= 0 ? 'View your published videos and analytics' : 'Publish this video behind a share link'}
         className="h-8"
       >
         <Share size={ICON_SIZE} strokeWidth={ICON_STROKE} className="mr-2" />
@@ -575,6 +565,7 @@ export function EditorPage() {
                 onOpenRecovery={() => void handleOpenRecovery()}
                 onShowInFolder={handleShowInFolder}
                 onNewRecording={handleNewRecording}
+                onOpenPublishedVideos={handleOpenAnalytics}
               />
               {metaLabel && <span className="truncate font-mono text-sm text-muted">{metaLabel}</span>}
               <SaveStatusIndicator />
@@ -672,58 +663,35 @@ export function EditorPage() {
           <span className="relative font-mono text-sm">{Math.round(exportProgress)}%</span>
         </button>
       )}
-      <ExportModal
-        isOpen={isExportModalOpen && !isExportMinimized}
+      <UnifiedExportPublishModal
+        isOpen={isUnifiedModalOpen && !isExportMinimized}
         onClose={() => {
-          closeExportModal()
+          setUnifiedModalOpen(false)
           setExportMinimized(false)
         }}
-        onMinimize={() => setExportMinimized(true)}
+        initialTab={unifiedModalInitialTab}
+        initialMode={unifiedModalInitialMode}
+        triggerSelector={unifiedModalTrigger}
+        isExporting={isExporting}
+        exportProgress={exportProgress}
+        exportResult={exportResult}
         onStartExport={startExport}
         onCancelExport={cancelExport}
-        isExporting={isExporting}
-        progress={exportProgress}
-        cloudProgress={exportCloudProgress}
-        result={exportResult}
-        onRetryCloud={(request) => void retryCloud(request)}
-        onFallbackStandard={(request) => void fallbackToStandard(request)}
-      />
-      <PresetModal isOpen={isPresetModalOpen} onClose={() => setPresetModalOpen(false)} />
-
-      <PublishDialog
-        isOpen={isPublishOpen}
-        onClose={() => setPublishOpen(false)}
-        capabilities={publishStatus?.publishing ?? null}
-        pro={publishStatus?.pro ?? false}
-        configured={publishStatus?.configured ?? false}
+        publishStatus={publishStatus}
         isPublishing={isPublishing}
-        progress={publishProgress}
-        balance={balance}
-        filePath={publishTarget?.path ?? null}
-        fileSizeBytes={publishTarget?.sizeBytes ?? 0}
-        durationSec={duration}
-        cues={subtitleCues}
-        defaultTitle={projectNameFromPath(currentProjectPath ?? '')}
-        onPublish={startPublish}
-        onCancel={cancelPublish}
-        onUnlock={() => useEditorStore.getState().openBuyCredits()}
-        onOpenLibrary={() => {
-          setPublishOpen(false)
-          setSharedLinksOpen(true)
-        }}
-        onCopied={(label) => pushToast({ message: `${label} copied to the clipboard` })}
-      />
-
-      <SharedLinksDialog
-        isOpen={isSharedLinksOpen}
-        onClose={() => setSharedLinksOpen(false)}
+        publishProgress={publishProgress}
         publications={publications}
         isLoadingList={isLoadingList}
-        onRefresh={loadPublications}
-        onDelete={removePublication}
+        onRenderAndPublish={renderAndPublish}
+        onPublish={startPublish}
+        onCancelPublish={cancelPublish}
+        onLoadPublications={loadPublications}
+        onDeletePublication={removePublication}
         onAnalytics={publicationAnalytics}
+        onSaveRenderedCopy={saveRenderedCopy}
         onCopied={(label) => pushToast({ message: `${label} copied to the clipboard` })}
       />
+      <PresetModal isOpen={isPresetModalOpen} onClose={() => setPresetModalOpen(false)} />
       <SettingsModal isOpen={isSettingsModalOpen} onClose={() => setSettingsModalOpen(false)} />
       <ActivationDialog
         isOpen={isActivateOpen}

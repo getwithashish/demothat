@@ -1,3 +1,9 @@
+## [1.21.0-beta.24](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.23...v1.21.0-beta.24) (2026-11-20)
+
+### Features
+
+* **editor:** add automatic A/V lip sync compensation and editor slider ([d456a7f](https://github.com/getwithashish/DemoThat/commit/d456a7f2ee805120161e0c98bac5bb30b9eb7c6f))
+
 ## [1.21.0-beta.23](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.22...v1.21.0-beta.23) (2026-11-20)
 
 ### Bug Fixes

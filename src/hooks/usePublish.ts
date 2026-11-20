@@ -101,6 +101,7 @@ export interface RenderAndPublishParams {
   projectState: ExportProjectState
   exportSettings: RenderExportSettings
   publishOptions: RenderPublishOptions
+  cloud?: boolean
 }
 
 /**
@@ -277,6 +278,7 @@ export function usePublish() {
     canceledRef.current = true
     if (pipelinePhaseRef.current === 'rendering') {
       window.electronAPI.cancelExport()
+      window.electronAPI.cancelCloudRetry?.()
     } else {
       window.electronAPI.cancelPublish()
     }
@@ -291,6 +293,7 @@ export function usePublish() {
       let projectState: ExportProjectState
       let exportSettings: RenderExportSettings
       let publishOptions: RenderPublishOptions
+      let cloud = false
 
       if (
         typeof projectStateOrParams === 'object' &&
@@ -303,6 +306,7 @@ export function usePublish() {
         projectState = params.projectState
         exportSettings = params.exportSettings
         publishOptions = params.publishOptions
+        cloud = Boolean(params.cloud)
       } else {
         projectState = projectStateOrParams as ExportProjectState
         exportSettings = maybeExportSettings!
@@ -361,9 +365,20 @@ export function usePublish() {
 
             const cleanProgress = window.electronAPI.onExportProgress((payload) => {
               if (!mounted.current) return
-              const percent = typeof payload.progress === 'number' ? Math.round(payload.progress) : 0
+              const percent =
+                typeof payload.stagePercent === 'number'
+                  ? Math.round(payload.stagePercent)
+                  : typeof payload.progress === 'number'
+                    ? Math.round(payload.progress)
+                    : 0
+              const stageName =
+                payload.stage &&
+                payload.stage.toLowerCase() !== 'rendering' &&
+                payload.stage !== 'Local intermediate render'
+                  ? `Upscaling (${payload.stage})`
+                  : 'Rendering'
               setProgress({
-                stage: 'Rendering',
+                stage: stageName,
                 stagePercent: Math.min(100, Math.max(0, percent)),
               })
             })
@@ -387,6 +402,7 @@ export function usePublish() {
                 projectState,
                 exportSettings,
                 outputPath: tempPath,
+                ...(cloud ? { cloud: {} } : {}),
               })
               .catch((err) => {
                 const isCanceled =
@@ -436,7 +452,7 @@ export function usePublish() {
 
         const outcome = (await window.electronAPI.startPublish({
           filePath: tempPath,
-          kind: publishOptions.kind,
+          kind: publishOptions.kind || 'page',
           storageDays: publishOptions.storageDays,
           title: publishOptions.title,
           durationSec: projectState.duration,
@@ -487,11 +503,7 @@ export function usePublish() {
       try {
         const result = await window.electronAPI.deletePublication(publicationId)
         if (!result.ok) return { ok: false, error: result.error }
-        setPublications((current) =>
-          current.map((publication) =>
-            publication.publicationId === publicationId ? result.publication : publication,
-          ),
-        )
+        setPublications((current) => current.filter((publication) => publication.publicationId !== publicationId))
         return { ok: true, creditsRefunded: result.creditsRefunded }
       } catch (error) {
         return { ok: false, error: error instanceof Error ? error.message : String(error) }

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { Ban, CircleCheck, CircleX, Folder, Loader2, Refresh, Share, Trash, X } from 'tabler-icons-react'
+import { Ban, CircleCheck, CircleX, Cloud, Folder, Loader2, Refresh, Share, Trash, X } from 'tabler-icons-react'
 import { ICON_SIZE, ICON_STROKE } from '../../ui/icons'
 import { Button } from '../../ui/button'
 import { Input } from '../../ui/input'
@@ -31,12 +31,7 @@ import { CloudConsentDialog } from '../cloud/CloudConsentDialog'
 import { CloudExportProgress } from '../cloud/CloudExportProgress'
 import { CancelExportDialog } from '../cloud/CancelExportDialog'
 import { OutOfCreditsDialog } from '../cloud/OutOfCreditsDialog'
-import {
-  estimatePublishCredits,
-  formatBytes,
-  type PublicationKind,
-  type PublishingCapabilities,
-} from '../../../../shared/publish-cost'
+import { estimatePublishCredits, formatBytes, type PublishingCapabilities } from '../../../../shared/publish-cost'
 import {
   extractExportProjectState,
   type ExportProjectState,
@@ -357,8 +352,7 @@ export function UnifiedExportPublishModal({
     }
   }, [localFilename])
 
-  // Cloud publish settings
-  const [kind, setKind] = useState<PublicationKind>('page')
+  // Cloud publish settings (always 'page' so landing page, embed, code, download & captions are all generated)
   const [storageDays, setStorageDays] = useState<number>(365)
   const [cloudTitle, setCloudTitle] = useState('')
   const [includeCaptions, setIncludeCaptions] = useState(true)
@@ -374,12 +368,11 @@ export function UnifiedExportPublishModal({
     }
   }, [currentProjectPath])
 
-  // Set default storageDays and kind from capabilities
+  // Set default storageDays from capabilities
   const capabilities: PublishingCapabilities | null = publishStatus?.publishing ?? null
   useEffect(() => {
     if (capabilities) {
       setStorageDays(capabilities.defaultDurationDays)
-      setKind(capabilities.kinds.includes('page') ? 'page' : (capabilities.kinds[0] ?? 'links'))
     }
   }, [capabilities])
 
@@ -544,9 +537,13 @@ export function UnifiedExportPublishModal({
     return estimatePublishCredits(capabilities, {
       sizeBytes: Math.round(estMB * 1_000_000),
       storageDays,
-      kind,
+      kind: 'page',
     })
-  }, [capabilities, estimatedDuration, settings.quality, storageDays, kind])
+  }, [capabilities, estimatedDuration, settings.quality, storageDays])
+
+  const totalPublishCredits = quotedPublishCredits + (selectedIsUpscale ? cloudCredits : 0)
+  const insufficientPublishCredits = selectedIsUpscale && cloudCost !== null && balance < totalPublishCredits
+  const publishCreditShortfall = Math.max(0, totalPublishCredits - balance)
 
   // Handle format change
   const handleFormatChange = (newFormat: 'mp4' | 'gif') => {
@@ -626,6 +623,23 @@ export function UnifiedExportPublishModal({
 
   // Handle Cloud Render & Publish click
   const handleTriggerCloudPublish = async () => {
+    if (duration <= 0 || isPublishing) return
+
+    if (selectedIsUpscale) {
+      if (proLocked) {
+        handleUnlockPro()
+        return
+      }
+      if (insufficientPublishCredits) {
+        setOutOfCreditsOpen(true)
+        return
+      }
+      if (!cloud?.consent) {
+        setConsentOpen(true)
+        return
+      }
+    }
+
     const cues = includeCaptions && subtitleCues.length > 0 ? subtitleCues : undefined
     const title = cloudTitle.trim() || 'DemoThat Video'
 
@@ -639,17 +653,18 @@ export function UnifiedExportPublishModal({
           quality: settings.quality,
         },
         publishOptions: {
-          kind,
+          kind: 'page',
           storageDays,
           title,
           cues,
         },
+        cloud: selectedIsUpscale,
       })
       setPublishOutcome(outcome)
     } else if (onPublish) {
       const outcome = await onPublish({
         filePath: outputPath,
-        kind,
+        kind: 'page',
         storageDays,
         title,
         durationSec: duration,
@@ -705,6 +720,8 @@ export function UnifiedExportPublishModal({
       } else {
         pushToast({ message: res.error || 'Could not delete publication' })
       }
+    } catch (err) {
+      pushToast({ message: err instanceof Error ? err.message : 'Could not delete publication' })
     } finally {
       setIsDeleting(false)
     }
@@ -940,7 +957,7 @@ export function UnifiedExportPublishModal({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header with Title and Close */}
-        <div className="flex items-center justify-between border-b border-border/60 px-5 py-3.5">
+        <div className="flex items-center justify-between border-b border-line px-5 py-3.5">
           <div className="flex items-center gap-2">
             <Share size={16} strokeWidth={ICON_STROKE} className="text-accent" />
             <h2 className="text-sm font-semibold text-fg">Export & Instant Publishing</h2>
@@ -951,7 +968,7 @@ export function UnifiedExportPublishModal({
         </div>
 
         {/* Gliding Persistent Tab Bar */}
-        <div className="border-b border-border/60 bg-panel px-5 py-2">
+        <div className="border-b border-line bg-panel px-5 py-2">
           <div className="relative flex rounded-ctl bg-ctl/60 p-1">
             {tabs.map((tab) => {
               const isSelected = activeTab === tab.id
@@ -1118,7 +1135,7 @@ export function UnifiedExportPublishModal({
               </div>
 
               {/* Estimates Panel */}
-              <div className="rounded-ctl border border-border/60 bg-ctl/30 p-3 space-y-2">
+              <div className="rounded-ctl border border-line bg-ctl/30 p-3 space-y-2">
                 <EstimateRow label="Estimated Duration" value={formatTime(estimatedDuration, true)} />
                 {frames > 0 && <EstimateRow label="Total Frames" value={`${frames.toLocaleString()} frames`} />}
                 {!selectedIsUpscale && (
@@ -1155,7 +1172,7 @@ export function UnifiedExportPublishModal({
               </div>
 
               {/* Bottom Actions */}
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-border/60">
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-line">
                 <Button variant="secondary" size="sm" onClick={requestClose}>
                   Cancel
                 </Button>
@@ -1190,7 +1207,7 @@ export function UnifiedExportPublishModal({
                       </div>
 
                       {/* Links Card */}
-                      <div className="rounded-ctl border border-border/60 bg-ctl/30 p-3 space-y-2.5">
+                      <div className="rounded-ctl border border-line bg-ctl/30 p-3 space-y-2.5">
                         {publishOutcome.publication.links.pageUrl && (
                           <div className="flex items-center justify-between gap-3 text-xs">
                             <div className="min-w-0">
@@ -1210,7 +1227,7 @@ export function UnifiedExportPublishModal({
                           </div>
                         )}
                         {publishOutcome.publication.links.embedUrl && (
-                          <div className="flex items-center justify-between gap-3 text-xs border-t border-border/40 pt-2">
+                          <div className="flex items-center justify-between gap-3 text-xs border-t border-line/40 pt-2">
                             <div className="min-w-0">
                               <span className="font-medium text-muted">Embed Player</span>
                               <div
@@ -1227,8 +1244,26 @@ export function UnifiedExportPublishModal({
                             />
                           </div>
                         )}
+                        {publishOutcome.publication.links.embedCode && (
+                          <div className="flex items-center justify-between gap-3 text-xs border-t border-line/40 pt-2">
+                            <div className="min-w-0">
+                              <span className="font-medium text-muted">Embed HTML Code</span>
+                              <div
+                                className="truncate font-mono text-fg"
+                                title={publishOutcome.publication.links.embedCode}
+                              >
+                                {publishOutcome.publication.links.embedCode}
+                              </div>
+                            </div>
+                            <CopyButton
+                              value={publishOutcome.publication.links.embedCode}
+                              label="Embed HTML Code"
+                              onCopied={onCopied}
+                            />
+                          </div>
+                        )}
                         {publishOutcome.publication.links.videoDownloadUrl && (
-                          <div className="flex items-center justify-between gap-3 text-xs border-t border-border/40 pt-2">
+                          <div className="flex items-center justify-between gap-3 text-xs border-t border-line/40 pt-2">
                             <div className="min-w-0">
                               <span className="font-medium text-muted">Direct Download</span>
                               <div
@@ -1241,6 +1276,24 @@ export function UnifiedExportPublishModal({
                             <CopyButton
                               value={publishOutcome.publication.links.videoDownloadUrl}
                               label="Download URL"
+                              onCopied={onCopied}
+                            />
+                          </div>
+                        )}
+                        {publishOutcome.publication.links.captionsDownloadUrl && (
+                          <div className="flex items-center justify-between gap-3 text-xs border-t border-line/40 pt-2">
+                            <div className="min-w-0">
+                              <span className="font-medium text-muted">Captions (VTT)</span>
+                              <div
+                                className="truncate font-mono text-fg"
+                                title={publishOutcome.publication.links.captionsDownloadUrl}
+                              >
+                                {publishOutcome.publication.links.captionsDownloadUrl}
+                              </div>
+                            </div>
+                            <CopyButton
+                              value={publishOutcome.publication.links.captionsDownloadUrl}
+                              label="Captions URL"
                               onCopied={onCopied}
                             />
                           </div>
@@ -1274,7 +1327,7 @@ export function UnifiedExportPublishModal({
                       </div>
 
                       {/* Done and View in Analytics Actions */}
-                      <div className="flex items-center justify-end gap-2 pt-2 border-t border-border/60">
+                      <div className="flex items-center justify-end gap-2 pt-2 border-t border-line">
                         <Button
                           variant="secondary"
                           size="sm"
@@ -1395,40 +1448,28 @@ export function UnifiedExportPublishModal({
                     />
                   </div>
 
-                  {/* Hosting Term & Kind */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-muted">Link Format</label>
-                      <Select value={kind} onValueChange={(v) => setKind(v as PublicationKind)}>
-                        <SelectTrigger className="w-full">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="page">Landing Page</SelectItem>
-                          <SelectItem value="embed">Embed Player</SelectItem>
-                          <SelectItem value="links">Download Links</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-muted">Hosting Duration</label>
-                      <Select value={String(storageDays)} onValueChange={(v) => setStorageDays(Number(v))}>
-                        <SelectTrigger className="w-full">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="30">30 Days</SelectItem>
-                          <SelectItem value="90">90 Days</SelectItem>
-                          <SelectItem value="365">1 Year</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+                  {/* Hosting Duration */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted">Hosting Duration</label>
+                    <Select value={String(storageDays)} onValueChange={(v) => setStorageDays(Number(v))}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="30">30 Days</SelectItem>
+                        <SelectItem value="90">90 Days</SelectItem>
+                        <SelectItem value="365">1 Year</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-[11px] text-muted">
+                      Publishes hosted landing page, responsive embed player, embed code snippet, and direct download
+                      links all at once.
+                    </p>
                   </div>
 
                   {/* Captions inclusion */}
                   {subtitleCues.length > 0 && (
-                    <div className="flex items-center justify-between rounded-ctl border border-border/60 bg-ctl/30 p-3">
+                    <div className="flex items-center justify-between rounded-ctl border border-line bg-ctl/30 p-3">
                       <div className="text-xs">
                         <span className="font-medium text-fg">Include Captions</span>
                         <p className="text-muted">Includes {subtitleCues.length} subtitle cues with player track</p>
@@ -1443,24 +1484,84 @@ export function UnifiedExportPublishModal({
                   )}
 
                   {/* Publishing Cost & Balance */}
-                  <div className="rounded-ctl border border-border/60 bg-ctl/30 p-3 space-y-1.5 text-xs">
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted">Estimated Publish Storage</span>
-                      <span className="font-medium text-fg">{quotedPublishCredits} credits</span>
-                    </div>
-                    <div className="flex items-center justify-between text-muted">
+                  <div className="rounded-ctl border border-line bg-ctl/30 p-3 space-y-1.5 text-xs">
+                    {selectedIsUpscale && (
+                      <>
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted">
+                            Cloud AI Upscaling ({targetDimensions.width}×{targetDimensions.height})
+                          </span>
+                          <span className="font-medium text-fg">
+                            {cloudCost ? `${cloudCredits} credits` : 'Calculating…'}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted">Publish CDN Storage</span>
+                          <span className="font-medium text-fg">{quotedPublishCredits} credits</span>
+                        </div>
+                        <div className="flex items-center justify-between border-t border-line/60 pt-1 font-semibold">
+                          <span className="text-fg">Total Credits</span>
+                          <span className="text-accent">{totalPublishCredits} credits</span>
+                        </div>
+                      </>
+                    )}
+                    {!selectedIsUpscale && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted">Estimated Publish Storage</span>
+                        <span className="font-medium text-fg">{quotedPublishCredits} credits</span>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between text-muted pt-0.5">
                       <span>Account Balance</span>
                       <span>{formatCredits(balance)}</span>
                     </div>
                   </div>
 
+                  {selectedIsUpscale && (
+                    <div className="rounded-ctl border border-line bg-panel p-3 text-xs text-muted space-y-1">
+                      <div className="flex items-center gap-1.5 font-medium text-fg">
+                        <Cloud size={14} className="text-accent" />
+                        <span>Automated Cloud AI Upscaling</span>
+                      </div>
+                      <p>
+                        Target resolution ({targetDimensions.width}×{targetDimensions.height}) exceeds source recording.
+                        The app will automatically render, AI-upscale on dedicated cloud GPUs, and publish with all
+                        effects intact.
+                      </p>
+                    </div>
+                  )}
+
+                  {selectedIsUpscale && insufficientPublishCredits && (
+                    <div className="rounded-ctl border border-danger/30 bg-danger/5 p-3 text-xs space-y-2">
+                      <p className="text-fg">
+                        Insufficient credits for upscaled publishing ({publishCreditShortfall} credits short).
+                      </p>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        className="h-7 text-xs text-accent"
+                        onClick={() => useEditorStore.getState().openBuyCredits(publishCreditShortfall)}
+                      >
+                        Buy Credits
+                      </Button>
+                    </div>
+                  )}
+
                   {/* Actions */}
-                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-border/60">
+                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-line">
                     <Button variant="secondary" size="sm" onClick={requestClose}>
                       Cancel
                     </Button>
-                    <Button size="sm" onClick={handleTriggerCloudPublish} disabled={duration <= 0 || isPublishing}>
-                      Render & Publish
+                    <Button
+                      size="sm"
+                      onClick={handleTriggerCloudPublish}
+                      disabled={
+                        duration <= 0 ||
+                        isPublishing ||
+                        (selectedIsUpscale && (insufficientPublishCredits || !cloudReady))
+                      }
+                    >
+                      {selectedIsUpscale ? 'Upscale & Publish' : 'Render & Publish'}
                     </Button>
                   </div>
                 </div>
@@ -1512,13 +1613,13 @@ export function UnifiedExportPublishModal({
                             'rounded-ctl border p-3 transition-colors duration-150',
                             isSelected
                               ? 'border-accent bg-accent/5'
-                              : 'border-border/60 bg-ctl/20 hover:border-accent/40',
+                              : 'border-line/60 bg-ctl/20 hover:border-accent/40',
                           )}
                         >
                           <div className="flex items-start justify-between gap-2">
                             <div
                               className="min-w-0 flex-1 cursor-pointer"
-                              onClick={() => setSelectedPublicationId(pub.publicationId)}
+                              onClick={() => setSelectedPublicationId(isSelected ? null : pub.publicationId)}
                             >
                               <div className="flex items-center gap-2">
                                 <span className="truncate text-xs font-semibold text-fg">
@@ -1539,14 +1640,17 @@ export function UnifiedExportPublishModal({
                             </div>
 
                             <div className="flex items-center gap-1.5">
-                              {pub.links.pageUrl && (
+                              {pub.links?.pageUrl && (
                                 <CopyButton value={pub.links.pageUrl} label="URL" onCopied={onCopied} />
                               )}
                               <Button
                                 variant="ghost"
                                 size="sm"
                                 className="h-8 w-8 p-0 text-muted hover:text-danger"
-                                onClick={() => setConfirmDeleteId(pub.publicationId)}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setConfirmDeleteId(pub.publicationId)
+                                }}
                               >
                                 <Trash size={14} strokeWidth={ICON_STROKE} />
                               </Button>
@@ -1582,59 +1686,143 @@ export function UnifiedExportPublishModal({
                             </div>
                           )}
 
-                          {/* Expanded Analytics for Selected Publication */}
+                          {/* Expanded Details: Share Links & Viewer Analytics */}
                           {isSelected && (
-                            <div className="mt-3 border-t border-border/40 pt-3 space-y-3">
-                              <div className="flex items-center justify-between">
-                                <span className="text-xs font-semibold text-fg">Viewer Analytics</span>
-                                <div className="flex rounded-ctl bg-ctl p-0.5 text-[11px]">
-                                  {(['7d', '30d', '90d', 'all'] as PublicationAnalyticsRange[]).map((r) => (
-                                    <button
-                                      key={r}
-                                      type="button"
-                                      onClick={() => setAnalyticsRange(r)}
-                                      className={cn(
-                                        'rounded px-2 py-0.5 uppercase transition-colors',
-                                        analyticsRange === r
-                                          ? 'bg-panel font-semibold text-fg shadow-sm'
-                                          : 'text-muted hover:text-fg',
-                                      )}
-                                    >
-                                      {r}
-                                    </button>
-                                  ))}
+                            <div className="mt-3 border-t border-line/40 pt-3 space-y-3">
+                              {/* Share Links */}
+                              <div className="space-y-1.5">
+                                <span className="text-xs font-semibold text-fg">Share Links</span>
+                                <div className="rounded-ctl border border-line bg-ctl/30 p-2.5 space-y-2 text-xs">
+                                  {pub.links?.pageUrl && (
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div className="min-w-0">
+                                        <span className="text-muted block text-[11px]">Landing Page</span>
+                                        <div className="truncate font-mono text-fg" title={pub.links.pageUrl}>
+                                          {pub.links.pageUrl}
+                                        </div>
+                                      </div>
+                                      <CopyButton
+                                        value={pub.links.pageUrl}
+                                        label="Landing Page URL"
+                                        onCopied={onCopied}
+                                      />
+                                    </div>
+                                  )}
+                                  {pub.links?.embedUrl && (
+                                    <div className="flex items-center justify-between gap-2 border-t border-line/40 pt-1.5">
+                                      <div className="min-w-0">
+                                        <span className="text-muted block text-[11px]">Embed Player</span>
+                                        <div className="truncate font-mono text-fg" title={pub.links.embedUrl}>
+                                          {pub.links.embedUrl}
+                                        </div>
+                                      </div>
+                                      <CopyButton value={pub.links.embedUrl} label="Embed URL" onCopied={onCopied} />
+                                    </div>
+                                  )}
+                                  {pub.links?.embedCode && (
+                                    <div className="flex items-center justify-between gap-2 border-t border-line/40 pt-1.5">
+                                      <div className="min-w-0">
+                                        <span className="text-muted block text-[11px]">Embed HTML Code</span>
+                                        <div className="truncate font-mono text-fg" title={pub.links.embedCode}>
+                                          {pub.links.embedCode}
+                                        </div>
+                                      </div>
+                                      <CopyButton
+                                        value={pub.links.embedCode}
+                                        label="Embed HTML Code"
+                                        onCopied={onCopied}
+                                      />
+                                    </div>
+                                  )}
+                                  {pub.links?.videoDownloadUrl && (
+                                    <div className="flex items-center justify-between gap-2 border-t border-line/40 pt-1.5">
+                                      <div className="min-w-0">
+                                        <span className="text-muted block text-[11px]">Direct Download</span>
+                                        <div className="truncate font-mono text-fg" title={pub.links.videoDownloadUrl}>
+                                          {pub.links.videoDownloadUrl}
+                                        </div>
+                                      </div>
+                                      <CopyButton
+                                        value={pub.links.videoDownloadUrl}
+                                        label="Download URL"
+                                        onCopied={onCopied}
+                                      />
+                                    </div>
+                                  )}
+                                  {pub.links?.captionsDownloadUrl && (
+                                    <div className="flex items-center justify-between gap-2 border-t border-line/40 pt-1.5">
+                                      <div className="min-w-0">
+                                        <span className="text-muted block text-[11px]">Captions (VTT)</span>
+                                        <div
+                                          className="truncate font-mono text-fg"
+                                          title={pub.links.captionsDownloadUrl}
+                                        >
+                                          {pub.links.captionsDownloadUrl}
+                                        </div>
+                                      </div>
+                                      <CopyButton
+                                        value={pub.links.captionsDownloadUrl}
+                                        label="Captions URL"
+                                        onCopied={onCopied}
+                                      />
+                                    </div>
+                                  )}
                                 </div>
                               </div>
 
-                              {isLoadingAnalytics ? (
-                                <div className="flex items-center justify-center py-4 text-xs text-muted">
-                                  <Loader2 size={14} className="mr-1.5 animate-spin text-accent" />
-                                  Loading analytics…
-                                </div>
-                              ) : analyticsData ? (
-                                <div className="grid grid-cols-3 gap-2">
-                                  <div className="rounded-ctl bg-panel p-2.5 text-center">
-                                    <span className="block text-xs text-muted">Total Views</span>
-                                    <span className="font-mono text-sm font-semibold text-fg">
-                                      {analyticsData.totals.views.toLocaleString()}
-                                    </span>
-                                  </div>
-                                  <div className="rounded-ctl bg-panel p-2.5 text-center">
-                                    <span className="block text-xs text-muted">Avg Watch</span>
-                                    <span className="font-mono text-sm font-semibold text-fg">
-                                      {formatDuration(analyticsData.totals.avgWatchSeconds)}
-                                    </span>
-                                  </div>
-                                  <div className="rounded-ctl bg-panel p-2.5 text-center">
-                                    <span className="block text-xs text-muted">Completion</span>
-                                    <span className="font-mono text-sm font-semibold text-fg">
-                                      {Math.round(analyticsData.totals.completionRate * 100)}%
-                                    </span>
+                              {/* Viewer Analytics */}
+                              <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs font-semibold text-fg">Viewer Analytics</span>
+                                  <div className="flex rounded-ctl bg-ctl p-0.5 text-[11px]">
+                                    {(['7d', '30d', '90d', 'all'] as PublicationAnalyticsRange[]).map((r) => (
+                                      <button
+                                        key={r}
+                                        type="button"
+                                        onClick={() => setAnalyticsRange(r)}
+                                        className={cn(
+                                          'rounded px-2 py-0.5 uppercase transition-colors',
+                                          analyticsRange === r
+                                            ? 'bg-panel font-semibold text-fg shadow-sm'
+                                            : 'text-muted hover:text-fg',
+                                        )}
+                                      >
+                                        {r}
+                                      </button>
+                                    ))}
                                   </div>
                                 </div>
-                              ) : analyticsError ? (
-                                <p className="text-xs text-danger">{analyticsError}</p>
-                              ) : null}
+
+                                {isLoadingAnalytics ? (
+                                  <div className="flex items-center justify-center py-4 text-xs text-muted">
+                                    <Loader2 size={14} className="mr-1.5 animate-spin text-accent" />
+                                    Loading analytics…
+                                  </div>
+                                ) : analyticsData ? (
+                                  <div className="grid grid-cols-3 gap-2">
+                                    <div className="rounded-ctl bg-panel p-2.5 text-center">
+                                      <span className="block text-xs text-muted">Total Views</span>
+                                      <span className="font-mono text-sm font-semibold text-fg">
+                                        {analyticsData.totals.views.toLocaleString()}
+                                      </span>
+                                    </div>
+                                    <div className="rounded-ctl bg-panel p-2.5 text-center">
+                                      <span className="block text-xs text-muted">Avg Watch</span>
+                                      <span className="font-mono text-sm font-semibold text-fg">
+                                        {formatDuration(analyticsData.totals.avgWatchSeconds)}
+                                      </span>
+                                    </div>
+                                    <div className="rounded-ctl bg-panel p-2.5 text-center">
+                                      <span className="block text-xs text-muted">Completion</span>
+                                      <span className="font-mono text-sm font-semibold text-fg">
+                                        {Math.round(analyticsData.totals.completionRate * 100)}%
+                                      </span>
+                                    </div>
+                                  </div>
+                                ) : analyticsError ? (
+                                  <p className="text-xs text-danger">{analyticsError}</p>
+                                ) : null}
+                              </div>
                             </div>
                           )}
                         </div>

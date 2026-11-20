@@ -163,14 +163,17 @@ vi.mock('./audio-tracks', () => ({
   }),
 }))
 
-import { stopRecording, markSystemAudioStopped, markScreenCaptureStopped } from './recording-manager'
+import { stopRecording, markSystemAudioStopped, markScreenCaptureStopped, getVideoStartTime } from './recording-manager'
 import { appState } from '../state'
 import { probeAudioTracks } from './audio-tracks'
+import fsPromises from 'node:fs/promises'
+import type { Stats } from 'node:fs'
 
 describe('recording-manager', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     callOrder.length = 0
+    vi.mocked(fsPromises.stat).mockResolvedValue({ size: 1024, birthtimeMs: Date.now() } as unknown as Stats)
   })
 
   describe('stopRecording', () => {
@@ -204,6 +207,107 @@ describe('recording-manager', () => {
       expect(muxIndex).toBeGreaterThanOrEqual(0)
       expect(probeIndex).toBeGreaterThan(muxIndex)
       expect(writeMetaIndex).toBeGreaterThan(probeIndex)
+    })
+
+    it('preserves pristine videoStartTime before mux and shifts mouse events correctly when systemAudioPath is present', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      appState.recorderWin = mockRecorderWin as any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      appState.savingWin = mockSavingWin as any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      appState.tray = mockTray as any
+
+      const T = Date.now() - 10000
+      appState.recordingStartTime = T
+      appState.cursorSamplesAreVideoTimed = false
+      appState.currentRecordingSession = {
+        screenVideoPath: '/tmp/test-screen.mp4',
+        metadataPath: '/tmp/test.json',
+        systemAudioPath: '/tmp/test-system.webm',
+        recordingGeometry: { x: 0, y: 0, width: 1920, height: 1080 },
+        recordingStartTime: T,
+        hasMicAudio: true,
+      }
+      appState.recordedMouseEvents = [
+        { type: 'mousedown', x: 50, y: 50, timestamp: T - 1000 },
+        { type: 'mouseup', x: 100, y: 100, timestamp: T + 2000 },
+        { type: 'click', x: 200, y: 200, timestamp: T + 5000 },
+      ]
+      appState.ffmpegProcess = null
+
+      let statCalls = 0
+      vi.mocked(fsPromises.stat).mockImplementation(async () => {
+        statCalls++
+        if (statCalls === 1) {
+          // Pristine raw video file stat before any post-recording mux
+          return { size: 1024, birthtimeMs: T } as unknown as Stats
+        }
+        // Subsequent stats simulate post-mux modified file stats (e.g. muxSystemAudio rewrote the file)
+        return { size: 2048, birthtimeMs: T + 8000 } as unknown as Stats
+      })
+
+      await stopRecording()
+
+      // Verify pristine videoStartTime (T) was preserved on the session
+      expect(mockRecorderWin.webContents.send).toHaveBeenCalledWith(
+        'recording-finished',
+        expect.objectContaining({
+          videoStartTime: T,
+        }),
+      )
+
+      // Verify processAndSaveMetadata wrote correct relative timestamps
+      const metadataCall = vi.mocked(fsPromises.writeFile).mock.calls.find((call) => call[0] === '/tmp/test.json')
+      expect(metadataCall).toBeDefined()
+      const metadata = JSON.parse(metadataCall![1] as string)
+
+      // Mouse events occurring at T + 2000 and T + 5000 retain positive relative timestamps (2000, 5000),
+      // while pre-recording events (< videoStartTime) are filtered out.
+      expect(metadata.events).toHaveLength(2)
+      expect(metadata.events[0]).toMatchObject({
+        type: 'mouseup',
+        x: 100,
+        y: 100,
+        timestamp: 2000,
+      })
+      expect(metadata.events[1]).toMatchObject({
+        type: 'click',
+        x: 200,
+        y: 200,
+        timestamp: 5000,
+      })
+    })
+  })
+
+  describe('getVideoStartTime', () => {
+    it('returns stats.birthtimeMs when valid and positive', async () => {
+      const birthtimeMs = 1700000005000
+      vi.mocked(fsPromises.stat).mockResolvedValueOnce({
+        size: 1024,
+        birthtimeMs,
+      } as unknown as Stats)
+
+      const result = await getVideoStartTime('/tmp/video.mp4')
+      expect(result).toBe(birthtimeMs)
+    })
+
+    it('falls back gracefully to appState.recordingStartTime when birthtimeMs is 0 or invalid', async () => {
+      appState.recordingStartTime = 1700000000000
+      vi.mocked(fsPromises.stat).mockResolvedValueOnce({
+        size: 1024,
+        birthtimeMs: 0,
+      } as unknown as Stats)
+
+      const result = await getVideoStartTime('/tmp/video.mp4')
+      expect(result).toBe(1700000000000)
+    })
+
+    it('falls back gracefully on fs stat error', async () => {
+      appState.recordingStartTime = 1700000001234
+      vi.mocked(fsPromises.stat).mockRejectedValueOnce(new Error('ENOENT: no such file or directory'))
+
+      const result = await getVideoStartTime('/tmp/missing.mp4')
+      expect(result).toBe(1700000001234)
     })
   })
 })

@@ -1,3 +1,10 @@
+## [1.21.0-beta.21](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.20...v1.21.0-beta.21) (2026-11-20)
+
+### Features
+
+* **export:** restore 8K resolution and enforce cloud-only upscaling in unified modal ([00dd1b2](https://github.com/getwithashish/DemoThat/commit/00dd1b2e3f29cfb5cb1c4e9caa078525a58a1dc7))
+* **publish:** render all effects before publishing and unify export publish modal ([07d7226](https://github.com/getwithashish/DemoThat/commit/07d722676132a254c1bea92026217b3dc8fb4ebb))
+
 ## [1.21.0-beta.20](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.19...v1.21.0-beta.20) (2026-11-20)
 
 ### Bug Fixes

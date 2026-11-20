@@ -1,3 +1,9 @@
+## [1.21.0-beta.23](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.22...v1.21.0-beta.23) (2026-11-20)
+
+### Bug Fixes
+
+* **publish:** isolate export-publish pipelines, add background minimization, and dynamic upscale pro badges ([fbe5437](https://github.com/getwithashish/DemoThat/commit/fbe54377594be08900d9fc71c2ad1dad9e92c8b9))
+
 ## [1.21.0-beta.22](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.21...v1.21.0-beta.22) (2026-11-20)
 
 ### Features

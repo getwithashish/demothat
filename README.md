@@ -256,17 +256,27 @@ The screen-sharing dialog is only the first step. On Wayland, three features nee
 
 ## 🤝 Contributing
 
-1. Fork the repo and create a descriptive branch: `feature/your-feature` or `fix/issue-number`.
-2. Make your change; verify `npm run dev` still works and `npm test` passes.
-3. Commit using [Conventional Commits](https://www.conventionalcommits.org/) (e.g. `feat: add webcam overlay`). Releases are automated from these messages.
-4. Run the gates locally before pushing: `npm run lint`, `npm run format:check`, `npx tsc --noEmit`, `npm test`.
-5. Open a pull request against `main` and fill in the PR template. PRs are squash-merged.
+We welcome contributions! Please review [CONTRIBUTING.md](CONTRIBUTING.md) for full instructions, architectural guardrails, and coding standards.
 
-CI (`.github/workflows/checks.yml`) runs on every pull request and push to `main`: contract-version check, ESLint, Prettier check, typecheck, tests, and a diff check that `shared/api-types.ts` is regenerated from the pinned contract. A change that fails any of these cannot merge.
+1. **Fork the repo** and create a topic branch off `staging` (never `main`):
+   ```bash
+   git checkout staging
+   git pull origin staging
+   git checkout -b feat/your-feature    # or fix/, chore/, docs/, perf/
+   ```
+2. **Make your changes** and verify `npm run dev` and `npm test` work as expected.
+3. **Commit using [Conventional Commits](https://www.conventionalcommits.org/)** (e.g. `feat: add webcam overlay`). Automated releases are driven by these commit prefixes.
+4. **Run the 7-step verification pipeline locally before pushing:**
+   ```bash
+   npm run contract:check && npm run format:check && npm run lint && npx tsc --noEmit && npm test && npm run contract:types && npx vite build --mode development
+   ```
+5. **Sign the CLA & open a Pull Request against `staging`** (PRs targeting `main` are not permitted).
+   - Check the CLA box in the PR template.
+   - Post the comment: `I have read the CLA Document and I hereby sign the CLA` to record your signature.
 
-Commits use the [Conventional Commits](https://www.conventionalcommits.org/) types (`fix`/`perf` → patch, `feat` → minor, `feat!` or `BREAKING CHANGE:` → major; `docs`, `chore`, `refactor`, `test`, `ci`, `style` produce no release). On merge to `main`, `.github/workflows/release.yml` runs semantic-release and, when a release is cut, builds and attaches artifacts for Linux, Windows, and macOS.
+CI (`.github/workflows/checks.yml`) validates all PRs targeting `staging`. Merging into `staging` automatically compiles and publishes a beta pre-release. Stable releases are cut when maintainers promote `staging` into `main`.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md), [CLA.md](CLA.md), and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ## 📜 License
 

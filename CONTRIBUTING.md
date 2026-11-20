@@ -1,132 +1,261 @@
 # Contributing to DemoThat
 
-First off, thank you for considering contributing to DemoThat! It's people like you that make open source such
-a great community.
+First off, thank you for considering contributing to **DemoThat**! Open-source communities thrive on collaboration, and we appreciate your time and effort in making DemoThat an exceptional screen recording and demo creation tool.
 
-## How Can I Contribute?
+---
 
-- **Reporting Bugs:** If you find a bug, please open a new issue using the "Bug Report" template.
-- **Suggesting Enhancements:** Have an idea for a new feature? Open an issue using the "Feature Request"
-  template.
-- **Pull Requests:** If you're ready to contribute code, please follow the workflow below.
+## Table of Contents
 
-## Your First Code Contribution
+1. [Code of Conduct](#code-of-conduct)
+2. [Prerequisites & Development Setup](#prerequisites--development-setup)
+3. [Branch Model — STRICT](#branch-model--strict)
+4. [Contribution Workflow](#contribution-workflow)
+5. [Mandatory 7-Step Local Verification](#mandatory-7-step-local-verification)
+6. [Commit Message Guidelines](#commit-message-guidelines)
+7. [Architecture & Design Guardrails](#architecture--design-guardrails)
+8. [Contributor License Agreement (CLA)](#contributor-license-agreement-cla)
+9. [Reporting Issues & Requesting Features](#reporting-issues--requesting-features)
+10. [Security Disclosures](#security-disclosures)
+11. [Release Automation](#release-automation)
 
-Unsure where to begin? You can start by looking through `good first issue` and `help wanted` issues.
+---
 
-## Branch Model
+## Code of Conduct
 
-This project uses two permanent branches:
+DemoThat follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md) (v2.1). By participating in this project, you agree to abide by its terms to foster a welcoming, diverse, and harassment-free community.
 
-| Branch    | Purpose                                             |
-| --------- | --------------------------------------------------- |
-| `main`    | Stable releases — always production-ready           |
-| `staging` | Beta pre-releases — integration branch for new work |
+Please report any unacceptable behavior confidentially via a [Security Advisory](../../security/advisories/new) or by reaching out to [@getwithashish](https://github.com/getwithashish).
 
-**All new work targets `staging`.** The `main` branch only receives merges from `staging` when a beta is
-ready to be promoted to a stable release.
+---
+
+## Prerequisites & Development Setup
+
+### 1. Node.js & Package Manager
+
+- **Node.js 22** is required (the project engine specifies `>=18 <=22`).
+  > **Note:** Do **not** use Node.js 24, as the postinstall script (`electron-builder install-app-deps`) currently fails on Node 24.
+- **npm** is the designated package manager (`package-lock.json` is committed).
+
+### 2. Native Build Tools
+
+DemoThat relies on native modules for screen recording and input capture:
+
+- **Linux:** Requires X11 and Wayland libraries. For Wayland capture, ensure `xdg-desktop-portal` and PipeWire are installed.
+- **macOS:** Requires Xcode Command Line Tools and Python 3.8+ on your `PATH`.
+- **Windows:** Requires [Visual Studio 2022 Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) (with the "Desktop development with C++" workload) and Python 3.8+ on your `PATH`.
+
+### 3. FFmpeg Binaries
+
+FFmpeg is downloaded separately into the `binaries/<os>/` directory (refer to the [README.md](README.md#install) for direct download links for your OS).
+
+---
+
+## Branch Model — STRICT
+
+DemoThat maintains two permanent, protected branches:
+
+| Branch    | Purpose                                                | Release Type                              |
+| --------- | ------------------------------------------------------ | ----------------------------------------- |
+| `main`    | Stable, production-ready releases                      | Stable releases (e.g. `v1.20.0`)          |
+| `staging` | Integration branch for new features, fixes, and chores | Beta pre-releases (e.g. `v1.20.1-beta.1`) |
+
+### Critical Branching Rules
+
+- **ALL feature, bug-fix, chore, and docs branches MUST branch off and target `staging`.**
+- **NEVER** open a pull request targeting `main`. PRs targeting `main` will be closed.
+- **`main` only receives promotion merges from `staging`**, executed by project maintainers when a beta release is validated.
+- Remote topic branches are deleted immediately after merging into `staging` to prevent stale branches.
+
+### Branch Hierarchy
+
+```
+main  ← only staging merges here (stable release promotion)
+  └── staging  ← all feature, fix, chore, docs PRs merge here (beta pre-releases)
+        ├── feat/<short-description>
+        ├── fix/<short-description>
+        ├── chore/<short-description>
+        ├── docs/<short-description>
+        └── perf/<short-description>
+```
+
+---
 
 ## Contribution Workflow
 
-1. **Fork the repository:** Create your own copy of the project on GitHub by clicking the "Fork" button on
-   the repository page.
+### 1. Fork and Clone
 
-2. **Clone your fork:**
-
+1. Fork the repository to your GitHub account.
+2. Clone your personal fork locally:
    ```bash
-   git clone https://github.com/<your-github-username>/demothat.git
+   git clone https://github.com/<your-username>/demothat.git
    cd demothat
    ```
-
-3. **Branch off `staging`** — not `main`:
-
+3. Add the upstream repository as a remote:
    ```bash
-   git checkout staging
-   git pull origin staging
-   git checkout -b feat/your-amazing-feature   # or fix/, chore/, docs/
+   git remote add upstream https://github.com/getwithashish/demothat.git
    ```
 
-4. **Install dependencies:** `npm install`
+### 2. Create a Topic Branch
 
-5. **Make your changes:** Write your code and make sure it works by running the app locally (`npm run dev`).
+Always ensure your local `staging` branch is up to date, then branch off `staging`:
 
-6. **Run the full verification pipeline locally before pushing** (all 7 steps must pass — this mirrors CI
-   exactly):
+```bash
+git checkout staging
+git pull upstream staging
+git checkout -b feat/your-feature-name    # or fix/, chore/, docs/, perf/
+```
 
-   ```bash
-   # 1. Verify contract version consistency
-   npm run contract:check
+### 3. Install Dependencies & Develop
 
-   # 2. Check code formatting (run `npm run format` to auto-fix)
-   npm run format:check
+```bash
+npm install
+npm run dev      # Launches Vite dev server with Hot Module Replacement and Electron
+```
 
-   # 3. ESLint (must have 0 errors and 0 warnings)
-   npm run lint
+### 4. Running Tests During Development
 
-   # 4. TypeScript type checking
-   npx tsc --noEmit
+You can run the full test suite or execute targeted tests:
 
-   # 5. Full unit and integration test suite
-   npm test
+```bash
+npm test                                   # Run full test suite (Vitest)
+npx vitest run path/to/specific.test.ts    # Run a single test file
+npx vitest --watch                         # Interactive watch mode
+```
 
-   # 6. Verify generated contract types are synchronized
-   npm run contract:types
-   git diff --exit-code -- shared/api-types.ts
+---
 
-   # 7. Verify production build succeeds
-   npx vite build --mode development
-   ```
+## Mandatory 7-Step Local Verification
 
-7. **Commit your changes** using [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) —
-   this drives automatic versioning and changelogs:
+Before committing and pushing your code, you **must** execute the full 7-step local verification pipeline. This mirrors CI (`checks.yml`) and guarantees that your PR will pass automated checks:
 
-   - `feat: add webcam overlay feature` → triggers a minor release
-   - `fix: correctly handle multi-monitor recording on Windows` → triggers a patch release
-   - `docs: update README with installation instructions` → no release
-   - `BREAKING CHANGE:` in the commit footer → triggers a major release
+```bash
+# 1. Verify OpenAPI contract version consistency
+npm run contract:check
 
-8. **Push to your fork:** `git push origin feat/your-amazing-feature`
+# 2. Check code formatting with Prettier (run `npm run format` to auto-fix)
+npm run format:check
 
-9. **Open a Pull Request** targeting `staging` (not `main`) and fill out the PR template with as much detail
-   as possible.
+# 3. Lint with ESLint (must have 0 errors and 0 warnings)
+npm run lint
+
+# 4. TypeScript type checking (no implicit any, strict checks)
+npx tsc --noEmit
+
+# 5. Full unit and integration test suite
+npm test
+
+# 6. Verify generated contract API types are synchronized
+npm run contract:types
+git diff --exit-code -- shared/api-types.ts
+
+# 7. Verify production Vite build succeeds
+npx vite build --mode development
+```
+
+---
+
+## Commit Message Guidelines
+
+All commit messages MUST follow the [Conventional Commits v1.0.0](https://www.conventionalcommits.org/en/v1.0.0/) specification. Semantic-release uses these commit prefixes to calculate version numbers and generate changelogs automatically:
+
+| Commit Prefix                           | Release Impact                | Description                                                         |
+| --------------------------------------- | ----------------------------- | ------------------------------------------------------------------- |
+| `feat:`                                 | **MINOR** (`1.19.0 → 1.20.0`) | A new user-facing feature or enhancement                            |
+| `fix:`                                  | **PATCH** (`1.19.0 → 1.19.1`) | A bug fix or corrective behavior                                    |
+| `perf:`                                 | **PATCH** (`1.19.0 → 1.19.1`) | A code change that improves performance                             |
+| `BREAKING CHANGE:` (footer)             | **MAJOR** (`1.19.0 → 2.0.0`)  | Breaking API or UX change                                           |
+| `chore:`, `docs:`, `test:`, `refactor:` | None (no release cut)         | Maintenance, documentation, test additions, or internal refactoring |
+
+### Commit Rules
+
+- Format: `type(scope): imperative summary` (e.g., `feat(editor): add zoom-level slider in timeline toolbar`).
+- Use lowercase prefixes and imperative present tense ("add", not "added" or "adds").
+- Do not end the subject line with a period.
+- Keep the first line under 72 characters.
+
+---
+
+## Architecture & Design Guardrails
+
+To keep DemoThat maintainable and robust, all contributions must respect the following architectural constraints:
+
+### 1. Process Isolation Boundaries
+
+```
+demothat/
+├── electron/
+│   ├── main/       # Main process (Node.js runtime, native APIs, FFmpeg)
+│   └── preload.ts  # Context bridge (window.electronAPI)
+├── shared/         # Shared code (API types, math, tokens) - imported by both
+└── src/            # Renderer process (React 18 UI, Chromium)
+```
+
+- **Strict Isolation:** Code in `electron/main/` must **NEVER** import from `src/`. Shared types, math, and constants belong in `shared/`.
+
+### 2. Strict Design Token Usage
+
+- **Semantic Tokens Only:** All styling must consume design tokens defined in [`src/styles/tokens.css`](src/styles/tokens.css) via Tailwind utility classes (e.g. `bg-panel`, `bg-ctl`, `text-fg`, `text-muted`, `border-line`).
+- **Zero Color Literals:** Do **not** use `#hex`, `rgb()`, or `rgba()` literals in UI `.tsx`/`.ts` files. Automated tests in `src/styles/style-guardrails.test.ts` enforce this in CI.
+- **Font Size Floor:** Do not use font sizes smaller than `11px` (e.g. `text-[10px]` is forbidden; use `text-xs` or `text-[11px]`).
+- **Dual-Theme Support:** Ensure UI components look clean and accessible in both Dark (`[data-theme='dark']`) and Light (`[data-theme='light']`) modes.
+
+### 3. Assistant Mascot & Branding
+
+- Never use generic AI or sparkle icons (`✨`, `Wand`, `Sparkles`) for the AI assistant.
+- Use the official mascot icon at [`public/demothat-mascot-ed-neutral.svg`](public/demothat-mascot-ed-neutral.svg).
+- Refer to the assistant as **Ed** or **Assistant**.
+
+### 4. Cross-Platform Modifier Keys
+
+- Dynamically detect modifier keys: render `⌘` on macOS (`darwin`) and `Ctrl` on Windows and Linux.
+
+---
 
 ## Contributor License Agreement (CLA)
 
-DemoThat requires all contributors to sign our Contributor License Agreement before contributions can be
-merged. The CLA clarifies IP grants, guarantees that code remains free and open-source under GNU GPL v3, and
-confirms agreement to project guidelines and rules (`AGENTS.md`).
+All contributors must agree to the [DemoThat Contributor License Agreement (CLA)](CLA.md) before contributions can be merged. The CLA clarifies intellectual property licenses, protects the project under the GNU General Public License v3.0, and confirms adherence to project standards.
 
-Signing is a **two-step process**:
+Signing is a simple **two-step process**:
 
 1. **Check the CLA box** in the Pull Request checklist (declaration of intent).
-2. **Post this exact comment** on your Pull Request to have your signature formally recorded:
-
+2. **Post this exact comment** on your open Pull Request:
    ```
    I have read the CLA Document and I hereby sign the CLA
    ```
 
-The CLA Assistant bot will record your signature and update the `license/cla` status check to passing. Both
-steps are required before your PR can be merged.
+The automated CLA Assistant bot will record your signature in `.github/cla-signatures.json` and mark the `license/cla` status check as passing.
 
-See [CLA.md](CLA.md) for the full text. If you are contributing on behalf of a company, see the
-**Corporate CLA (CCLA)** section in `CLA.md`.
+### Corporate CLA (CCLA)
 
-## Code of Conduct
+If you are contributing on behalf of your employer, please review Section 8 of [CLA.md](CLA.md) and open an issue labeled `ccla` to execute a Corporate CLA.
 
-This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md). By participating, you
-are expected to uphold this code. Please report unacceptable behavior via
-[GitHub Security Advisories](../../security/advisories/new).
+---
 
-## Security
+## Reporting Issues & Requesting Features
 
-To report a security vulnerability, please follow the process outlined in [SECURITY.md](SECURITY.md).
-**Do not open a public issue for security vulnerabilities.**
+### Reporting Bugs
 
-## Release Flow
+- Search existing issues to ensure the bug hasn't already been reported.
+- Open a new issue using the **Bug Report** template.
+- Include your operating system, desktop environment (X11 or Wayland on Linux), DemoThat version, exact reproduction steps, and any console/terminal logs.
 
-- **Merging into `staging`** automatically creates a **beta pre-release** (e.g. `v1.2.0-beta.1`) with
-  platform binaries attached. It is marked as Pre-release on GitHub, not Latest.
-- **Merging `staging` into `main`** automatically creates a **stable release** (e.g. `v1.2.0`) marked as
-  Latest. Only maintainers do this step once a beta is validated.
+### Suggesting Enhancements
 
-You do not need to create tags or update version numbers manually — the CI pipeline handles all of that.
+- Open a new issue using the **Feature Request** template.
+- Describe the problem you are solving, your proposed solution, and alternative ideas considered.
+
+---
+
+## Security Disclosures
+
+Please **do not** report security vulnerabilities via public GitHub issues. Follow the confidential disclosure procedure documented in [SECURITY.md](SECURITY.md) via [GitHub Security Advisories](../../security/advisories/new).
+
+---
+
+## Release Automation
+
+- **Merging into `staging`** triggers [`.github/workflows/release.yml`](.github/workflows/release.yml), which evaluates commit messages and publishes a **beta pre-release** (e.g. `v1.20.1-beta.1`) with platform installers attached.
+- **Promoting `staging` into `main`** creates the **stable production release** (e.g. `v1.20.0`), updates `CHANGELOG.md`, and marks the release as Latest on GitHub.
+- You do **not** need to manually update `version` in `package.json` or edit `CHANGELOG.md`; semantic-release handles all versioning automatically.
+
+Thank you for contributing to DemoThat!

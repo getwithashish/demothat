@@ -99,6 +99,7 @@ export function EditorPage() {
     retryCloud,
     resumeCloudWatch,
     dismissCloudResume,
+    clearResult: clearExportResult,
   } = useExportProcess()
 
   // Publishing: the library, the run in flight, and the terms the server offers.
@@ -161,33 +162,44 @@ export function EditorPage() {
   const [unifiedModalInitialTab, setUnifiedModalInitialTab] = useState<'export' | 'publish' | 'analytics'>('export')
   const [unifiedModalTrigger, setUnifiedModalTrigger] = useState<string>('#export-trigger-btn')
 
+  const isOperationRunning = isExporting || isPublishing
+
   const handleOpenExport = useCallback(() => {
+    if (!isOperationRunning) {
+      clearExportResult()
+    }
     setExportMinimized(false)
     setUnifiedModalTrigger('#export-trigger-btn')
-    setUnifiedModalInitialTab('export')
+    setUnifiedModalInitialTab(isPublishing ? 'publish' : 'export')
     setUnifiedModalOpen(true)
-  }, [])
+  }, [clearExportResult, isOperationRunning, isPublishing])
 
   const handleOpenPublish = useCallback(() => {
+    if (!isOperationRunning) {
+      clearExportResult()
+    }
     setExportMinimized(false)
     setUnifiedModalTrigger('#publish-trigger-btn')
-    setUnifiedModalInitialTab(duration > 0 ? 'publish' : 'analytics')
+    setUnifiedModalInitialTab(isExporting ? 'export' : duration > 0 ? 'publish' : 'analytics')
     setUnifiedModalOpen(true)
-  }, [duration])
+  }, [clearExportResult, duration, isExporting, isOperationRunning])
 
   const handleOpenAnalytics = useCallback(() => {
+    if (!isOperationRunning) {
+      clearExportResult()
+    }
     setExportMinimized(false)
     setUnifiedModalTrigger('#publish-trigger-btn')
-    setUnifiedModalInitialTab('analytics')
+    setUnifiedModalInitialTab(isExporting ? 'export' : isPublishing ? 'publish' : 'analytics')
     setUnifiedModalOpen(true)
-  }, [])
+  }, [clearExportResult, isExporting, isOperationRunning, isPublishing])
 
   // Listen to AI tool executions from the main process
   useAIToolDispatcher()
   const openExportModal = handleOpenExport
   useEffect(() => {
-    if (!isExporting) setExportMinimized(false)
-  }, [isExporting])
+    if (!isOperationRunning) setExportMinimized(false)
+  }, [isOperationRunning])
 
   const handleDeleteSelectedRegion = useCallback(() => {
     if (useEditorStore.getState().selectedRegionId) {
@@ -463,18 +475,35 @@ export function EditorPage() {
         </kbd>
       </Button>,
       <VirtualStudioHeaderPill key="virtual-studio" />,
-      <ExportButton key="export" isExporting={isExporting} onClick={handleOpenExport} disabled={duration <= 0} />,
+      <ExportButton
+        key="export"
+        isExporting={isExporting}
+        onClick={handleOpenExport}
+        disabled={duration <= 0 || isPublishing}
+      />,
       <Button
         key="publish"
         id="publish-trigger-btn"
         variant="secondary"
         size="sm"
         onClick={handleOpenPublish}
-        title={duration <= 0 ? 'View your published videos and analytics' : 'Publish this video behind a share link'}
+        title={
+          isPublishing
+            ? 'Publishing in progress — click to view'
+            : isExporting
+              ? 'Export in progress — click to view'
+              : duration <= 0
+                ? 'View your published videos and analytics'
+                : 'Publish this video behind a share link'
+        }
         className="h-8"
       >
-        <Share size={ICON_SIZE} strokeWidth={ICON_STROKE} className="mr-2" />
-        Publish
+        {isPublishing ? (
+          <Loader2 size={ICON_SIZE} strokeWidth={ICON_STROKE} className="mr-2 animate-spin" />
+        ) : (
+          <Share size={ICON_SIZE} strokeWidth={ICON_STROKE} className="mr-2" />
+        )}
+        {isPublishing ? 'Publishing…' : 'Publish'}
       </Button>,
       <Button
         key="presets"
@@ -631,39 +660,66 @@ export function EditorPage() {
         </div>
       </div>
 
-      {isExporting && isExportMinimized && (
-        <button
-          type="button"
-          onClick={() => {
-            setExportMinimized(false)
-            openExportModal()
-          }}
-          title={`Export progress: ${Math.round(exportProgress)}% — click to expand`}
-          className="fixed bottom-5 right-5 z-[60] flex h-12 w-12 items-center justify-center rounded-full border border-line bg-panel text-fg shadow-[var(--sa-popover-shadow)] outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-        >
-          {/* Accent progress stroke on a ctl track (DESIGN_SPEC §5). */}
-          <svg className="absolute inset-0 h-12 w-12 -rotate-90" viewBox="0 0 56 56" aria-hidden="true">
-            <circle cx="28" cy="28" r="24" fill="none" stroke="var(--sa-ctl)" strokeWidth="4" />
-            <circle
-              cx="28"
-              cy="28"
-              r="24"
-              fill="none"
-              stroke="var(--sa-accent)"
-              strokeWidth="4"
-              strokeLinecap="round"
-              strokeDasharray={2 * Math.PI * 24}
-              strokeDashoffset={2 * Math.PI * 24 * (1 - exportProgress / 100)}
-            />
-          </svg>
-          <span className="relative font-mono text-sm">{Math.round(exportProgress)}%</span>
-        </button>
-      )}
+      {isOperationRunning &&
+        isExportMinimized &&
+        (() => {
+          const activePercent = Math.min(
+            100,
+            Math.max(0, isPublishing ? (publishProgress?.stagePercent ?? 0) : exportProgress),
+          )
+          const roundedPercent = Math.round(activePercent)
+          return (
+            <button
+              type="button"
+              onClick={() => {
+                setExportMinimized(false)
+                if (isPublishing) {
+                  setUnifiedModalTrigger('#publish-trigger-btn')
+                  setUnifiedModalInitialTab('publish')
+                  setUnifiedModalOpen(true)
+                } else {
+                  openExportModal()
+                }
+              }}
+              title={
+                isPublishing
+                  ? `Publishing progress: ${roundedPercent}% — click to expand`
+                  : `Export progress: ${roundedPercent}% — click to expand`
+              }
+              aria-label={
+                isPublishing
+                  ? `Publishing progress: ${roundedPercent}%, click to expand`
+                  : `Export progress: ${roundedPercent}%, click to expand`
+              }
+              className="fixed bottom-5 right-5 z-[60] flex h-12 w-12 items-center justify-center rounded-full border border-line bg-panel text-fg shadow-[var(--sa-popover-shadow)] outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            >
+              {/* Accent progress stroke on a ctl track (DESIGN_SPEC §5). */}
+              <svg className="absolute inset-0 h-12 w-12 -rotate-90" viewBox="0 0 56 56" aria-hidden="true">
+                <circle cx="28" cy="28" r="24" fill="none" stroke="var(--sa-ctl)" strokeWidth="4" />
+                <circle
+                  cx="28"
+                  cy="28"
+                  r="24"
+                  fill="none"
+                  stroke="var(--sa-accent)"
+                  strokeWidth="4"
+                  strokeLinecap="round"
+                  strokeDasharray={2 * Math.PI * 24}
+                  strokeDashoffset={2 * Math.PI * 24 * (1 - activePercent / 100)}
+                />
+              </svg>
+              <span className="relative font-mono text-sm">{roundedPercent}%</span>
+            </button>
+          )
+        })()}
       <UnifiedExportPublishModal
         isOpen={isUnifiedModalOpen && !isExportMinimized}
         onClose={() => {
-          setUnifiedModalOpen(false)
-          setExportMinimized(false)
+          if (!isOperationRunning) {
+            setUnifiedModalOpen(false)
+            setExportMinimized(false)
+            clearExportResult()
+          }
         }}
         initialTab={unifiedModalInitialTab}
         triggerSelector={unifiedModalTrigger}
@@ -722,7 +778,7 @@ export function EditorPage() {
         }}
       />
       {/* Kept clear of the minimised-export bubble in the same corner. */}
-      <ToastViewport className={isExporting && isExportMinimized ? 'bottom-20' : 'bottom-5'} />
+      <ToastViewport className={isOperationRunning && isExportMinimized ? 'bottom-20' : 'bottom-5'} />
 
       {/* Floating AI Command Palette (Cmd+K / Ctrl+K) */}
       <EdCommandPalette isOpen={isCommandBarOpen} onClose={() => setIsCommandBarOpen(false)} />

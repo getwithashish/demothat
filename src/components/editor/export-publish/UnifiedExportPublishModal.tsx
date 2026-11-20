@@ -231,6 +231,8 @@ export function UnifiedExportPublishModal({
   onSaveRenderedCopy,
   onCopied,
 }: UnifiedExportPublishModalProps) {
+  const isBusy = Boolean(isExporting || isPublishing)
+
   // Store values
   const {
     duration,
@@ -269,8 +271,6 @@ export function UnifiedExportPublishModal({
   useEffect(() => {
     if (isOpen) {
       setActiveTab(initialTab)
-      setPublishOutcome(null)
-      setSaveCopySuccess(false)
     }
   }, [isOpen, initialTab])
 
@@ -600,6 +600,7 @@ export function UnifiedExportPublishModal({
   }
 
   const handleStartExportClick = () => {
+    if (isExporting || isPublishing) return
     // If selected resolution requires upscale -> strictly Cloud Upscale
     if (selectedIsUpscale) {
       if (insufficientCredits) {
@@ -623,7 +624,10 @@ export function UnifiedExportPublishModal({
 
   // Handle Cloud Render & Publish click
   const handleTriggerCloudPublish = async () => {
-    if (duration <= 0 || isPublishing) return
+    if (duration <= 0 || isPublishing || isExporting) return
+
+    setPublishOutcome(null)
+    setSaveCopySuccess(false)
 
     if (selectedIsUpscale) {
       if (proLocked) {
@@ -661,6 +665,11 @@ export function UnifiedExportPublishModal({
         cloud: selectedIsUpscale,
       })
       setPublishOutcome(outcome)
+      if (outcome.ok) {
+        pushToast({ message: 'Video published successfully!' })
+      } else if (outcome.reason !== 'canceled') {
+        pushToast({ message: outcome.error || 'Publishing failed.' })
+      }
     } else if (onPublish) {
       const outcome = await onPublish({
         filePath: outputPath,
@@ -671,6 +680,11 @@ export function UnifiedExportPublishModal({
         captions: cues,
       })
       setPublishOutcome(outcome)
+      if (outcome.ok) {
+        pushToast({ message: 'Video published successfully!' })
+      } else if (outcome.reason !== 'canceled') {
+        pushToast({ message: outcome.error || 'Publishing failed.' })
+      }
     }
   }
 
@@ -728,6 +742,16 @@ export function UnifiedExportPublishModal({
   }
 
   if (!isRendered) return null
+
+  const handleModalClose = () => {
+    if (isBusy && onMinimize) {
+      onMinimize()
+    } else {
+      setPublishOutcome(null)
+      setSaveCopySuccess(false)
+      requestClose()
+    }
+  }
 
   // Tab definitions
   const tabs: { id: ModalTab; label: string }[] = [
@@ -874,7 +898,7 @@ export function UnifiedExportPublishModal({
   if (isExporting && activeTab === 'export') {
     if (cloudProgress) {
       return (
-        <div className="modal-backdrop flex items-center justify-center" onClick={requestClose}>
+        <div className="modal-backdrop flex items-center justify-center" onClick={handleModalClose}>
           <div
             ref={surfaceRef}
             className="card-clean pointer-events-auto relative m-4 flex w-full max-w-xl flex-col overflow-hidden transition-[height] duration-500 ease-golden"
@@ -914,7 +938,7 @@ export function UnifiedExportPublishModal({
     }
 
     return (
-      <div className="modal-backdrop flex items-center justify-center" onClick={requestClose}>
+      <div className="modal-backdrop flex items-center justify-center" onClick={handleModalClose}>
         <div
           ref={surfaceRef}
           className="card-clean pointer-events-auto relative m-4 flex w-full max-w-xl flex-col overflow-hidden transition-[height] duration-500 ease-golden"
@@ -950,7 +974,7 @@ export function UnifiedExportPublishModal({
   }
 
   return (
-    <div className="modal-backdrop flex items-center justify-center" onClick={requestClose}>
+    <div className="modal-backdrop flex items-center justify-center" onClick={handleModalClose}>
       <div
         ref={surfaceRef}
         className="card-clean pointer-events-auto relative m-4 flex w-full max-w-2xl flex-col overflow-hidden transition-[height] duration-500 ease-golden"
@@ -962,7 +986,7 @@ export function UnifiedExportPublishModal({
             <Share size={16} strokeWidth={ICON_STROKE} className="text-accent" />
             <h2 className="text-sm font-semibold text-fg">Export & Instant Publishing</h2>
           </div>
-          <Button variant="ghost" size="sm" onClick={requestClose} className="h-8 w-8 p-0">
+          <Button variant="ghost" size="sm" onClick={handleModalClose} className="h-8 w-8 p-0">
             <X size={14} strokeWidth={ICON_STROKE} />
           </Button>
         </div>
@@ -976,10 +1000,12 @@ export function UnifiedExportPublishModal({
                 <button
                   key={tab.id}
                   type="button"
-                  onClick={() => setActiveTab(tab.id)}
+                  disabled={isBusy}
+                  onClick={() => !isBusy && setActiveTab(tab.id)}
                   className={cn(
                     'relative z-10 flex-1 rounded-pv py-1.5 text-xs font-medium transition-colors duration-200',
                     isSelected ? 'text-fg font-semibold' : 'text-muted hover:text-fg',
+                    isBusy && !isSelected && 'opacity-50 cursor-not-allowed',
                   )}
                 >
                   {isSelected && (
@@ -1184,7 +1210,14 @@ export function UnifiedExportPublishModal({
                   <Button
                     size="sm"
                     onClick={handleStartExportClick}
-                    disabled={!outputPath || proLocked || (selectedIsUpscale && !cloudReady) || duration <= 0}
+                    disabled={
+                      !outputPath ||
+                      proLocked ||
+                      (selectedIsUpscale && !cloudReady) ||
+                      duration <= 0 ||
+                      isExporting ||
+                      isPublishing
+                    }
                   >
                     {selectedIsUpscale ? 'Export with Cloud AI' : 'Export Video'}
                   </Button>
@@ -1334,11 +1367,19 @@ export function UnifiedExportPublishModal({
                           onClick={() => {
                             setActiveTab('analytics')
                             setPublishOutcome(null)
+                            setSaveCopySuccess(false)
                           }}
                         >
                           View in Analytics
                         </Button>
-                        <Button size="sm" onClick={requestClose}>
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            setPublishOutcome(null)
+                            setSaveCopySuccess(false)
+                            requestClose()
+                          }}
+                        >
                           Done
                         </Button>
                       </div>
@@ -1349,7 +1390,14 @@ export function UnifiedExportPublishModal({
                       <CircleX size={32} strokeWidth={ICON_STROKE} className="mx-auto text-danger" />
                       <h3 className="text-sm font-semibold text-fg">Publishing Failed</h3>
                       <p className="text-xs text-muted">{publishOutcome.error}</p>
-                      <Button variant="secondary" size="sm" onClick={() => setPublishOutcome(null)}>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => {
+                          setPublishOutcome(null)
+                          setSaveCopySuccess(false)
+                        }}
+                      >
                         Back to Settings
                       </Button>
                     </div>
@@ -1358,6 +1406,13 @@ export function UnifiedExportPublishModal({
               ) : isPublishing ? (
                 /* Dual-Stage Progress */
                 <div className="flex flex-col items-center p-8 text-center">
+                  {onMinimize && (
+                    <div className="flex w-full justify-end -mt-4 mb-2">
+                      <Button variant="ghost" size="sm" onClick={onMinimize}>
+                        Run in background
+                      </Button>
+                    </div>
+                  )}
                   <Loader2 size={ICON_SIZE} strokeWidth={ICON_STROKE} className="mb-4 animate-spin text-accent" />
                   <h3 className="text-sm font-semibold text-fg">
                     {publishProgress?.stage === 'Rendering' ? 'Rendering with all effects…' : 'Publishing to cloud…'}
@@ -1395,11 +1450,17 @@ export function UnifiedExportPublishModal({
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {RESOLUTION_OPTIONS.map((opt) => (
-                            <SelectItem key={opt.key} value={opt.key}>
-                              {opt.label}
-                            </SelectItem>
-                          ))}
+                          {RESOLUTION_OPTIONS.map((opt) => {
+                            const isUpscale = upscaleByResolution.get(opt.key)?.isUpscale ?? false
+                            return (
+                              <SelectItem key={opt.key} value={opt.key}>
+                                <span className="flex items-center gap-2">
+                                  <span>{opt.label}</span>
+                                  {isUpscale && <ProBadge />}
+                                </span>
+                              </SelectItem>
+                            )
+                          })}
                         </SelectContent>
                       </Select>
                     </div>
@@ -1488,8 +1549,11 @@ export function UnifiedExportPublishModal({
                     {selectedIsUpscale && (
                       <>
                         <div className="flex items-center justify-between">
-                          <span className="text-muted">
-                            Cloud AI Upscaling ({targetDimensions.width}×{targetDimensions.height})
+                          <span className="flex items-center gap-1.5 text-muted">
+                            <ProBadge />
+                            <span>
+                              Cloud AI Upscaling ({targetDimensions.width}×{targetDimensions.height})
+                            </span>
                           </span>
                           <span className="font-medium text-fg">
                             {cloudCost ? `${cloudCredits} credits` : 'Calculating…'}
@@ -1521,6 +1585,7 @@ export function UnifiedExportPublishModal({
                     <div className="rounded-ctl border border-line bg-panel p-3 text-xs text-muted space-y-1">
                       <div className="flex items-center gap-1.5 font-medium text-fg">
                         <Cloud size={14} className="text-accent" />
+                        <ProBadge />
                         <span>Automated Cloud AI Upscaling</span>
                       </div>
                       <p>
@@ -1558,6 +1623,7 @@ export function UnifiedExportPublishModal({
                       disabled={
                         duration <= 0 ||
                         isPublishing ||
+                        isExporting ||
                         (selectedIsUpscale && (insufficientPublishCredits || !cloudReady))
                       }
                     >

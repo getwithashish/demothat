@@ -1,3 +1,9 @@
+## [1.21.0-beta.22](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.21...v1.21.0-beta.22) (2026-11-20)
+
+### Features
+
+* **publish:** support automated cloud upscale, fix deletion crash, theme borders, and complete link copying ([fc907bb](https://github.com/getwithashish/DemoThat/commit/fc907bb5085b74b8c499a91c25c5d3a131684f9d))
+
 ## [1.21.0-beta.21](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.20...v1.21.0-beta.21) (2026-11-20)
 
 ### Features

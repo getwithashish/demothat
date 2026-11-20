@@ -166,13 +166,16 @@ async function waitForScreenCaptureStop(waiter: Promise<void>): Promise<void> {
  * @param videoPath The path to the video file.
  * @returns A promise that resolves to the creation time as a UNIX timestamp (ms).
  */
-async function getVideoStartTime(videoPath: string): Promise<number> {
+export async function getVideoStartTime(videoPath: string): Promise<number> {
   try {
     const stats = await fsPromises.stat(videoPath)
-    return stats.birthtimeMs
+    if (stats.birthtimeMs > 0) {
+      return stats.birthtimeMs
+    }
+    return appState.recordingStartTime || Date.now()
   } catch (error) {
     log.error(`[getVideoStartTime] Error getting file stats for ${videoPath}:`, error)
-    throw error
+    return appState.recordingStartTime || Date.now()
   }
 }
 
@@ -370,6 +373,7 @@ async function startActualRecording(
   })
 
   // Store recordingGeometry in the session
+  appState.recordingStartTime = Date.now()
   appState.currentRecordingSession = {
     screenVideoPath,
     webcamVideoPath,
@@ -381,6 +385,7 @@ async function startActualRecording(
     metadataPath,
     recordingGeometry,
     pendingCrop,
+    recordingStartTime: appState.recordingStartTime,
   }
 
   if (systemAudioPath) {
@@ -407,7 +412,6 @@ async function startActualRecording(
   }
 
   // Reset state for the new session
-  appState.recordingStartTime = Date.now()
   appState.recordedMouseEvents = []
   appState.runtimeCursorImageMap = new Map()
   recordingTeardownInProgress = false
@@ -1156,6 +1160,27 @@ export async function stopRecording() {
     return
   }
 
+  let pristineVideoStartTime = finalizedSession.recordingStartTime || appState.recordingStartTime
+  const rawVideoPath = finalizedSession.screenVideoPath || finalizedSession.screenWebmPath
+  if (rawVideoPath) {
+    try {
+      const stats = await fsPromises.stat(rawVideoPath)
+      if (
+        stats.birthtimeMs > 0 &&
+        stats.birthtimeMs >= (finalizedSession.recordingStartTime || appState.recordingStartTime) - 5000 &&
+        stats.birthtimeMs <= Date.now()
+      ) {
+        pristineVideoStartTime = stats.birthtimeMs
+        log.info(
+          `[StopRecord] Preserved pristine video start time from raw file: ${new Date(pristineVideoStartTime).toISOString()}`,
+        )
+      }
+    } catch (err) {
+      log.warn('[StopRecord] Could not stat raw video path; falling back to session recordingStartTime.', err)
+    }
+  }
+  finalizedSession.videoStartTime = pristineVideoStartTime
+
   // Notify recorder window that the recording has finished, allowing it to reset its UI
   appState.recorderWin?.webContents.send('recording-finished', { canceled: false, ...finalizedSession })
 
@@ -1570,12 +1595,15 @@ async function processAndSaveMetadata(session: RecordingSession): Promise<boolea
       log.info('[SYNC] Cursor samples are video-timed (frame index / fps); no wall-clock offset applied.')
       finalEvents = appState.recordedMouseEvents
     } else {
-      const videoStartTime = await getVideoStartTime(session.screenVideoPath)
-      log.info(`[SYNC] Precise video start time from ffprobe: ${new Date(videoStartTime).toISOString()}`)
-      finalEvents = appState.recordedMouseEvents.map((event) => ({
-        ...event,
-        timestamp: Math.max(0, event.timestamp - videoStartTime),
-      }))
+      const videoStartTime = session.videoStartTime || session.recordingStartTime || appState.recordingStartTime
+      log.info(`[SYNC] Video start time for event synchronization: ${new Date(videoStartTime).toISOString()}`)
+
+      finalEvents = appState.recordedMouseEvents
+        .filter((event) => event.timestamp >= videoStartTime)
+        .map((event) => ({
+          ...event,
+          timestamp: event.timestamp - videoStartTime,
+        }))
     }
 
     const primaryDisplay = screen.getPrimaryDisplay()

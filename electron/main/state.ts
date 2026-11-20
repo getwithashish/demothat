@@ -37,6 +37,10 @@ export interface RecordingSession {
   // after mux folds it into screenVideoPath.
   micAudioPath?: string
   recordingGeometry: RecordingGeometry
+  /** Epoch timestamp (ms) when recording session was initiated. */
+  recordingStartTime?: number
+  /** Pristine video stream start time (ms) captured before any post-recording muxes. */
+  videoStartTime?: number
   /**
    * Wayland area recording only. The portal can only hand over a whole monitor,
    * so the user's selection is carried here and cut out during the mux, once the

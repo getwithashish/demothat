@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useEditorStore } from '../store/editorStore'
 import { ExportSettings } from '../components/editor/ExportModal'
 import { formatCredits } from '../../shared/license'
@@ -59,10 +59,12 @@ export const useExportProcess = () => {
   const [result, setResult] = useState<ExportResult | null>(null)
   /** A cloud job that outlived the last session, offered for watching again. */
   const [cloudResumeOffer, setCloudResumeOffer] = useState<{ jobId: string; outputPath: string } | null>(null)
+  const isExportActiveRef = useRef(false)
 
   // Effect to set up and tear down IPC listeners for export progress and completion
   useEffect(() => {
     const cleanProgressListener = window.electronAPI.onExportProgress((payload) => {
+      if (!isExportActiveRef.current) return
       setProgress(payload.progress)
       setStage(payload.stage ?? null)
       // Cloud stages carry the credits meter; local stages do not.
@@ -79,6 +81,8 @@ export const useExportProcess = () => {
     })
 
     const cleanCompleteListener = window.electronAPI.onExportComplete((payload) => {
+      if (!isExportActiveRef.current) return
+      isExportActiveRef.current = false
       setIsExporting(false)
       setProgress(100)
       setResult(payload)
@@ -89,9 +93,13 @@ export const useExportProcess = () => {
       if (payload.charge !== undefined || payload.cost !== undefined) void store.refreshBalance()
       if (payload.success && payload.charge !== undefined) {
         store.pushToast({ message: `Cloud upscale finished. ${formatCredits(payload.charge)} credits used.` })
+      } else if (payload.success) {
+        store.pushToast({ message: 'Export completed successfully.' })
       }
       if (!payload.success && payload.refund !== undefined && payload.refund > 0) {
         store.pushToast({ message: `${formatCredits(payload.refund)} credits returned.` })
+      } else if (!payload.success && !payload.error?.toLowerCase().includes('cancel')) {
+        store.pushToast({ message: payload.error || 'Export failed.' })
       }
     })
 
@@ -162,6 +170,7 @@ export const useExportProcess = () => {
       setResult(null)
       setCloudProgress(null)
       setIsExporting(true)
+      isExportActiveRef.current = true
       setProgress(0)
       setStage(null)
 
@@ -175,6 +184,7 @@ export const useExportProcess = () => {
         })
       } catch (e) {
         console.error('Export invocation failed', e)
+        isExportActiveRef.current = false
         setResult({ success: false, error: `An error occurred while starting the export: ${e}` })
         setIsExporting(false)
       }
@@ -195,8 +205,15 @@ export const useExportProcess = () => {
     setResult(null)
     setCloudProgress(null)
     setIsExporting(true)
+    isExportActiveRef.current = true
     setProgress(0)
-    await window.electronAPI.cloudRetry(request)
+    try {
+      await window.electronAPI.cloudRetry(request)
+    } catch (e) {
+      isExportActiveRef.current = false
+      setIsExporting(false)
+      setResult({ success: false, error: `Cloud retry failed: ${e}` })
+    }
   }, [])
 
   /** Upscales that same render locally instead, at no cost in credits. */
@@ -205,8 +222,15 @@ export const useExportProcess = () => {
       setResult(null)
       setCloudProgress(null)
       setIsExporting(true)
+      isExportActiveRef.current = true
       setProgress(0)
-      await window.electronAPI.cloudFallback(request)
+      try {
+        await window.electronAPI.cloudFallback(request)
+      } catch (e) {
+        isExportActiveRef.current = false
+        setIsExporting(false)
+        setResult({ success: false, error: `Local fallback failed: ${e}` })
+      }
     },
     [],
   )
@@ -216,14 +240,26 @@ export const useExportProcess = () => {
     setCloudResumeOffer(null)
     setResult(null)
     setIsExporting(true)
+    isExportActiveRef.current = true
     setProgress(0)
-    await window.electronAPI.resumeCloudWatch()
+    try {
+      await window.electronAPI.resumeCloudWatch()
+    } catch (e) {
+      isExportActiveRef.current = false
+      setIsExporting(false)
+      setResult({ success: false, error: `Resume cloud watch failed: ${e}` })
+    }
   }, [])
 
   /** Drops the remembered job instead of watching it. */
   const dismissCloudResume = useCallback(async () => {
     setCloudResumeOffer(null)
     await window.electronAPI.forgetCloudJob?.()
+  }, [])
+
+  // Clear completed export result explicitly
+  const clearResult = useCallback(() => {
+    setResult(null)
   }, [])
 
   // Handler to close the modal and reset its state
@@ -250,5 +286,6 @@ export const useExportProcess = () => {
     fallbackToStandard,
     resumeCloudWatch,
     dismissCloudResume,
+    clearResult,
   }
 }

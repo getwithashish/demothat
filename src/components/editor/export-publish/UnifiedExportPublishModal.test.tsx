@@ -4,6 +4,7 @@ import { act, type ComponentProps } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { UnifiedExportPublishModal } from './UnifiedExportPublishModal'
 import type { PublicationView, PublishingCapabilities } from '../../../hooks/usePublish'
+import { useEditorStore } from '../../../store/editorStore'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -236,5 +237,223 @@ describe('UnifiedExportPublishModal', () => {
     expect(host.textContent).toContain('Rendering with all effects…')
     expect(host.textContent).toContain('40%')
     expect(host.textContent).toContain('Cancel')
+  })
+
+  it('disables tab switching when an export or publish operation is running', async () => {
+    const host = await render(
+      <UnifiedExportPublishModal
+        {...defaultProps()}
+        initialTab="publish"
+        isPublishing={true}
+        publishProgress={{ stage: 'Rendering', stagePercent: 40 }}
+      />,
+    )
+
+    const tabs = Array.from(host.querySelectorAll('button')).filter((b) =>
+      ['Export (File)', 'Publish (Cloud Link)', 'Published Videos & Analytics'].some((label) =>
+        b.textContent?.includes(label),
+      ),
+    )
+    expect(tabs.length).toBe(3)
+    for (const tab of tabs) {
+      expect(tab.hasAttribute('disabled')).toBe(true)
+    }
+  })
+
+  it('renders Run in background button and invokes onMinimize during publishing', async () => {
+    const mockMinimize = vi.fn()
+    const host = await render(
+      <UnifiedExportPublishModal
+        {...defaultProps()}
+        initialTab="publish"
+        isPublishing={true}
+        publishProgress={{ stage: 'Rendering', stagePercent: 65 }}
+        onMinimize={mockMinimize}
+      />,
+    )
+
+    const runInBackgroundBtn = Array.from(host.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('Run in background'),
+    )
+    expect(runInBackgroundBtn).toBeDefined()
+    await click(runInBackgroundBtn)
+    expect(mockMinimize).toHaveBeenCalledTimes(1)
+  })
+
+  it('renders Run in background button and invokes onMinimize during local export', async () => {
+    const mockMinimize = vi.fn()
+    const host = await render(
+      <UnifiedExportPublishModal
+        {...defaultProps()}
+        isExporting={true}
+        exportProgress={35}
+        exportStage="Encoding video"
+        onMinimize={mockMinimize}
+      />,
+    )
+
+    const runInBackgroundBtn = Array.from(host.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('Run in background'),
+    )
+    expect(runInBackgroundBtn).toBeDefined()
+    await click(runInBackgroundBtn)
+    expect(mockMinimize).toHaveBeenCalledTimes(1)
+  })
+
+  it('invokes onMinimize when backdrop or close button is clicked while busy', async () => {
+    const mockMinimize = vi.fn()
+    const host = await render(
+      <UnifiedExportPublishModal
+        {...defaultProps()}
+        initialTab="publish"
+        isPublishing={true}
+        publishProgress={{ stage: 'Rendering', stagePercent: 20 }}
+        onMinimize={mockMinimize}
+      />,
+    )
+
+    // Click close button in header
+    const closeBtn = host.querySelector('button.h-8.w-8')
+    expect(closeBtn).not.toBeNull()
+    await click(closeBtn)
+    expect(mockMinimize).toHaveBeenCalledTimes(1)
+  })
+
+  it('disables Start Export button when publishing is in progress', async () => {
+    useEditorStore.setState({ duration: 10, videoPath: '/test/vid.mp4' })
+    const host = await render(<UnifiedExportPublishModal {...defaultProps()} initialTab="export" isPublishing={true} />)
+
+    const exportBtn = Array.from(host.querySelectorAll('button')).find(
+      (b) => b.textContent?.includes('Export Video') || b.textContent?.includes('Export with Cloud AI'),
+    )
+    expect(exportBtn?.hasAttribute('disabled')).toBe(true)
+  })
+
+  it('disables Start Publish button when export is in progress', async () => {
+    useEditorStore.setState({ duration: 10, videoPath: '/test/vid.mp4' })
+    const host = await render(<UnifiedExportPublishModal {...defaultProps()} initialTab="publish" isExporting={true} />)
+
+    const publishBtn = Array.from(host.querySelectorAll('button')).find(
+      (b) => b.textContent?.includes('Render & Publish') || b.textContent?.includes('Upscale & Publish'),
+    )
+    expect(publishBtn?.hasAttribute('disabled')).toBe(true)
+  })
+
+  it('dynamically displays ProBadge on upscale resolutions in Publish tab based on source dimensions', async () => {
+    // 720p source video -> 1080p target is an upscale
+    act(() => {
+      useEditorStore.setState({
+        duration: 10,
+        videoDimensions: { width: 1280, height: 720 },
+      })
+    })
+
+    const hostUpscale = await render(<UnifiedExportPublishModal {...defaultProps()} initialTab="publish" />)
+
+    // With 720p source and 1080p default target, upscale is detected
+    expect(hostUpscale.textContent).toContain('Automated Cloud AI Upscaling')
+    expect(hostUpscale.textContent).toContain('Pro')
+
+    // 1080p source video -> 1080p target is NOT an upscale
+    act(() => {
+      useEditorStore.setState({
+        duration: 10,
+        videoDimensions: { width: 1920, height: 1080 },
+      })
+    })
+
+    const hostNative = await render(<UnifiedExportPublishModal {...defaultProps()} initialTab="publish" />)
+    expect(hostNative.textContent).toContain('Estimated Publish Storage')
+    expect(hostNative.textContent).not.toContain('Automated Cloud AI Upscaling')
+  })
+
+  it('dynamically displays Cloud AI notice and ProBadge in Export tab based on source dimensions', async () => {
+    // 2K source video -> 2K export is native, NOT an upscale
+    act(() => {
+      useEditorStore.setState({
+        duration: 10,
+        videoDimensions: { width: 2560, height: 1440 },
+      })
+    })
+
+    const host2KNative = await render(<UnifiedExportPublishModal {...defaultProps()} initialTab="export" />)
+    // Should NOT require Cloud AI Upscaling
+    expect(host2KNative.textContent).not.toContain('AI Cloud Upscaling Required')
+    expect(host2KNative.textContent).toContain('Export Video')
+
+    // 1080p source video -> 1080p export is native
+    act(() => {
+      useEditorStore.setState({
+        duration: 10,
+        videoDimensions: { width: 1920, height: 1080 },
+      })
+    })
+
+    const host1080pNative = await render(<UnifiedExportPublishModal {...defaultProps()} initialTab="export" />)
+    expect(host1080pNative.textContent).not.toContain('AI Cloud Upscaling Required')
+    expect(host1080pNative.textContent).toContain('Export Video')
+  })
+
+  it('preserves publishOutcome when modal closes and reopens after successful renderAndPublish', async () => {
+    useEditorStore.setState({ duration: 10, videoPath: '/test/vid.mp4' })
+    const mockRenderAndPublish = vi.fn().mockResolvedValue({
+      ok: true,
+      publication: {
+        publicationId: 'pub-abc-123',
+        title: 'DemoThat Video',
+        status: 'active',
+        expiresAt: new Date(Date.now() + 86400000).toISOString(),
+        links: {
+          pageUrl: 'https://share.demothat.com/v/pub-abc-123',
+          embedUrl: 'https://share.demothat.com/embed/pub-abc-123',
+        },
+      },
+    })
+
+    const host = await render(
+      <UnifiedExportPublishModal {...defaultProps()} initialTab="publish" onRenderAndPublish={mockRenderAndPublish} />,
+    )
+
+    const publishBtn = Array.from(host.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('Render & Publish'),
+    )
+    expect(publishBtn).toBeDefined()
+    await click(publishBtn)
+
+    expect(mockRenderAndPublish).toHaveBeenCalled()
+    expect(host.textContent).toContain('Video published successfully!')
+    expect(host.textContent).toContain('https://share.demothat.com/v/pub-abc-123')
+
+    // Simulate minimize (isOpen = false) followed by restore (isOpen = true)
+    await act(async () => {
+      root!.render(
+        <UnifiedExportPublishModal
+          {...defaultProps()}
+          isOpen={false}
+          initialTab="publish"
+          onRenderAndPublish={mockRenderAndPublish}
+        />,
+      )
+    })
+
+    await act(async () => {
+      root!.render(
+        <UnifiedExportPublishModal
+          {...defaultProps()}
+          isOpen={true}
+          initialTab="publish"
+          onRenderAndPublish={mockRenderAndPublish}
+        />,
+      )
+    })
+
+    // Outcome MUST NOT be wiped
+    expect(host.textContent).toContain('Video published successfully!')
+    expect(host.textContent).toContain('https://share.demothat.com/v/pub-abc-123')
+
+    // Clicking Done resets outcome
+    const doneBtn = Array.from(host.querySelectorAll('button')).find((b) => b.textContent?.trim() === 'Done')
+    expect(doneBtn).toBeDefined()
+    await click(doneBtn)
   })
 })

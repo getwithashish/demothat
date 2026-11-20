@@ -17,6 +17,12 @@ import { collectSavePayload, whenSaveIdle, withSaveGuard } from '../../lib/proje
 import { projectNameFromPath } from '../../lib/recent-projects'
 import { audioTracksFromManifest, legacyTracks } from '../../../shared/audio-tracks'
 import { mediaUrl } from '../../../shared/media-url'
+import {
+  DEFAULT_AV_SYNC_OFFSET_MS,
+  DEFAULT_WEBCAM_MIC_AV_SYNC_OFFSET_MS,
+  MIN_AV_SYNC_OFFSET_MS,
+  MAX_AV_SYNC_OFFSET_MS,
+} from '../../../shared/virtual-camera-types'
 import type { EditorState } from '../../types'
 import { createScopedLogger } from '../../lib/logger'
 
@@ -36,6 +42,7 @@ export const initialProjectState: ProjectState = {
   cursorBitmapsToRender: new Map<string, CursorImageBitmap>(),
   cursorIconsToRender: new Map<string, CursorImageBitmap>(),
   syncOffset: 0,
+  avSyncOffsetMs: 0,
   platform: null,
   cursorTheme: null,
   hasAudioTrack: false,
@@ -110,6 +117,7 @@ function projectSignature(state: EditorState): string {
     subtitleCues,
     subtitlesEnabled,
     subtitleFormat,
+    avSyncOffsetMs: state.avSyncOffsetMs,
   })
 }
 
@@ -373,7 +381,18 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
           })
         state.recordingGeometry = parsedData.geometry || null
         state.screenSize = parsedData.screenSize || null
-        state.syncOffset = parsedData.syncOffset || 0
+        const hasWebcam = Boolean(webcamVideoPath || parsedData.webcamVideoPath)
+        const hasAudio = audioTracks.length > 0 || parsedData.hasAudioTrack === true
+        let resolvedOffset = DEFAULT_AV_SYNC_OFFSET_MS
+        if (typeof parsedData.avSyncOffsetMs === 'number') {
+          resolvedOffset = parsedData.avSyncOffsetMs
+        } else if (typeof parsedData.syncOffset === 'number' && parsedData.syncOffset !== 0) {
+          resolvedOffset = parsedData.syncOffset
+        } else if (hasWebcam && hasAudio) {
+          resolvedOffset = DEFAULT_WEBCAM_MIC_AV_SYNC_OFFSET_MS
+        }
+        state.avSyncOffsetMs = resolvedOffset
+        state.syncOffset = resolvedOffset
         state.zoomRegions = newZoomRegions
         recalculateCanvasDimensions(state)
       })
@@ -653,6 +672,13 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
       if (opened.isWebcamVisible !== undefined) state.isWebcamVisible = opened.isWebcamVisible
       if (opened.cursorStyles) state.cursorStyles = opened.cursorStyles
       if (opened.activePresetId !== undefined) state.activePresetId = opened.activePresetId
+      if (opened.avSyncOffsetMs !== undefined) {
+        state.avSyncOffsetMs = opened.avSyncOffsetMs as number
+        state.syncOffset = opened.avSyncOffsetMs as number
+      } else if (opened.syncOffset !== undefined) {
+        state.avSyncOffsetMs = opened.syncOffset as number
+        state.syncOffset = opened.syncOffset as number
+      }
 
       state.currentProjectPath = options?.asUntitled ? null : projectPath || null
       state.isDirty = false
@@ -669,6 +695,15 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
       markProjectClean(get())
     }
     logger.info(`applyOpenedProject applied successfully: path=${projectPath}`)
+  },
+  setAvSyncOffsetMs: (offset: number) => {
+    const clamped = Math.max(MIN_AV_SYNC_OFFSET_MS, Math.min(MAX_AV_SYNC_OFFSET_MS, Math.round(offset)))
+    logger.info(`setAvSyncOffsetMs: ${clamped}`)
+    set((state) => {
+      state.avSyncOffsetMs = clamped
+      state.syncOffset = clamped
+      state.isDirty = true
+    })
   },
   saveProject: async (options) => {
     const current = get()

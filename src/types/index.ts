@@ -210,6 +210,7 @@ export interface ProjectState {
   /** Selectable pointer icons, keyed by style name ('arrow','text',…). */
   cursorIconsToRender: Map<string, CursorImageBitmap>
   syncOffset: number
+  avSyncOffsetMs: number
   platform: NodeJS.Platform | null
   cursorTheme: CursorTheme | null
   hasAudioTrack: boolean
@@ -312,6 +313,10 @@ export interface ProjectActions {
     /** True when the write went to the crash-recovery copy, not a real project file. */
     recovery?: boolean
   }>
+  /**
+   * Adjusts the A/V Lip Sync offset (in ms) between webcam video and audio.
+   */
+  setAvSyncOffsetMs: (offset: number) => void
   /**
    * Writes a snapshot to a new file. Never adopts the path and never touches the
    * dirty flag: the original keeps being edited and autosaved.

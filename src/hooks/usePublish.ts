@@ -94,6 +94,7 @@ export interface ExportProjectState {
   cursorTheme?: unknown
   cursorStyles?: unknown
   syncOffset?: number
+  avSyncOffsetMs?: number
   [key: string]: unknown
 }
 
@@ -144,6 +145,7 @@ export function extractExportProjectState(storeState: Record<string, unknown>): 
     cursorTheme: storeState.cursorTheme,
     cursorStyles: storeState.cursorStyles,
     syncOffset: storeState.syncOffset as number | undefined,
+    avSyncOffsetMs: (storeState.avSyncOffsetMs as number | undefined) ?? (storeState.syncOffset as number | undefined),
   }
 }
 

@@ -332,7 +332,9 @@ export function RendererPage() {
 
           const preSeekPromises: Promise<void>[] = [seekVideo(video, initialSourceTimestamp, 5000)]
           if (hasWebcam && webcamVideo) {
-            preSeekPromises.push(seekVideo(webcamVideo, initialSourceTimestamp, 5000))
+            const offsetSec = (Number(projectState.avSyncOffsetMs) || Number(projectState.syncOffset) || 0) / 1000
+            const webcamInitialTimestamp = Math.max(0, initialSourceTimestamp - offsetSec)
+            preSeekPromises.push(seekVideo(webcamVideo, webcamInitialTimestamp, 5000))
           }
           for (const { clip, element } of clipVideos) {
             const clipSourceTime = initialSourceTimestamp - clip.startTime
@@ -396,7 +398,9 @@ export function RendererPage() {
 
           // Create seek promises for all video elements using mid-interval seek time
           const mainSeek = seekVideo(video, seekSourceTimestamp)
-          const webcamSeek = hasWebcam && webcamVideo ? seekVideo(webcamVideo, seekSourceTimestamp) : Promise.resolve()
+          const offsetSec = (Number(projectState.avSyncOffsetMs) || Number(projectState.syncOffset) || 0) / 1000
+          const webcamSeekTime = Math.max(0, seekSourceTimestamp - offsetSec)
+          const webcamSeek = hasWebcam && webcamVideo ? seekVideo(webcamVideo, webcamSeekTime) : Promise.resolve()
 
           // Imported clips only contribute frames while the playhead is inside
           // their range; each one is seeked to its own source time.

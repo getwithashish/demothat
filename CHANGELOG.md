@@ -1,3 +1,9 @@
+## [1.21.0-beta.20](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.19...v1.21.0-beta.20) (2026-11-20)
+
+### Bug Fixes
+
+* **recording:** preserve video start time before audio mux to prevent click grouping ([c1778ed](https://github.com/getwithashish/DemoThat/commit/c1778edc1c86684af1d942465c05c5c60efe311c))
+
 ## [1.21.0-beta.19](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.18...v1.21.0-beta.19) (2026-11-19)
 
 ### Bug Fixes

@@ -1,3 +1,9 @@
+## [1.21.0-beta.25](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.24...v1.21.0-beta.25) (2026-11-20)
+
+### Bug Fixes
+
+* **editor:** fix export 0ms sync evaluation, paused webcam scrub sync, and restore virtual studio isolation ([14d3a9a](https://github.com/getwithashish/DemoThat/commit/14d3a9a518caefea7a98b6ab40be9645696cdc64))
+
 ## [1.21.0-beta.24](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.23...v1.21.0-beta.24) (2026-11-20)
 
 ### Features

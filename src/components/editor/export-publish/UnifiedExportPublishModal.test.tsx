@@ -34,6 +34,19 @@ beforeEach(() => {
       getPath: vi.fn().mockResolvedValue('/home/user'),
       showSaveDialog: vi.fn().mockResolvedValue({ canceled: false, filePath: '/home/user/out.mp4' }),
       showItemInFolder: vi.fn(),
+      getExportCapabilities: vi.fn().mockResolvedValue({ libx265: true }),
+      getEntitlement: vi.fn().mockResolvedValue({ pro: true, credits: 1000 }),
+      getExportPerfSamples: vi.fn().mockResolvedValue([]),
+      cloudStatus: vi.fn().mockResolvedValue({
+        configured: true,
+        capabilities: {
+          cloudEnabled: true,
+          minChargeCredits: 50,
+          creditsPerFrame: { '1080p': 1, '1440p': 2, '2160p': 4, '4320p': 8 },
+        },
+        consent: { acceptedAt: 12345 },
+      }),
+      getSetting: vi.fn().mockResolvedValue(null),
     },
     configurable: true,
     writable: true,
@@ -89,8 +102,7 @@ function defaultProps(): ComponentProps<typeof UnifiedExportPublishModal> {
   return {
     isOpen: true,
     onClose: vi.fn(),
-    initialTab: 'export-publish',
-    initialMode: 'local',
+    initialTab: 'export',
     triggerSelector: undefined,
     publishStatus: {
       configured: true,
@@ -105,37 +117,37 @@ function defaultProps(): ComponentProps<typeof UnifiedExportPublishModal> {
 describe('UnifiedExportPublishModal', () => {
   it('does not render when isOpen is false', async () => {
     const host = await render(<UnifiedExportPublishModal {...defaultProps()} isOpen={false} />)
-    expect(host.querySelector('[role="dialog"]')).toBeNull()
+    expect(host.querySelector('.modal-backdrop')).toBeNull()
   })
 
-  it('renders modal header, persistent tabs, and quality settings', async () => {
+  it('renders modal header, persistent tabs, and export settings', async () => {
     const host = await render(<UnifiedExportPublishModal {...defaultProps()} />)
-    expect(host.querySelector('[role="dialog"]')).not.toBeNull()
-    expect(host.textContent).toContain('Export & Publish')
+    expect(host.querySelector('.modal-backdrop')).not.toBeNull()
+    expect(host.textContent).toContain('Export & Instant Publishing')
+    expect(host.textContent).toContain('Export (File)')
+    expect(host.textContent).toContain('Publish (Cloud Link)')
     expect(host.textContent).toContain('Published Videos & Analytics')
 
     // Quality choices
-    expect(host.textContent).toContain('720p')
-    expect(host.textContent).toContain('1080p')
-    expect(host.textContent).toContain('4K')
-    expect(host.textContent).toContain('Medium')
-    expect(host.textContent).toContain('30 fps')
-    expect(host.textContent).toContain('60 fps')
+    expect(host.textContent).toContain('Format')
+    expect(host.textContent).toContain('Resolution (up to 8K)')
+    expect(host.textContent).toContain('Quality')
+    expect(host.textContent).toContain('Frame Rate')
+    expect(host.textContent).toContain('Destination File')
+    expect(host.textContent).toContain('Export Video')
   })
 
-  it('switches between Local Export and Cloud Publish modes', async () => {
+  it('switches to Publish (Cloud Link) tab', async () => {
     const host = await render(<UnifiedExportPublishModal {...defaultProps()} />)
-    expect(host.textContent).toContain('Local Export')
-    expect(host.textContent).toContain('Export Video')
 
-    // Switch to Cloud Publish
-    const cloudBtn = Array.from(host.querySelectorAll('button')).find((b) => b.textContent?.includes('Cloud Publish'))
-    await click(cloudBtn)
+    const publishTab = Array.from(host.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('Publish (Cloud Link)'),
+    )
+    await click(publishTab)
 
     expect(host.textContent).toContain('Render & Publish')
-    expect(host.textContent).toContain('Publication Title')
-    expect(host.textContent).toContain('Landing page')
-    expect(host.textContent).toContain('1 Year')
+    expect(host.textContent).toContain('Link Format')
+    expect(host.textContent).toContain('Hosting Duration')
   })
 
   it('switches to Published Videos & Analytics tab and displays publications list', async () => {
@@ -146,9 +158,9 @@ describe('UnifiedExportPublishModal', () => {
     )
     await click(analyticsTab)
 
-    expect(host.textContent).toContain('Your Published Videos')
+    expect(host.textContent).toContain('1 Published Video')
     expect(host.textContent).toContain('Test Published Video')
-    expect(host.textContent).toContain('Active')
+    expect(host.textContent).toContain('active')
   })
 
   it('shows empty state when no publications exist in Analytics tab', async () => {
@@ -159,8 +171,8 @@ describe('UnifiedExportPublishModal', () => {
     )
     await click(analyticsTab)
 
-    expect(host.textContent).toContain('No published videos yet')
-    expect(host.textContent).toContain('Switch to Export & Publish')
+    expect(host.textContent).toContain('No Published Videos Yet')
+    expect(host.textContent).toContain('Publish Video Now')
   })
 
   it('shows live progress when local export is in progress', async () => {
@@ -172,7 +184,8 @@ describe('UnifiedExportPublishModal', () => {
         exportStage="Rendering video with effects"
       />,
     )
-    expect(host.textContent).toContain('Rendering video with effects... 55%')
+    expect(host.textContent).toContain('Exporting video…')
+    expect(host.textContent).toContain('55%')
     expect(host.textContent).toContain('Cancel')
   })
 
@@ -180,12 +193,13 @@ describe('UnifiedExportPublishModal', () => {
     const host = await render(
       <UnifiedExportPublishModal
         {...defaultProps()}
-        initialMode="cloud"
+        initialTab="publish"
         isPublishing={true}
         publishProgress={{ stage: 'Rendering', stagePercent: 40 }}
       />,
     )
-    expect(host.textContent).toContain('Rendering video with effects... 40%')
+    expect(host.textContent).toContain('Rendering with all effects…')
+    expect(host.textContent).toContain('40%')
     expect(host.textContent).toContain('Cancel')
   })
 })

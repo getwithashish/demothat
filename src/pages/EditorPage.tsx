@@ -90,10 +90,13 @@ export function EditorPage() {
   const {
     isExporting,
     progress: exportProgress,
+    stage: exportStage,
+    cloudProgress: exportCloudProgress,
     result: exportResult,
     cloudResumeOffer,
     startExport,
     cancelExport,
+    retryCloud,
     resumeCloudWatch,
     dismissCloudResume,
   } = useExportProcess()
@@ -155,27 +158,20 @@ export function EditorPage() {
 
   // Unified Export & Publish modal state
   const [isUnifiedModalOpen, setUnifiedModalOpen] = useState(false)
-  const [unifiedModalInitialTab, setUnifiedModalInitialTab] = useState<'export-publish' | 'analytics'>('export-publish')
-  const [unifiedModalInitialMode, setUnifiedModalInitialMode] = useState<'local' | 'cloud'>('local')
+  const [unifiedModalInitialTab, setUnifiedModalInitialTab] = useState<'export' | 'publish' | 'analytics'>('export')
   const [unifiedModalTrigger, setUnifiedModalTrigger] = useState<string>('#export-trigger-btn')
 
   const handleOpenExport = useCallback(() => {
     setExportMinimized(false)
     setUnifiedModalTrigger('#export-trigger-btn')
-    setUnifiedModalInitialTab('export-publish')
-    setUnifiedModalInitialMode('local')
+    setUnifiedModalInitialTab('export')
     setUnifiedModalOpen(true)
   }, [])
 
   const handleOpenPublish = useCallback(() => {
     setExportMinimized(false)
     setUnifiedModalTrigger('#publish-trigger-btn')
-    if (duration <= 0) {
-      setUnifiedModalInitialTab('analytics')
-    } else {
-      setUnifiedModalInitialTab('export-publish')
-      setUnifiedModalInitialMode('cloud')
-    }
+    setUnifiedModalInitialTab(duration > 0 ? 'publish' : 'analytics')
     setUnifiedModalOpen(true)
   }, [duration])
 
@@ -670,13 +666,16 @@ export function EditorPage() {
           setExportMinimized(false)
         }}
         initialTab={unifiedModalInitialTab}
-        initialMode={unifiedModalInitialMode}
         triggerSelector={unifiedModalTrigger}
         isExporting={isExporting}
         exportProgress={exportProgress}
+        exportStage={exportStage}
+        cloudProgress={exportCloudProgress}
         exportResult={exportResult}
         onStartExport={startExport}
         onCancelExport={cancelExport}
+        onMinimize={() => setExportMinimized(true)}
+        onRetryCloud={(req) => void retryCloud(req)}
         publishStatus={publishStatus}
         isPublishing={isPublishing}
         publishProgress={publishProgress}

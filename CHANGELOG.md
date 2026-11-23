@@ -1,3 +1,9 @@
+## [1.21.0-beta.26](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.25...v1.21.0-beta.26) (2026-11-23)
+
+### Bug Fixes
+
+* **editor:** show effects section in sidebar only when timeline effect is selected ([4291970](https://github.com/getwithashish/DemoThat/commit/4291970dcc2d55c86ff04647a039216493c253a5))
+
 ## [1.21.0-beta.25](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.24...v1.21.0-beta.25) (2026-11-20)
 
 ### Bug Fixes

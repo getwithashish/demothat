@@ -19,13 +19,16 @@ import { COMPOSITION_LAYOUTS } from '../../lib/constants'
 import { ContextMenu, ContextMenuItem, ContextMenuDivider, ContextMenuLabel } from '../ui/context-menu'
 import { Wand, Bolt, ZoomIn } from 'tabler-icons-react'
 import { useAIChat } from '../ai/useAIChat'
-
-// Timeline geometry (DESIGN_SPEC §8): 34px rows, 26px clips, 22px ruler, 108px track header.
-const ROW_HEIGHT = 34
-const CLIP_HEIGHT = 26
-const LANE_INSET = (ROW_HEIGHT - CLIP_HEIGHT) / 2 // 4px above and below each clip
-const RULER_HEIGHT = 22
-const TRACK_HEADER_WIDTH = 108
+import {
+  ROW_HEIGHT,
+  CLIP_HEIGHT,
+  LANE_INSET,
+  RULER_HEIGHT,
+  TRACK_HEADER_WIDTH,
+  MIN_TIMELINE_HEIGHT,
+  MAX_TIMELINE_HEIGHT,
+  calculateFittedTimelineHeight,
+} from './timeline/timeline-geometry'
 
 // Lanes that always exist, in order. Imported video rows are prepended above
 // the SCREEN lane, which stays the bottom-most video layer.
@@ -110,7 +113,6 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
   const [containerWidth, setContainerWidth] = useState(0)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; time: number } | null>(null)
   const { sendPrompt } = useAIChat()
-  const [timelineHeight, setTimelineHeight] = useState(464)
 
   useEffect(() => {
     const containerEl = containerRef.current
@@ -249,6 +251,15 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
     }
   }, [displayVideoClips, audioTracks, subtitleCues])
 
+  const defaultTimelineHeight = useMemo(() => calculateFittedTimelineHeight(trackLayout.height), [trackLayout.height])
+  const [customHeight, setCustomHeight] = useState<number | null>(null)
+  const timelineHeight = customHeight ?? defaultTimelineHeight
+
+  useEffect(() => {
+    // When switching or loading a different video/project, reset timeline height to fitted default
+    setCustomHeight(null)
+  }, [videoPath])
+
   // Dragging a clip's grip handle moves it up/down the stack. The row under the
   // cursor becomes its new index, and the store keeps the bottom-first order.
   const beginVideoReorder = useCallback(
@@ -329,7 +340,9 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
       const startY = event.clientY
       const initialHeight = timelineHeight
       const move = (moveEvent: MouseEvent) => {
-        setTimelineHeight(Math.max(220, Math.min(760, initialHeight - (moveEvent.clientY - startY))))
+        setCustomHeight(
+          Math.max(MIN_TIMELINE_HEIGHT, Math.min(MAX_TIMELINE_HEIGHT, initialHeight - (moveEvent.clientY - startY))),
+        )
       }
       const up = () => {
         window.removeEventListener('mousemove', move)
@@ -340,6 +353,10 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
     },
     [timelineHeight],
   )
+
+  const handleResetHeight = useCallback(() => {
+    setCustomHeight(null)
+  }, [])
 
   const allRegionsToRender = useMemo(() => {
     const combined = [...Object.values(zoomRegions), ...Object.values(cutRegions), ...Object.values(speedRegions)]
@@ -358,8 +375,9 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
           role="separator"
           aria-label="Resize timeline height"
           aria-orientation="horizontal"
-          title="Drag to resize the timeline"
+          title="Drag to resize the timeline (double-click to fit)"
           onMouseDown={beginHeightResize}
+          onDoubleClick={handleResetHeight}
           className="group/timeline-resize flex h-4 shrink-0 cursor-ns-resize items-center justify-center"
         >
           <span className="h-[3px] w-8 rounded-full bg-muted/60 transition-colors group-hover/timeline-resize:bg-accent" />

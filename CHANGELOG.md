@@ -1,3 +1,9 @@
+## [1.21.0-beta.29](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.28...v1.21.0-beta.29) (2026-11-23)
+
+### Features
+
+* **export:** parallelize upscale intermediate render & clean status ([da590a1](https://github.com/getwithashish/DemoThat/commit/da590a1ee95b63d5c31b28ae711649dcae39fe22))
+
 ## [1.21.0-beta.28](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.27...v1.21.0-beta.28) (2026-11-23)
 
 ### Features

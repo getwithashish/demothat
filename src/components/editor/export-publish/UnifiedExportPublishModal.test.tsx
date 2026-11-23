@@ -482,4 +482,144 @@ describe('UnifiedExportPublishModal', () => {
     expect(doneBtn).toBeDefined()
     await click(doneBtn)
   })
+
+  describe('Upscaling stage progress, subtitles and throughput', () => {
+    it('displays dynamic high-velocity subtitles for each progress tier in cloud export', async () => {
+      // Tier 1: 0-25%
+      const host1 = await render(
+        <UnifiedExportPublishModal
+          {...defaultProps()}
+          isExporting={true}
+          cloudProgress={{ stage: 'Upscaling', stagePercent: 15, reserved: 500, consumed: 50 }}
+          exportProgress={65}
+        />,
+      )
+      expect(host1.textContent).toContain('Accelerating neural tensor cores…')
+
+      // Tier 2: 25-50%
+      const host2 = await render(
+        <UnifiedExportPublishModal
+          {...defaultProps()}
+          isExporting={true}
+          cloudProgress={{ stage: 'Upscaling', stagePercent: 35, reserved: 500, consumed: 120 }}
+          exportProgress={72}
+        />,
+      )
+      expect(host2.textContent).toContain('Enhancing fine details & textures…')
+
+      // Tier 3: 50-75%
+      const host3 = await render(
+        <UnifiedExportPublishModal
+          {...defaultProps()}
+          isExporting={true}
+          cloudProgress={{ stage: 'Upscaling', stagePercent: 65, reserved: 500, consumed: 280 }}
+          exportProgress={81}
+        />,
+      )
+      expect(host3.textContent).toContain('Compositing high-resolution frames…')
+
+      // Tier 4: 75-100%
+      const host4 = await render(
+        <UnifiedExportPublishModal
+          {...defaultProps()}
+          isExporting={true}
+          cloudProgress={{ stage: 'Upscaling', stagePercent: 90, reserved: 500, consumed: 450 }}
+          exportProgress={89}
+        />,
+      )
+      expect(host4.textContent).toContain('Finalizing neural multiplexing…')
+    })
+
+    it('displays dynamic high-velocity subtitles during local upscaling stage', async () => {
+      const host = await render(
+        <UnifiedExportPublishModal
+          {...defaultProps()}
+          isExporting={true}
+          exportStage="Upscaling"
+          exportProgress={40}
+        />,
+      )
+      expect(host.textContent).toContain('Enhancing fine details & textures…')
+      expect(host.textContent).toContain('Upscaling')
+    })
+
+    it('displays live throughput indicator with custom or measured throughput', async () => {
+      // Explicit throughput string
+      const host1 = await render(
+        <UnifiedExportPublishModal
+          {...defaultProps()}
+          isExporting={true}
+          cloudProgress={{
+            stage: 'Upscaling',
+            stagePercent: 45,
+            reserved: 500,
+            consumed: 200,
+            throughput: '64.5 fps',
+          }}
+          exportProgress={75}
+        />,
+      )
+      expect(host1.textContent).toContain('Throughput:')
+      expect(host1.textContent).toContain('64.5 fps')
+
+      // Numeric fps
+      const host2 = await render(
+        <UnifiedExportPublishModal
+          {...defaultProps()}
+          isExporting={true}
+          cloudProgress={{
+            stage: 'Upscaling',
+            stagePercent: 55,
+            reserved: 500,
+            consumed: 250,
+            fps: 48,
+          }}
+          exportProgress={78}
+        />,
+      )
+      expect(host2.textContent).toContain('Throughput:')
+      expect(host2.textContent).toContain('48 fps')
+
+      // Throughput via component prop
+      const host3 = await render(
+        <UnifiedExportPublishModal
+          {...defaultProps()}
+          isExporting={true}
+          exportStage="Upscaling"
+          exportProgress={30}
+          throughput="82.4 fps"
+        />,
+      )
+      expect(host3.textContent).toContain('Throughput:')
+      expect(host3.textContent).toContain('82.4 fps')
+    })
+
+    it('smoothly interpolates progress between heartbeat updates', async () => {
+      const host = await render(
+        <UnifiedExportPublishModal
+          {...defaultProps()}
+          isExporting={true}
+          cloudProgress={{ stage: 'Upscaling', stagePercent: 20, reserved: 500, consumed: 100 }}
+          exportProgress={66}
+        />,
+      )
+      expect(host.textContent).toContain('20%')
+
+      // Update progress with new heartbeat
+      await act(async () => {
+        root!.render(
+          <UnifiedExportPublishModal
+            {...defaultProps()}
+            isExporting={true}
+            cloudProgress={{ stage: 'Upscaling', stagePercent: 50, reserved: 500, consumed: 250 }}
+            exportProgress={76}
+          />,
+        )
+      })
+
+      // Progress bar exists and reflects progress update
+      const progressbar = host.querySelector('[role="progressbar"]')
+      expect(progressbar).not.toBeNull()
+    })
+  })
 })

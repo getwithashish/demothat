@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { Ban, CircleCheck, CircleX, Cloud, Folder, Loader2, Refresh, Share, Trash, X } from 'tabler-icons-react'
 import { ICON_SIZE, ICON_STROKE } from '../../ui/icons'
@@ -25,6 +25,7 @@ import {
   type ExportPerfSample,
 } from '../../../lib/export-estimate'
 import { estimateCloudCredits } from '../../../../shared/cloud-cost'
+import { cloudUpscaleStageLabel } from '../../../../shared/cloud-stages'
 import { formatCredits } from '../../../../shared/license'
 import { firstPurchaseProductId } from '../../../../shared/pricing'
 import { CloudConsentDialog } from '../cloud/CloudConsentDialog'
@@ -73,6 +74,7 @@ export interface UnifiedExportPublishModalProps {
   onCancelExport?: () => void
   onMinimize?: () => void
   onRetryCloud?: (request: CloudRetryRequest) => void
+  throughput?: string | number
 
   // Cloud publish & analytics props
   publishStatus?: PublishStatus | null
@@ -217,6 +219,7 @@ export function UnifiedExportPublishModal({
   onCancelExport,
   onMinimize,
   onRetryCloud,
+  throughput: throughputProp,
   publishStatus,
   isPublishing = false,
   publishProgress,
@@ -281,6 +284,106 @@ export function UnifiedExportPublishModal({
     fps: 30,
     quality: 'medium',
   })
+
+  // Track upscaling stage, smooth progress interpolation between heartbeats, and live throughput
+  const isUpscalingStage = exportStage === 'Upscaling' || cloudProgress?.stage === 'Upscaling'
+  const targetPercent = cloudProgress?.stagePercent ?? exportProgress ?? 0
+  const [displayPercent, setDisplayPercent] = useState(targetPercent)
+  const [measuredFps, setMeasuredFps] = useState<number | null>(null)
+  const lastHeartbeatRef = useRef<{ time: number; progress: number; framesDone?: number } | null>(null)
+
+  // Sync displayPercent immediately if targetPercent changes and not currently animating
+  useEffect(() => {
+    if (!isUpscalingStage) {
+      setDisplayPercent(targetPercent)
+      lastHeartbeatRef.current = null
+      setMeasuredFps(null)
+      return
+    }
+
+    const now = Date.now()
+    const currentFrames = cloudProgress?.framesDone
+
+    if (lastHeartbeatRef.current) {
+      const dt = (now - lastHeartbeatRef.current.time) / 1000
+      if (dt > 0.05) {
+        if (currentFrames !== undefined && lastHeartbeatRef.current.framesDone !== undefined) {
+          const df = currentFrames - lastHeartbeatRef.current.framesDone
+          if (df > 0) {
+            setMeasuredFps(Math.round((df / dt) * 10) / 10)
+          }
+        } else {
+          const dp = targetPercent - lastHeartbeatRef.current.progress
+          if (dp > 0) {
+            const projectDuration = duration || 10
+            const totalFrames = cloudProgress?.totalFrames ?? Math.max(1, Math.round(projectDuration * 30))
+            const df = (dp / 100) * totalFrames
+            setMeasuredFps(Math.round((df / dt) * 10) / 10)
+          }
+        }
+      }
+    }
+
+    lastHeartbeatRef.current = { time: now, progress: targetPercent, framesDone: currentFrames }
+  }, [isUpscalingStage, targetPercent, cloudProgress?.framesDone, cloudProgress?.totalFrames, duration])
+
+  // Smooth progress interpolation between heartbeats
+  useEffect(() => {
+    if (!isUpscalingStage || targetPercent === 0 || targetPercent >= 100) {
+      setDisplayPercent(targetPercent)
+      return
+    }
+
+    let animId: number
+    const step = () => {
+      setDisplayPercent((prev) => {
+        const diff = targetPercent - prev
+        if (Math.abs(diff) < 0.2) {
+          return targetPercent
+        }
+        return prev + diff * 0.25
+      })
+      animId = requestAnimationFrame(step)
+    }
+    animId = requestAnimationFrame(step)
+    return () => cancelAnimationFrame(animId)
+  }, [isUpscalingStage, targetPercent])
+
+  const throughputLabel = useMemo(() => {
+    if (throughputProp !== undefined) {
+      return typeof throughputProp === 'number' ? `${throughputProp} fps` : String(throughputProp)
+    }
+    if (cloudProgress?.throughput !== undefined) {
+      return typeof cloudProgress.throughput === 'number'
+        ? `${cloudProgress.throughput} fps`
+        : String(cloudProgress.throughput)
+    }
+    if (cloudProgress?.fps !== undefined) {
+      return `${cloudProgress.fps} fps`
+    }
+    if (measuredFps !== null && measuredFps > 0) {
+      return `${measuredFps} fps`
+    }
+    if (cloudProgress?.etaSeconds && cloudProgress.etaSeconds > 0) {
+      const projectDuration = duration || 10
+      const totalFrames = cloudProgress?.totalFrames ?? Math.max(1, Math.round(projectDuration * 30))
+      const remainingFrames = totalFrames * (1 - targetPercent / 100)
+      const estFps = Math.max(1, Math.round(remainingFrames / cloudProgress.etaSeconds))
+      return `~${estFps} fps`
+    }
+    return 'Calculating…'
+  }, [
+    throughputProp,
+    cloudProgress?.throughput,
+    cloudProgress?.fps,
+    measuredFps,
+    cloudProgress?.etaSeconds,
+    cloudProgress?.totalFrames,
+    duration,
+    targetPercent,
+  ])
+
+  const upscaleSubtitle = cloudUpscaleStageLabel(targetPercent)
 
   // Hardware capabilities and cloud status
   const [encoderCapabilities, setEncoderCapabilities] = useState<{ libx265: boolean } | null>(null)
@@ -918,10 +1021,13 @@ export function UnifiedExportPublishModal({
             </div>
             <CloudExportProgress
               stage={cloudProgress.stage}
-              percent={exportProgress}
+              percent={isUpscalingStage ? displayPercent : exportProgress}
+              stagePercent={cloudProgress.stagePercent}
               reserved={cloudProgress.reserved}
               consumed={cloudProgress.consumed}
               etaSeconds={cloudProgress.etaSeconds}
+              subtitle={isUpscalingStage ? upscaleSubtitle : undefined}
+              throughput={isUpscalingStage ? throughputLabel : undefined}
               onCancel={() => setCancelExportModalOpen(true)}
             />
             <CancelExportDialog
@@ -977,22 +1083,34 @@ export function UnifiedExportPublishModal({
                       ? 'Compositing motion & cursor…'
                       : 'Rendering video…'}
             </h2>
-            <p className="mt-1 text-xs text-muted">
-              {exportProgress >= 80
-                ? 'Finalizing audio tracks, lip-sync compensation, and stream muxing…'
-                : exportProgress >= 50
-                  ? 'Rendering blur masks, borders, and subtitle styling…'
-                  : exportProgress >= 25
-                    ? 'Rendering zoom transitions, cursor movements, and click ripples…'
-                    : 'Compositing video frames and visual layout…'}
+            <p className="mt-1 text-xs text-muted" data-testid={isUpscalingStage ? 'upscale-subtitle' : undefined}>
+              {isUpscalingStage
+                ? upscaleSubtitle
+                : exportProgress >= 80
+                  ? 'Finalizing audio tracks, lip-sync compensation, and stream muxing…'
+                  : exportProgress >= 50
+                    ? 'Rendering blur masks, borders, and subtitle styling…'
+                    : exportProgress >= 25
+                      ? 'Rendering zoom transitions, cursor movements, and click ripples…'
+                      : 'Compositing video frames and visual layout…'}
             </p>
             <div className="mt-5 h-1.5 w-full overflow-hidden rounded-full bg-ctl">
               <div
                 className="h-full bg-accent transition-all duration-300"
-                style={{ width: `${Math.max(3, exportProgress)}%` }}
+                style={{ width: `${Math.max(3, isUpscalingStage ? displayPercent : exportProgress)}%` }}
               />
             </div>
-            <p className="mt-2.5 font-mono text-xs tabular-nums text-muted">{Math.round(exportProgress)}%</p>
+            <p className="mt-2.5 font-mono text-xs tabular-nums text-muted">
+              {Math.round(isUpscalingStage ? displayPercent : exportProgress)}%
+            </p>
+            {isUpscalingStage && (
+              <p
+                className="mt-1.5 whitespace-nowrap font-mono text-xs tabular-nums text-muted"
+                data-testid="live-throughput"
+              >
+                Throughput: <span className="font-medium text-fg">{throughputLabel}</span>
+              </p>
+            )}
             <Button variant="secondary" onClick={onCancelExport} className="mt-6 w-full">
               Cancel
             </Button>

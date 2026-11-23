@@ -1,3 +1,9 @@
+## [1.21.0-beta.27](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.26...v1.21.0-beta.27) (2026-11-23)
+
+### Features
+
+* **publish:** combine render-publish progress, dynamic status, and close-to-minimize ([ab02e2c](https://github.com/getwithashish/DemoThat/commit/ab02e2c453ea4ee38746a72df33bf5f0f966d367))
+
 ## [1.21.0-beta.26](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.25...v1.21.0-beta.26) (2026-11-23)
 
 ### Bug Fixes

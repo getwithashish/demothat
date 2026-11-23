@@ -1,3 +1,9 @@
+## [1.21.0-beta.31](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.30...v1.21.0-beta.31) (2026-11-23)
+
+### Bug Fixes
+
+* **timeline:** fit default height to tracks without empty space below masking row ([1f3c806](https://github.com/getwithashish/DemoThat/commit/1f3c80640bcf93336ab8dfb9006635a0cc7c10a1))
+
 ## [1.21.0-beta.30](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.29...v1.21.0-beta.30) (2026-11-23)
 
 ### Features

@@ -220,7 +220,7 @@ describe('UnifiedExportPublishModal', () => {
         exportStage="Rendering video with effects"
       />,
     )
-    expect(host.textContent).toContain('Exporting video…')
+    expect(host.textContent).toContain('Rendering video with effects')
     expect(host.textContent).toContain('55%')
     expect(host.textContent).toContain('Cancel')
   })
@@ -234,7 +234,7 @@ describe('UnifiedExportPublishModal', () => {
         publishProgress={{ stage: 'Rendering', stagePercent: 40 }}
       />,
     )
-    expect(host.textContent).toContain('Rendering with all effects…')
+    expect(host.textContent).toContain('Rendering')
     expect(host.textContent).toContain('40%')
     expect(host.textContent).toContain('Cancel')
   })
@@ -260,14 +260,14 @@ describe('UnifiedExportPublishModal', () => {
     }
   })
 
-  it('renders Run in background button and invokes onMinimize during publishing', async () => {
+  it('does not render "Run in background" button and invokes onMinimize when close button is clicked during publishing', async () => {
     const mockMinimize = vi.fn()
     const host = await render(
       <UnifiedExportPublishModal
         {...defaultProps()}
         initialTab="publish"
         isPublishing={true}
-        publishProgress={{ stage: 'Rendering', stagePercent: 65 }}
+        publishProgress={{ stage: 'Rendering video frames…', detail: 'Stitching camera feed…', stagePercent: 65 }}
         onMinimize={mockMinimize}
       />,
     )
@@ -275,12 +275,35 @@ describe('UnifiedExportPublishModal', () => {
     const runInBackgroundBtn = Array.from(host.querySelectorAll('button')).find((b) =>
       b.textContent?.includes('Run in background'),
     )
-    expect(runInBackgroundBtn).toBeDefined()
-    await click(runInBackgroundBtn)
+    expect(runInBackgroundBtn).toBeUndefined()
+
+    // Click close button in header
+    const closeBtn = host.querySelector('button[aria-label="Close and run in background"]')
+    expect(closeBtn).not.toBeNull()
+    await click(closeBtn)
     expect(mockMinimize).toHaveBeenCalledTimes(1)
   })
 
-  it('renders Run in background button and invokes onMinimize during local export', async () => {
+  it('renders dynamic stage and detail during publishing and local export', async () => {
+    const host = await render(
+      <UnifiedExportPublishModal
+        {...defaultProps()}
+        initialTab="publish"
+        isPublishing={true}
+        publishProgress={{
+          stage: 'Compositing motion & cursor…',
+          detail: 'Rendering zoom transitions, cursor movements, and click ripples…',
+          stagePercent: 35,
+        }}
+      />,
+    )
+
+    expect(host.textContent).toContain('Compositing motion & cursor…')
+    expect(host.textContent).toContain('Rendering zoom transitions, cursor movements, and click ripples…')
+    expect(host.textContent).toContain('35%')
+  })
+
+  it('invokes onMinimize via close button during local export without "Run in background" button', async () => {
     const mockMinimize = vi.fn()
     const host = await render(
       <UnifiedExportPublishModal
@@ -295,8 +318,11 @@ describe('UnifiedExportPublishModal', () => {
     const runInBackgroundBtn = Array.from(host.querySelectorAll('button')).find((b) =>
       b.textContent?.includes('Run in background'),
     )
-    expect(runInBackgroundBtn).toBeDefined()
-    await click(runInBackgroundBtn)
+    expect(runInBackgroundBtn).toBeUndefined()
+
+    const closeBtn = host.querySelector('button[aria-label="Close and run in background"]')
+    expect(closeBtn).not.toBeNull()
+    await click(closeBtn)
     expect(mockMinimize).toHaveBeenCalledTimes(1)
   })
 

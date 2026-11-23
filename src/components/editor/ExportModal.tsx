@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, useMemo } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { Button } from '../ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
-import { Loader2, CircleX, Folder, Ban } from 'tabler-icons-react'
+import { Loader2, CircleX, Folder, Ban, X } from 'tabler-icons-react'
 import { ICON_SIZE, ICON_STROKE } from '../ui/icons'
 import { Input } from '../ui/input'
 import { Section } from '../ui/section'
@@ -885,10 +885,17 @@ export function ExportModal({
         className="card-clean pointer-events-auto relative m-4 flex w-full max-w-2xl flex-col overflow-hidden transition-[height] duration-500 ease-golden"
         onClick={(e) => e.stopPropagation()}
       >
-        {isExporting && onMinimize && (
+        {isExporting && (
           <div className="flex justify-end px-4 pt-3">
-            <Button variant="ghost" size="sm" onClick={onMinimize}>
-              Run in background
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onMinimize ?? requestClose}
+              className="h-8 w-8 p-0"
+              aria-label="Close and run in background"
+              title="Close and run in background"
+            >
+              <X size={ICON_SIZE} strokeWidth={ICON_STROKE} />
             </Button>
           </div>
         )}

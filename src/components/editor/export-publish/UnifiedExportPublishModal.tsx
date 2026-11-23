@@ -904,13 +904,18 @@ export function UnifiedExportPublishModal({
             className="card-clean pointer-events-auto relative m-4 flex w-full max-w-xl flex-col overflow-hidden transition-[height] duration-500 ease-golden"
             onClick={(e) => e.stopPropagation()}
           >
-            {onMinimize && (
-              <div className="flex justify-end px-4 pt-3">
-                <Button variant="ghost" size="sm" onClick={onMinimize}>
-                  Run in background
-                </Button>
-              </div>
-            )}
+            <div className="flex justify-end px-4 pt-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleModalClose}
+                className="h-8 w-8 p-0"
+                aria-label="Close and run in background"
+                title="Close and run in background"
+              >
+                <X size={ICON_SIZE} strokeWidth={ICON_STROKE} />
+              </Button>
+            </div>
             <CloudExportProgress
               stage={cloudProgress.stage}
               percent={exportProgress}
@@ -944,18 +949,39 @@ export function UnifiedExportPublishModal({
           className="card-clean pointer-events-auto relative m-4 flex w-full max-w-xl flex-col overflow-hidden transition-[height] duration-500 ease-golden"
           onClick={(e) => e.stopPropagation()}
         >
-          {onMinimize && (
-            <div className="flex justify-end px-4 pt-3">
-              <Button variant="ghost" size="sm" onClick={onMinimize}>
-                Run in background
-              </Button>
-            </div>
-          )}
+          <div className="flex justify-end px-4 pt-3">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleModalClose}
+              className="h-8 w-8 p-0"
+              aria-label="Close and run in background"
+              title="Close and run in background"
+            >
+              <X size={ICON_SIZE} strokeWidth={ICON_STROKE} />
+            </Button>
+          </div>
           <div className="flex flex-col items-center p-8 text-center">
             <Loader2 size={ICON_SIZE} strokeWidth={ICON_STROKE} className="mb-4 animate-spin text-accent" />
-            <h2 className="text-base font-semibold text-fg">Exporting video…</h2>
+            <h2 className="text-base font-semibold text-fg">
+              {exportStage && exportStage !== 'Local intermediate render'
+                ? exportStage
+                : exportProgress >= 80
+                  ? 'Encoding & multiplexing…'
+                  : exportProgress >= 50
+                    ? 'Rendering effects & overlays…'
+                    : exportProgress >= 25
+                      ? 'Compositing motion & cursor…'
+                      : 'Exporting video…'}
+            </h2>
             <p className="mt-1 text-xs text-muted">
-              {exportStage ? `${exportStage}…` : 'Rendering frames with composited effects…'}
+              {exportProgress >= 80
+                ? 'Finalizing audio tracks, lip-sync compensation, and stream muxing…'
+                : exportProgress >= 50
+                  ? 'Rendering blur masks, borders, and subtitle styling…'
+                  : exportProgress >= 25
+                    ? 'Rendering zoom transitions, cursor movements, and click ripples…'
+                    : 'Compositing video frames and visual layout…'}
             </p>
             <div className="mt-5 h-1.5 w-full overflow-hidden rounded-full bg-ctl">
               <div
@@ -986,7 +1012,14 @@ export function UnifiedExportPublishModal({
             <Share size={16} strokeWidth={ICON_STROKE} className="text-accent" />
             <h2 className="text-sm font-semibold text-fg">Export & Instant Publishing</h2>
           </div>
-          <Button variant="ghost" size="sm" onClick={handleModalClose} className="h-8 w-8 p-0">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleModalClose}
+            className="h-8 w-8 p-0"
+            aria-label={isBusy ? 'Close and run in background' : 'Close'}
+            title={isBusy ? 'Close and run in background' : 'Close'}
+          >
             <X size={14} strokeWidth={ICON_STROKE} />
           </Button>
         </div>
@@ -1406,21 +1439,13 @@ export function UnifiedExportPublishModal({
               ) : isPublishing ? (
                 /* Dual-Stage Progress */
                 <div className="flex flex-col items-center p-8 text-center">
-                  {onMinimize && (
-                    <div className="flex w-full justify-end -mt-4 mb-2">
-                      <Button variant="ghost" size="sm" onClick={onMinimize}>
-                        Run in background
-                      </Button>
-                    </div>
-                  )}
                   <Loader2 size={ICON_SIZE} strokeWidth={ICON_STROKE} className="mb-4 animate-spin text-accent" />
-                  <h3 className="text-sm font-semibold text-fg">
-                    {publishProgress?.stage === 'Rendering' ? 'Rendering with all effects…' : 'Publishing to cloud…'}
-                  </h3>
+                  <h3 className="text-sm font-semibold text-fg">{publishProgress?.stage || 'Publishing to cloud…'}</h3>
                   <p className="mt-1 text-xs text-muted">
-                    {publishProgress?.stage === 'Rendering'
-                      ? 'Stitching camera feed, mouse click animations, and zoom motions…'
-                      : 'Uploading and generating instant share links…'}
+                    {publishProgress?.detail ||
+                      (publishProgress?.stage?.toLowerCase().includes('render')
+                        ? 'Stitching camera feed, mouse click animations, and zoom motions…'
+                        : 'Uploading and generating instant share links…')}
                   </p>
                   <div className="mt-5 h-1.5 w-full overflow-hidden rounded-full bg-ctl">
                     <div

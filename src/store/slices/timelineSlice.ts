@@ -120,8 +120,33 @@ export const createTimelineSlice: Slice<TimelineState, TimelineActions> = (set, 
     set((state) => {
       // New clips land on top of the stack (highest order draws last).
       const nextOrder = state.videoClips.reduce((max, item) => Math.max(max, item.order ?? 0), -1) + 1
-      state.videoClips.push({ ...clip, sourceStart: 0, order: nextOrder, id })
+      const clipEnd = clip.startTime + clip.duration
+      if (clipEnd > state.duration) {
+        state.duration = Number(clipEnd.toFixed(3))
+      }
+      let audioClipId: string | null = null
+      if (clip.hasAudio) {
+        audioClipId = `audio-clip-${id}`
+        state.audioClips.push({
+          id: audioClipId,
+          name: `${clip.name} (Audio)`,
+          filePath: clip.filePath,
+          startTime: clip.startTime,
+          duration: clip.duration,
+          sourceStart: 0,
+          sourceDuration: clip.sourceDuration,
+          volume: 1,
+          fadeIn: 0,
+          fadeOut: 0,
+          loop: false,
+          kind: 'recording',
+          speed: 1,
+          videoClipId: id,
+        })
+      }
+      state.videoClips.push({ ...clip, audioClipId, sourceStart: 0, order: nextOrder, id })
       state.selectedRegionId = id
+      state.isDirty = true
     })
     logger.info(`addVideoClip: id=${id}, path=${clip.filePath}, duration=${clip.duration.toFixed(3)}s`)
   },
@@ -134,13 +159,33 @@ export const createTimelineSlice: Slice<TimelineState, TimelineActions> = (set, 
       clip.startTime = Math.max(0, clip.startTime)
       clip.duration = Math.max(0.1, clip.duration)
       clip.sourceStart = Math.max(0, Math.min(Math.max(0, clip.sourceDuration - 0.1), clip.sourceStart))
+      const clipEnd = clip.startTime + clip.duration
+      if (clipEnd > state.duration) {
+        state.duration = Number(clipEnd.toFixed(3))
+      }
+      if (clip.audioClipId) {
+        const audio = state.audioClips.find((a) => a.id === clip.audioClipId)
+        if (audio) {
+          audio.startTime = clip.startTime
+          audio.duration = clip.duration
+          audio.sourceStart = clip.sourceStart
+        }
+      }
+      state.isDirty = true
     })
   },
   deleteVideoClip: (id) => {
     logger.info(`deleteVideoClip: id=${id}`)
     set((state) => {
+      const clip = state.videoClips.find((item) => item.id === id)
+      if (clip?.audioClipId) {
+        state.audioClips = state.audioClips.filter((a) => a.id !== clip.audioClipId)
+      }
       state.videoClips = state.videoClips.filter((clip) => clip.id !== id)
-      if (state.selectedRegionId === id) state.selectedRegionId = null
+      if (state.selectedRegionId === id || (clip?.audioClipId && state.selectedRegionId === clip.audioClipId)) {
+        state.selectedRegionId = null
+      }
+      state.isDirty = true
     })
   },
   setVideoClipOrder: (orderedIds) => {

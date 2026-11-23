@@ -10,6 +10,8 @@ import {
   markSystemAudioStopped,
   markScreenCaptureStopped,
 } from '../../features/recording-manager'
+import { showRecorderWindow } from './app'
+import { appState } from '../../state'
 
 export interface ScreenSourceInfo {
   id: string
@@ -28,6 +30,13 @@ export function handleLoadVideoFromFile() {
 
 export async function handleStopRecording() {
   await stopRecording()
+}
+
+export function handleRequestClipRecording(_event: unknown, insertTime: number): void {
+  appState.recordingTarget = 'editor-clip'
+  appState.pendingClipInsertTime =
+    typeof insertTime === 'number' && Number.isFinite(insertTime) ? Math.max(0, insertTime) : 0
+  showRecorderWindow()
 }
 
 /**

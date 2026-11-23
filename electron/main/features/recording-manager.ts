@@ -1247,12 +1247,29 @@ export async function stopRecording() {
       webcamVideo: webcamStat ? `${webcamStat.size} bytes (${(webcamStat.size / 1024 / 1024).toFixed(2)} MB)` : 'none',
       metadata: metaStat ? `${metaStat.size} bytes` : 'missing',
     })
-    createEditorWindow(
-      finalizedSession.screenVideoPath,
-      finalizedSession.metadataPath,
-      finalizedSession.recordingGeometry,
-      finalizedSession.webcamVideoPath,
-    )
+    if (appState.recordingTarget === 'editor-clip' && appState.editorWin && !appState.editorWin.isDestroyed()) {
+      log.info(
+        '[StopRecord] Delivering clip recording to existing editor window at time',
+        appState.pendingClipInsertTime,
+      )
+      appState.editorWin.webContents.send('recording:clip-recorded', {
+        screenVideoPath: finalizedSession.screenVideoPath,
+        webcamVideoPath: finalizedSession.webcamVideoPath,
+        metadataPath: finalizedSession.metadataPath,
+        insertTime: appState.pendingClipInsertTime ?? 0,
+      })
+      appState.editorWin.show()
+      appState.editorWin.focus()
+    } else {
+      createEditorWindow(
+        finalizedSession.screenVideoPath,
+        finalizedSession.metadataPath,
+        finalizedSession.recordingGeometry,
+        finalizedSession.webcamVideoPath,
+      )
+    }
+    appState.recordingTarget = 'new-project'
+    appState.pendingClipInsertTime = null
   }
   appState.recorderWin?.close()
 }
@@ -1662,6 +1679,8 @@ export async function cleanupAndDiscard() {
   markScreenCaptureStopped()
   const sessionToDiscard = { ...appState.currentRecordingSession }
   appState.currentRecordingSession = null
+  appState.recordingTarget = 'new-project'
+  appState.pendingClipInsertTime = null
 
   appState.ffmpegProcess?.kill('SIGKILL')
   appState.ffmpegProcess = null

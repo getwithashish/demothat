@@ -5,6 +5,15 @@ const mockSavingWin = {
   close: vi.fn(),
 }
 
+const mockEditorWin = {
+  isDestroyed: vi.fn(() => false),
+  show: vi.fn(),
+  focus: vi.fn(),
+  webContents: {
+    send: vi.fn(),
+  },
+}
+
 const mockRecorderWin = {
   minimize: vi.fn(),
   show: vi.fn(),
@@ -276,6 +285,38 @@ describe('recording-manager', () => {
         y: 200,
         timestamp: 5000,
       })
+    })
+
+    it('delivers clip recording to existing editorWin when recordingTarget is editor-clip', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      appState.recorderWin = mockRecorderWin as any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      appState.savingWin = mockSavingWin as any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      appState.editorWin = mockEditorWin as any
+      appState.recordingTarget = 'editor-clip'
+      appState.pendingClipInsertTime = 5.25
+      appState.currentRecordingSession = {
+        screenVideoPath: '/tmp/clip-screen.mp4',
+        metadataPath: '/tmp/clip.json',
+        recordingGeometry: { x: 0, y: 0, width: 1920, height: 1080 },
+        hasMicAudio: true,
+      }
+      appState.recordedMouseEvents = []
+      appState.ffmpegProcess = null
+
+      await stopRecording()
+
+      expect(mockEditorWin.webContents.send).toHaveBeenCalledWith('recording:clip-recorded', {
+        screenVideoPath: '/tmp/clip-screen.mp4',
+        webcamVideoPath: undefined,
+        metadataPath: '/tmp/clip.json',
+        insertTime: 5.25,
+      })
+      expect(mockEditorWin.show).toHaveBeenCalled()
+      expect(mockEditorWin.focus).toHaveBeenCalled()
+      expect(appState.recordingTarget).toBe('new-project')
+      expect(appState.pendingClipInsertTime).toBeNull()
     })
   })
 

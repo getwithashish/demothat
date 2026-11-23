@@ -47,6 +47,13 @@ type ProjectPayload = {
   webcamVideoPath?: string
 }
 
+export type RecordedClipPayload = {
+  screenVideoPath: string
+  metadataPath: string
+  webcamVideoPath?: string
+  insertTime: number
+}
+
 type ExportPayload = {
   projectState: any
   exportSettings: any
@@ -173,6 +180,9 @@ export const electronAPI = {
   /** Brings the recorder window to the front ("New recording"). */
   showRecorderWindow: (): void => ipcRenderer.send('app:show-recorder'),
 
+  /** Requests an additional recording from the editor to be inserted at insertTime. */
+  requestClipRecording: (insertTime: number): void => ipcRenderer.send('recording:request-clip', insertTime),
+
   getCursorScale: (): Promise<number> => ipcRenderer.invoke('desktop:get-cursor-scale'),
   setCursorScale: (scale: number): void => ipcRenderer.send('desktop:set-cursor-scale', scale),
 
@@ -278,6 +288,15 @@ export const electronAPI = {
 
     return () => {
       ipcRenderer.removeListener('project:open', listener)
+    }
+  },
+
+  onRecordingClipRecorded: (callback: (payload: RecordedClipPayload) => void) => {
+    const listener = (_event: IpcRendererEvent, payload: RecordedClipPayload) => callback(payload)
+    ipcRenderer.on('recording:clip-recorded', listener)
+
+    return () => {
+      ipcRenderer.removeListener('recording:clip-recorded', listener)
     }
   },
 

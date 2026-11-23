@@ -6,7 +6,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { ChevronDown, Clock, Copy, Folder, Pencil, Share, Video } from 'tabler-icons-react'
+import { ChevronDown, CircleDot, Clock, Copy, Folder, Pencil, Share, Video } from 'tabler-icons-react'
 import { useEditorStore } from '../../store/editorStore'
 import {
   DropdownMenu,
@@ -41,6 +41,7 @@ export interface ProjectMenuProps {
   onOpenRecovery: () => void
   onShowInFolder: () => void
   onNewRecording: () => void
+  onRecordClip?: () => void
   onOpenPublishedVideos?: () => void
 }
 
@@ -53,6 +54,7 @@ export function ProjectMenu({
   onOpenRecovery,
   onShowInFolder,
   onNewRecording,
+  onRecordClip,
   onOpenPublishedVideos,
 }: ProjectMenuProps) {
   const { currentProjectPath, recentProjects, autoSaveEnabled, lastSavedAt, lastRecoveryAt, platform, recoveryCopy } =
@@ -228,9 +230,16 @@ export function ProjectMenu({
           </DropdownMenuSubContent>
         </DropdownMenuSub>
 
+        {onRecordClip && (
+          <DropdownMenuItem onSelect={onRecordClip} trailing={`${modKey}Alt+R`}>
+            <CircleDot size={16} strokeWidth={ICON_STROKE} className="text-danger" />
+            Record clip at playhead…
+          </DropdownMenuItem>
+        )}
+
         <DropdownMenuItem onSelect={onNewRecording}>
           <Video size={16} strokeWidth={ICON_STROKE} className="text-muted" />
-          New recording
+          New project recording…
         </DropdownMenuItem>
 
         {onOpenPublishedVideos && (

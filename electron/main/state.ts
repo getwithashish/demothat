@@ -106,6 +106,12 @@ interface AppState {
 
   // Flags
   isCleanupInProgress: boolean
+
+  // Destination of recording completion:
+  // 'new-project' opens/replaces an editor window;
+  // 'editor-clip' sends the recorded media to the active editor as a clip at pendingClipInsertTime.
+  recordingTarget: 'new-project' | 'editor-clip'
+  pendingClipInsertTime: number | null
 }
 
 export const appState: AppState = {
@@ -129,4 +135,6 @@ export const appState: AppState = {
   editorProjectDirty: false,
   cursorSamplesAreVideoTimed: false,
   isCleanupInProgress: false,
+  recordingTarget: 'new-project',
+  pendingClipInsertTime: null,
 }

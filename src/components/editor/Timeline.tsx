@@ -320,9 +320,8 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
           return
         }
         // The tail moves; past the end of the source the last frame is held, so
-        // the only limit is the end of the timeline.
-        const maxDuration = Math.max(0.1, duration - initial.startTime)
-        updateVideoClip(clipId, { duration: Math.max(0.1, Math.min(maxDuration, initial.duration + delta)) })
+        // it can extend and automatically expand the timeline duration.
+        updateVideoClip(clipId, { duration: Math.max(0.1, initial.duration + delta) })
       }
       const up = () => {
         window.removeEventListener('mousemove', move)
@@ -331,7 +330,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
       window.addEventListener('mousemove', move)
       window.addEventListener('mouseup', up)
     },
-    [pxToTime, duration, setSelectedRegionId, updateVideoClip],
+    [pxToTime, setSelectedRegionId, updateVideoClip],
   )
 
   const beginHeightResize = useCallback(
@@ -621,13 +620,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
                           const initialStart = clip.startTime
                           const move = (moveEvent: MouseEvent) =>
                             updateVideoClip(clip.id, {
-                              startTime: Math.max(
-                                0,
-                                Math.min(
-                                  Math.max(0, duration - clip.duration),
-                                  initialStart + pxToTime(moveEvent.clientX - startX),
-                                ),
-                              ),
+                              startTime: Math.max(0, initialStart + pxToTime(moveEvent.clientX - startX)),
                             })
                           const up = () => {
                             window.removeEventListener('mousemove', move)

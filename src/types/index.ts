@@ -111,6 +111,10 @@ export interface VideoClip {
    * The screen recording always sits below every imported clip.
    */
   order: number
+  metadataPath?: string | null
+  webcamVideoPath?: string | null
+  audioClipId?: string | null
+  hasAudio?: boolean
 }
 
 export interface SpeedRegion {
@@ -560,10 +564,12 @@ export interface AudioClip {
   fadeIn: number
   fadeOut: number
   loop: boolean
-  /** Music clips use a source file; click clips represent one removable mouse-click sound. */
-  kind?: 'music' | 'click'
+  /** Music clips use a source file; click clips represent one removable mouse-click sound; recording clips are linked to an added video clip. */
+  kind?: 'music' | 'click' | 'recording'
   /** Playback rate, where 1 is normal speed. */
   speed?: number
+  /** Linked video clip ID if this audio originated from a recorded/imported video clip. */
+  videoClipId?: string | null
 }
 
 export interface AudioState {

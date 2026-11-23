@@ -20,6 +20,7 @@ import { BuyCreditsDialog } from '../components/editor/cloud/BuyCreditsDialog'
 import { WaitingForPaymentDialog } from '../components/editor/cloud/WaitingForPaymentDialog'
 import { ResumeCloudDialog } from '../components/editor/cloud/ResumeCloudDialog'
 import { firstPurchaseProductId } from '../../shared/pricing'
+import { mediaUrl } from '../../shared/media-url'
 import { Stack3, Loader2, Check, Settings } from 'tabler-icons-react'
 import { ICON_SIZE, ICON_STROKE } from '../components/ui/icons'
 import { cn, formatTime } from '../lib/utils'
@@ -42,6 +43,7 @@ export function EditorPage() {
   usePageLifecycle('EditorPage')
   const {
     loadProject,
+    addVideoClip,
     initializePresets,
     initializeSettings,
     initializeRecentProjects,
@@ -298,6 +300,11 @@ export function EditorPage() {
     window.electronAPI.showRecorderWindow()
   }, [])
 
+  const handleRecordClip = useCallback(() => {
+    const playhead = useEditorStore.getState().currentTime ?? 0
+    window.electronAPI.requestClipRecording(playhead)
+  }, [])
+
   /** Opens the crash copy as an unsaved project, so the first save asks where. */
   const handleOpenRecovery = useCallback(async () => {
     const opened = await openRecoveryCopy()
@@ -351,8 +358,18 @@ export function EditorPage() {
         e.preventDefault()
         redo()
       },
+      'ctrl+alt+r': () => handleRecordClip(),
     },
-    [handleDeleteSelectedRegion, undo, redo, togglePlay, handleSeekFrame, togglePreviewFullScreen, handleMenuCommand],
+    [
+      handleDeleteSelectedRegion,
+      undo,
+      redo,
+      togglePlay,
+      handleSeekFrame,
+      togglePreviewFullScreen,
+      handleMenuCommand,
+      handleRecordClip,
+    ],
   )
 
   useEffect(() => {
@@ -383,8 +400,48 @@ export function EditorPage() {
       await loadProject(payload)
       useEditorStore.temporal.getState().clear()
     })
-    return () => cleanup()
-  }, [loadProject, initializePresets, initializeSettings, initializeRecentProjects])
+    const cleanupClip = window.electronAPI.onRecordingClipRecorded(async (payload) => {
+      try {
+        const video = document.createElement('video')
+        video.preload = 'metadata'
+        video.src = mediaUrl(payload.screenVideoPath)
+        await new Promise<void>((resolve, reject) => {
+          video.onloadedmetadata = () => resolve()
+          video.onerror = () => reject(new Error('Could not read recording metadata'))
+          video.load()
+        })
+        const sourceDuration = Number.isFinite(video.duration) ? video.duration : 0
+        if (sourceDuration <= 0) return
+
+        const currentClips = useEditorStore.getState().videoClips
+        const clipName = `Recording ${currentClips.length + 1}`
+
+        addVideoClip({
+          name: clipName,
+          filePath: payload.screenVideoPath,
+          metadataPath: payload.metadataPath,
+          webcamVideoPath: payload.webcamVideoPath,
+          startTime: payload.insertTime,
+          duration: sourceDuration,
+          sourceDuration,
+          hasAudio: true,
+        })
+
+        pushToast({
+          message: `${clipName} added to timeline at ${formatTime(payload.insertTime, true)}`,
+        })
+      } catch (err) {
+        console.error('[EditorPage] Failed to add recorded clip to timeline:', err)
+        pushToast({
+          message: err instanceof Error ? err.message : 'Could not add recording to timeline',
+        })
+      }
+    })
+    return () => {
+      cleanup()
+      cleanupClip()
+    }
+  }, [loadProject, initializePresets, initializeSettings, initializeRecentProjects, addVideoClip, pushToast])
 
   useEffect(() => {
     const cleanupMenu = window.electronAPI.onMenuCommand((command) => {
@@ -556,6 +613,7 @@ export function EditorPage() {
                 onOpenRecovery={() => void handleOpenRecovery()}
                 onShowInFolder={handleShowInFolder}
                 onNewRecording={handleNewRecording}
+                onRecordClip={handleRecordClip}
                 onOpenPublishedVideos={handleOpenAnalytics}
               />
               {metaLabel && <span className="truncate font-mono text-sm text-muted">{metaLabel}</span>}

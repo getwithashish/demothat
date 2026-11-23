@@ -40,7 +40,6 @@ function FrameSettingsPanel() {
         {/* Sections carry their own padding + hairline dividers (flat, no wrappers). */}
         <BackgroundSettings />
         <FrameEffectsSettings />
-        <VisualEffectsSettings />
       </div>
     </div>
   )
@@ -55,11 +54,13 @@ export function SidePanel() {
     cameraMotions,
     compositionLayouts,
     audioClips,
+    visualEffects,
     deleteAudioClip,
     webcamVideoUrl,
     setSelectedRegionId,
     deleteCameraMotion,
     deleteCompositionLayout,
+    deleteVisualEffect,
     activeSidePanelTab,
     setActiveSidePanelTab,
   } = useEditorStore(
@@ -70,11 +71,13 @@ export function SidePanel() {
       cameraMotions: state.cameraMotions,
       compositionLayouts: state.compositionLayouts,
       audioClips: state.audioClips,
+      visualEffects: state.visualEffects,
       deleteAudioClip: state.deleteAudioClip,
       webcamVideoUrl: state.webcamVideoUrl,
       setSelectedRegionId: state.setSelectedRegionId,
       deleteCameraMotion: state.deleteCameraMotion,
       deleteCompositionLayout: state.deleteCompositionLayout,
+      deleteVisualEffect: state.deleteVisualEffect,
       activeSidePanelTab: state.activeSidePanelTab,
       setActiveSidePanelTab: state.setActiveSidePanelTab,
     })),
@@ -126,8 +129,9 @@ export function SidePanel() {
     () => audioClips.find((clip) => clip.id === selectedRegionId) ?? null,
     [audioClips, selectedRegionId],
   )
-  const selectedVisualEffect = useEditorStore((state) =>
-    state.visualEffects.some((effect) => effect.id === selectedRegionId),
+  const selectedVisualEffect = useMemo(
+    () => visualEffects.find((effect) => effect.id === selectedRegionId) ?? null,
+    [visualEffects, selectedRegionId],
   )
 
   const selectedRegion = useMemo(() => {
@@ -160,7 +164,13 @@ export function SidePanel() {
       }
       if ((event.key !== 'Delete' && event.key !== 'Backspace') || !selectedRegionId) return
       const target = event.target as HTMLElement | null
-      if (target?.isContentEditable || target?.closest('input, textarea, select, [contenteditable="true"]')) return
+      if (
+        target?.isContentEditable ||
+        (target &&
+          typeof target.closest === 'function' &&
+          target.closest('input, textarea, select, [contenteditable="true"]'))
+      )
+        return
       if (audioClips.some((clip) => clip.id === selectedRegionId)) {
         event.preventDefault()
         event.stopPropagation()
@@ -171,6 +181,12 @@ export function SidePanel() {
       if (compositionLayouts.some((range) => range.id === selectedRegionId)) {
         event.preventDefault()
         deleteCompositionLayout(selectedRegionId)
+        setSelectedRegionId(null)
+        return
+      }
+      if (visualEffects.some((e) => e.id === selectedRegionId)) {
+        event.preventDefault()
+        deleteVisualEffect(selectedRegionId)
         setSelectedRegionId(null)
         return
       }
@@ -186,9 +202,11 @@ export function SidePanel() {
     cameraMotions,
     compositionLayouts,
     audioClips,
+    visualEffects,
     deleteAudioClip,
     deleteCameraMotion,
     deleteCompositionLayout,
+    deleteVisualEffect,
     setSelectedRegionId,
   ])
 
@@ -262,6 +280,8 @@ export function SidePanel() {
             <CameraMotionSettings />
           ) : selectedRegion ? (
             <RegionSettingsPanel region={selectedRegion} />
+          ) : selectedVisualEffect ? (
+            <VisualEffectsSettings />
           ) : (
             <FrameSettingsPanel />
           )}

@@ -180,6 +180,14 @@ describe('usePublish & renderAndPublish pipeline', () => {
     await renderHook()
     expect(hookResult).not.toBeNull()
 
+    let resolvePublish: (val: PublishOutcome) => void = () => {}
+    mockStartPublish.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolvePublish = resolve
+        }),
+    )
+
     let outcomePromise: Promise<PublishOutcome>
     act(() => {
       outcomePromise = hookResult!.renderAndPublish(sampleProjectState, sampleExportSettings, samplePublishOptions)
@@ -198,13 +206,14 @@ describe('usePublish & renderAndPublish pipeline', () => {
       outputPath: '/tmp/demothat-publish-12345.mp4',
     })
 
-    // Step 3: Tracks render progress via onExportProgress
+    // Step 3: Tracks render progress via onExportProgress (scaled to 0-50% with dynamic status)
     act(() => {
       exportProgressCb?.({ progress: 45.4, stage: 'rendering' })
     })
     expect(hookResult!.progress).toEqual({
-      stage: 'Rendering',
-      stagePercent: 45,
+      stage: 'Compositing motion & cursor…',
+      detail: 'Rendering zoom transitions, cursor movements, and click ripples…',
+      stagePercent: 23,
     })
 
     // Render completes successfully
@@ -229,14 +238,40 @@ describe('usePublish & renderAndPublish pipeline', () => {
       captions: samplePublishOptions.cues,
     })
 
-    // Step 6: Tracks upload progress via onPublishProgress
+    // Step 6: Tracks upload progress via onPublishProgress (scaled to 52-95% with dynamic status)
     act(() => {
       publishProgressCb?.({ stage: 'Uploading', stagePercent: 70, estimatedCost: 10 })
     })
     expect(hookResult!.progress).toEqual({
-      stage: 'Uploading',
-      stagePercent: 70,
+      stage: 'Uploading to cloud (70%)…',
+      detail: 'Finalizing cloud chunk transfers…',
+      stagePercent: 82,
       estimatedCost: 10,
+    })
+
+    act(() => {
+      resolvePublish({
+        ok: true,
+        publication: {
+          publicationId: 'pub-test-1',
+          slug: 'pub-test-1',
+          title: 'Test Video',
+          status: 'active',
+          kind: 'page',
+          storageDays: 30,
+          createdAt: '2026-11-20T12:00:00Z',
+          expiresAt: '2026-12-20T12:00:00Z',
+          sizeBytes: 15_000_000,
+          served: { page: true, embed: false, links: false },
+          estimatedCost: 10,
+          hasCaptions: true,
+          links: {
+            pageUrl: 'https://demo.that/p/pub-test-1',
+            videoDownloadUrl: 'https://demo.that/p/pub-test-1.mp4',
+          },
+        },
+        captionsIncluded: true,
+      })
     })
 
     const outcome = await act(async () => await outcomePromise)

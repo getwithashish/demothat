@@ -28,6 +28,7 @@ export interface PublishStatus {
 export interface PublishProgress {
   stage: string
   stagePercent: number
+  detail?: string
   estimatedCost?: number
 }
 
@@ -168,6 +169,7 @@ export function usePublish() {
   const mounted = useRef(true)
   const tempRenderPathRef = useRef<string | null>(null)
   const pipelinePhaseRef = useRef<'idle' | 'rendering' | 'publishing'>('idle')
+  const hasRenderPhaseRef = useRef(false)
   const canceledRef = useRef(false)
 
   useEffect(() => {
@@ -204,9 +206,51 @@ export function usePublish() {
   useEffect(() => {
     const off = window.electronAPI.onPublishProgress((payload) => {
       if (!mounted.current) return
+      const rawPercent = Math.min(100, Math.max(0, Math.round(payload.stagePercent ?? 0)))
+      const hasRender = hasRenderPhaseRef.current
+
+      let combinedPercent: number
+      let stageHeading: string
+      let stageDetail: string
+
+      if (payload.stage === 'Preparing') {
+        combinedPercent = hasRender ? 52 : Math.min(5, Math.round(rawPercent * 0.05))
+        stageHeading = 'Preparing cloud publication…'
+        stageDetail = 'Creating upload session and reserving cloud resources…'
+      } else if (payload.stage === 'Uploading') {
+        if (hasRender) {
+          // 53% to 95%
+          combinedPercent = Math.min(95, Math.round(53 + rawPercent * 0.42))
+        } else {
+          // 5% to 92%
+          combinedPercent = Math.min(92, Math.round(5 + rawPercent * 0.87))
+        }
+        stageHeading = `Uploading to cloud (${rawPercent}%)…`
+        if (rawPercent < 30) {
+          stageDetail = 'Streaming initial video chunks to cloud storage…'
+        } else if (rawPercent < 70) {
+          stageDetail = 'Transmitting high-speed video data in parallel…'
+        } else {
+          stageDetail = 'Finalizing cloud chunk transfers…'
+        }
+      } else if (payload.stage === 'Activating') {
+        combinedPercent = hasRender ? 97 : 96
+        stageHeading = 'Generating instant share links…'
+        stageDetail = 'Activating publication, linking captions, and generating shareable URL…'
+      } else if (payload.stage === 'Done') {
+        combinedPercent = 100
+        stageHeading = 'Published successfully!'
+        stageDetail = 'Your video and instant share link are ready.'
+      } else {
+        combinedPercent = hasRender ? Math.min(95, Math.round(53 + rawPercent * 0.42)) : rawPercent
+        stageHeading = payload.stage || 'Publishing…'
+        stageDetail = 'Processing video publication in cloud…'
+      }
+
       setProgress({
-        stage: payload.stage,
-        stagePercent: payload.stagePercent,
+        stage: stageHeading,
+        stagePercent: combinedPercent,
+        detail: stageDetail,
         ...(payload.estimatedCost !== undefined ? { estimatedCost: payload.estimatedCost } : {}),
       })
     })
@@ -248,9 +292,14 @@ export function usePublish() {
   const start = useCallback(
     async (request: PublishRequest): Promise<PublishOutcome> => {
       canceledRef.current = false
+      hasRenderPhaseRef.current = false
       pipelinePhaseRef.current = 'publishing'
       setPublishing(true)
-      setProgress({ stage: 'Preparing', stagePercent: 0 })
+      setProgress({
+        stage: 'Preparing cloud publication…',
+        stagePercent: 0,
+        detail: 'Connecting to cloud service…',
+      })
       try {
         const outcome = (await window.electronAPI.startPublish(request)) as PublishOutcome
         if (outcome.ok) {
@@ -267,6 +316,7 @@ export function usePublish() {
         }
       } finally {
         pipelinePhaseRef.current = 'idle'
+        hasRenderPhaseRef.current = false
         if (mounted.current) {
           setPublishing(false)
           setProgress(null)
@@ -353,7 +403,14 @@ export function usePublish() {
         }
 
         // 2 & 3. Initiates rendering and tracks render progress.
+        hasRenderPhaseRef.current = true
         pipelinePhaseRef.current = 'rendering'
+        setPublishing(true)
+        setProgress({
+          stage: 'Rendering video frames…',
+          stagePercent: 0,
+          detail: 'Starting local render pipeline…',
+        })
         const renderResult = await new Promise<{ ok: boolean; reason?: 'canceled' | 'failed'; error?: string }>(
           (resolve) => {
             let finished = false
@@ -367,21 +424,41 @@ export function usePublish() {
 
             const cleanProgress = window.electronAPI.onExportProgress((payload) => {
               if (!mounted.current) return
-              const percent =
+              const rawPercent =
                 typeof payload.stagePercent === 'number'
                   ? Math.round(payload.stagePercent)
                   : typeof payload.progress === 'number'
                     ? Math.round(payload.progress)
                     : 0
-              const stageName =
+              const clampedPercent = Math.min(100, Math.max(0, rawPercent))
+              // Local rendering accounts for the first 50% of the combined pipeline (0-50%)
+              const combinedPercent = Math.min(50, Math.round(clampedPercent * 0.5))
+
+              let stageHeading = 'Rendering video frames…'
+              let stageDetail = 'Compositing clips, camera motion, and visual layout…'
+
+              if (
                 payload.stage &&
                 payload.stage.toLowerCase() !== 'rendering' &&
                 payload.stage !== 'Local intermediate render'
-                  ? `Upscaling (${payload.stage})`
-                  : 'Rendering'
+              ) {
+                stageHeading = `Upscaling (${payload.stage})…`
+                stageDetail = 'Enhancing visual fidelity and super-resolution…'
+              } else if (clampedPercent >= 85) {
+                stageHeading = 'Encoding & multiplexing…'
+                stageDetail = 'Finalizing audio tracks, lip-sync offset, and stream muxing…'
+              } else if (clampedPercent >= 55) {
+                stageHeading = 'Rendering effects & overlays…'
+                stageDetail = 'Applying blur masks, borders, and subtitle styling…'
+              } else if (clampedPercent >= 25) {
+                stageHeading = 'Compositing motion & cursor…'
+                stageDetail = 'Rendering zoom transitions, cursor movements, and click ripples…'
+              }
+
               setProgress({
-                stage: stageName,
-                stagePercent: Math.min(100, Math.max(0, percent)),
+                stage: stageHeading,
+                stagePercent: combinedPercent,
+                detail: stageDetail,
               })
             })
 
@@ -433,6 +510,11 @@ export function usePublish() {
         }
 
         // 4. Probes file size with probePublishFile(tempPath).
+        setProgress({
+          stage: 'Verifying rendered video…',
+          stagePercent: 51,
+          detail: 'Inspecting container and preparing cloud publication pipeline…',
+        })
         const probeResult = await window.electronAPI.probePublishFile(tempPath)
         if (!probeResult.ok) {
           await cleanupTempRender()
@@ -450,7 +532,11 @@ export function usePublish() {
 
         // 5 & 6. Initiates publish via startPublish and tracks upload progress.
         pipelinePhaseRef.current = 'publishing'
-        setProgress({ stage: 'Preparing', stagePercent: 0 })
+        setProgress({
+          stage: 'Preparing cloud publication…',
+          stagePercent: 52,
+          detail: 'Allocating cloud storage and initializing secure upload session…',
+        })
 
         const outcome = (await window.electronAPI.startPublish({
           filePath: tempPath,
@@ -474,6 +560,7 @@ export function usePublish() {
         }
       } finally {
         pipelinePhaseRef.current = 'idle'
+        hasRenderPhaseRef.current = false
         if (mounted.current) {
           setPublishing(false)
           setProgress(null)

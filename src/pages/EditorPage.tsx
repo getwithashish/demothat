@@ -715,7 +715,9 @@ export function EditorPage() {
       <UnifiedExportPublishModal
         isOpen={isUnifiedModalOpen && !isExportMinimized}
         onClose={() => {
-          if (!isOperationRunning) {
+          if (isOperationRunning) {
+            setExportMinimized(true)
+          } else {
             setUnifiedModalOpen(false)
             setExportMinimized(false)
             clearExportResult()

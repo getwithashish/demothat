@@ -125,6 +125,7 @@ export function registerIpcHandlers() {
   ipcMain.handle('recording:write-screen-video', recordingHandlers.handleWriteScreenVideoChunk)
   ipcMain.handle('recording:screen-capture-stopped', recordingHandlers.handleScreenCaptureStopped)
   ipcMain.handle('recording:get-screen-sources', recordingHandlers.handleGetScreenSources)
+  ipcMain.handle('recording:reorder', recordingHandlers.handleReorderRecordings)
 
   // Project files (.dthat)
   ipcMain.handle('project:save', projectHandlers.handleProjectSave)

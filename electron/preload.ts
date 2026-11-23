@@ -60,6 +60,9 @@ export type RecordedRipplePayload = {
   webcamVideoPath?: string
   insertTime: number
   addedDuration: number
+  rawNewVideoPath?: string
+  rawNewMetadataPath?: string
+  rawNewWebcamPath?: string
 }
 
 type ExportPayload = {
@@ -316,6 +319,25 @@ export const electronAPI = {
       ipcRenderer.removeListener('recording:ripple-inserted', listener)
     }
   },
+
+  reorderRecordings: (options: {
+    segments: Array<{
+      id: string
+      name?: string
+      startTime: number
+      duration: number
+      sourceVideoPath: string
+      sourceMetadataPath?: string
+      sourceWebcamPath?: string
+      sourceStartTime?: number
+    }>
+    outputDir?: string
+  }): Promise<{
+    screenVideoPath: string
+    metadataPath: string
+    webcamVideoPath?: string
+    addedDuration: number
+  }> => ipcRenderer.invoke('recording:reorder', options),
 
   // --- Project files (.dthat) ---
   saveProject: (request: {

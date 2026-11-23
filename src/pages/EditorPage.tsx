@@ -447,6 +447,9 @@ export function EditorPage() {
           webcamVideoPath: payload.webcamVideoPath,
           insertTime: payload.insertTime,
           addedDuration: payload.addedDuration,
+          rawNewVideoPath: payload.rawNewVideoPath,
+          rawNewMetadataPath: payload.rawNewMetadataPath,
+          rawNewWebcamPath: payload.rawNewWebcamPath,
         })
         setCurrentTime(payload.insertTime)
         pushToast({

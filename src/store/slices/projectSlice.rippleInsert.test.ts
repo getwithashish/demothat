@@ -522,4 +522,110 @@ describe('rippleInsertRecording', () => {
     expect(state.zoomRegions['z-1'].startTime).toBe(1.0)
     expect(state.zoomRegions['z-1'].duration).toBe(3.0)
   })
+
+  it('creates distinct recordingSegments and generates auto-zooms and click sounds for the new recording', async () => {
+    useEditorStore.setState((state) => {
+      state.duration = 5.0
+      state.recordingGeometry = { x: 0, y: 0, width: 1920, height: 1080 }
+      state.videoDimensions = { width: 1920, height: 1080 }
+      state.audioClips = []
+      state.zoomRegions = {}
+    })
+
+    await useEditorStore.getState().rippleInsertRecording({
+      videoPath: '/tmp/merged.mp4',
+      metadataPath: '/tmp/merged.json',
+      insertTime: 2.0,
+      addedDuration: 4.0,
+      rawNewVideoPath: '/tmp/clip2.mp4',
+      rawNewMetadataPath: '/tmp/clip2.json',
+    })
+
+    const state = useEditorStore.getState()
+
+    // 1. Multiple distinct recordingSegments created
+    expect(state.recordingSegments.length).toBeGreaterThanOrEqual(2)
+    const newSeg = state.recordingSegments.find((s) => s.startTime === 2.0)
+    expect(newSeg).toBeDefined()
+    expect(newSeg?.duration).toBe(4.0)
+    expect(newSeg?.sourceVideoPath).toBe('/tmp/clip2.mp4')
+
+    // 2. Click audio clips generated from click events
+    const clickClips = state.audioClips.filter((c) => c.kind === 'click')
+    expect(clickClips.length).toBeGreaterThan(0)
+    expect(clickClips.some((c) => c.startTime === 3.0)).toBe(true)
+
+    // 3. Auto-zoom generated for the new recording click
+    const zooms = Object.values(state.zoomRegions)
+    expect(zooms.length).toBeGreaterThan(0)
+  })
+
+  it('reorders recordingSegments and shifts timeline items according to the new segment arrangement', async () => {
+    const seg1 = {
+      id: 'rec-1',
+      name: 'Recording 1',
+      startTime: 0,
+      duration: 5.0,
+      sourceVideoPath: '/tmp/rec1.mp4',
+      sourceStartTime: 0,
+    }
+    const seg2 = {
+      id: 'rec-2',
+      name: 'Recording 2',
+      startTime: 5.0,
+      duration: 4.0,
+      sourceVideoPath: '/tmp/rec2.mp4',
+      sourceStartTime: 0,
+    }
+
+    const zoomInSeg2: ZoomRegion = {
+      id: 'z-seg2',
+      type: 'zoom',
+      startTime: 6.0, // 1s into seg2
+      duration: 2.0,
+      zoomLevel: 2,
+      easing: 'ease-in-out',
+      transitionDuration: 0.3,
+      targetX: 0,
+      targetY: 0,
+      mode: 'fixed',
+      zIndex: 1,
+    }
+
+    useEditorStore.setState((state) => {
+      state.duration = 9.0
+      state.recordingSegments = [seg1, seg2]
+      state.zoomRegions = { 'z-seg2': zoomInSeg2 }
+      state.audioClips = [
+        {
+          id: 'click-seg2',
+          kind: 'click',
+          name: 'Click',
+          filePath: '',
+          startTime: 6.5, // 1.5s into seg2
+          duration: 0.25,
+          sourceStart: 0,
+          sourceDuration: 0.25,
+          volume: 1,
+          fadeIn: 0,
+          fadeOut: 0,
+          loop: false,
+          speed: 1,
+        },
+      ]
+    })
+
+    // Drag seg2 to start first: [seg2, seg1]
+    await useEditorStore.getState().reorderRecordingSegments([seg2, seg1])
+
+    const state = useEditorStore.getState()
+    expect(state.recordingSegments[0].id).toBe('rec-2')
+    expect(state.recordingSegments[0].startTime).toBe(0)
+    expect(state.recordingSegments[1].id).toBe('rec-1')
+    expect(state.recordingSegments[1].startTime).toBe(4.0)
+
+    // Items inside seg2 should now start at 0 + offset
+    expect(state.zoomRegions['z-seg2'].startTime).toBe(1.0) // was 6.0 (offset 1.0) -> now 0 + 1.0 = 1.0
+    expect(state.audioClips[0].startTime).toBe(1.5) // was 6.5 (offset 1.5) -> now 0 + 1.5 = 1.5
+  })
 })

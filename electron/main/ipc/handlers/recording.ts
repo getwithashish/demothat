@@ -1,6 +1,8 @@
 // Handlers for recording-related IPC (recording).
 
 import { desktopCapturer } from 'electron'
+import path from 'node:path'
+import os from 'node:os'
 import {
   startRecording,
   loadVideoFromFile,
@@ -10,6 +12,7 @@ import {
   markSystemAudioStopped,
   markScreenCaptureStopped,
 } from '../../features/recording-manager'
+import { reorderRecordingsInProject, type RecordingSegment } from '../../features/recording-splice'
 import { showRecorderWindow } from './app'
 import { appState } from '../../state'
 
@@ -83,4 +86,16 @@ export async function handleGetScreenSources(): Promise<ScreenSourceInfo[]> {
     thumbnailSize: { width: 1, height: 1 },
   })
   return sources.map((s) => ({ id: s.id, name: s.name, display_id: s.display_id }))
+}
+
+export async function handleReorderRecordings(
+  _event: unknown,
+  options: { segments: RecordingSegment[]; outputDir?: string },
+) {
+  const firstSource = options.segments?.[0]?.sourceVideoPath
+  const dir = options.outputDir || (firstSource ? path.dirname(firstSource) : os.tmpdir())
+  return reorderRecordingsInProject({
+    segments: options.segments,
+    outputDir: dir,
+  })
 }

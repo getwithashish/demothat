@@ -57,6 +57,17 @@ export interface SpliceRecordingResult {
   addedDuration: number
 }
 
+export interface RecordingSegment {
+  id: string
+  name?: string
+  startTime: number
+  duration: number
+  sourceVideoPath: string
+  sourceMetadataPath?: string
+  sourceWebcamPath?: string
+  sourceStartTime?: number
+}
+
 /** The screen file's length in seconds, from the FFmpeg banner, or null. */
 export async function probeVideoDurationSec(videoPath: string): Promise<number | null> {
   return new Promise<number | null>((resolve) => {
@@ -407,5 +418,210 @@ export async function spliceRecordingIntoProject(options: SpliceRecordingOptions
     metadataPath,
     webcamVideoPath,
     addedDuration,
+  }
+}
+
+/**
+ * Merges metadata JSON from multiple recording segments arranged in a specific sequence.
+ * Remaps event timestamps to each segment's target startTime.
+ */
+export function mergeReorderedMetadata(
+  segments: RecordingSegment[],
+  metadataByPath: Record<string, RecordingMetadata>,
+): RecordingMetadata {
+  const allEvents: MouseEventItem[] = []
+  let basePlatform: string = process.platform
+  let baseScreenSize: { width: number; height: number } | undefined
+  let baseGeometry: { x: number; y: number; width: number; height: number } | undefined
+  const mergedCursorImages: Record<string, unknown> = {}
+  let baseAudioTracks: unknown[] = []
+
+  for (const seg of segments) {
+    const metaPath = seg.sourceMetadataPath || ''
+    const meta = metadataByPath[metaPath] || {}
+    if (meta.platform) basePlatform = meta.platform
+    if (meta.screenSize && !baseScreenSize) baseScreenSize = meta.screenSize
+    if (meta.geometry && !baseGeometry) baseGeometry = meta.geometry
+    if (meta.cursorImages) Object.assign(mergedCursorImages, meta.cursorImages)
+    if (meta.audioTracks && meta.audioTracks.length > 0 && baseAudioTracks.length === 0) {
+      baseAudioTracks = meta.audioTracks
+    }
+
+    const events = Array.isArray(meta.events) ? meta.events : []
+    const sourceStart = seg.sourceStartTime || 0
+    const segDuration = seg.duration
+    const segEnd = sourceStart + segDuration
+
+    // Detect if timestamps are ms (>100) or seconds
+    const maxTs = events.length > 0 ? Math.max(...events.map((e) => Number(e?.timestamp) || 0)) : 0
+    const scale = maxTs > 100 ? 1000 : 1
+
+    const sourceStartScaled = sourceStart * scale
+    const segEndScaled = segEnd * scale
+    const targetStartScaled = seg.startTime * scale
+
+    for (const ev of events) {
+      if (typeof ev?.timestamp === 'number' && ev.timestamp >= sourceStartScaled && ev.timestamp <= segEndScaled) {
+        allEvents.push({
+          ...ev,
+          timestamp: ev.timestamp - sourceStartScaled + targetStartScaled,
+        })
+      }
+    }
+  }
+
+  allEvents.sort((a, b) => a.timestamp - b.timestamp)
+
+  return {
+    platform: basePlatform,
+    screenSize: baseScreenSize,
+    geometry: baseGeometry,
+    syncOffset: 0,
+    avSyncOffsetMs: 0,
+    cursorImages: mergedCursorImages,
+    events: allEvents,
+    audioTracks: baseAudioTracks,
+  }
+}
+
+/**
+ * Reorders multiple recording segments on the master timeline by slicing
+ * and concatenating each segment part from its original source file.
+ */
+export async function reorderRecordingsInProject(options: {
+  segments: RecordingSegment[]
+  outputDir: string
+}): Promise<SpliceRecordingResult> {
+  const { segments, outputDir } = options
+  if (!segments || segments.length === 0) {
+    throw new Error('reorderRecordingsInProject: segments array cannot be empty')
+  }
+
+  const timestamp = Date.now()
+  const screenVideoPath = path.join(outputDir, `spliced-${timestamp}-screen.mp4`)
+  const metadataPath = path.join(outputDir, `spliced-${timestamp}.json`)
+
+  // Single segment optimization: if only 1 segment and starts at 0 with full duration,
+  // we can still slice if sourceStartTime > 0, otherwise return source directly
+  if (segments.length === 1 && (segments[0].sourceStartTime ?? 0) === 0) {
+    return {
+      screenVideoPath: segments[0].sourceVideoPath,
+      metadataPath: segments[0].sourceMetadataPath || metadataPath,
+      webcamVideoPath: segments[0].sourceWebcamPath,
+      addedDuration: 0,
+    }
+  }
+
+  const tempFiles: string[] = []
+  const prefix = `reorder_${timestamp}_${Math.random().toString(36).slice(2, 8)}`
+  const partPaths: string[] = []
+
+  // Check if any segment has audio
+  const audioProbes = await Promise.all(segments.map((seg) => probeAudioTracks(seg.sourceVideoPath).catch(() => [])))
+  const hasAudio = audioProbes.some((tracks) => tracks.length > 0)
+
+  try {
+    // 1. Extract each segment video part
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i]
+      const partFile = path.join(outputDir, `${prefix}_part_${i}.mp4`)
+      tempFiles.push(partFile)
+
+      const extractArgs = buildExtractPartArgs({
+        inputPath: seg.sourceVideoPath,
+        startTime: seg.sourceStartTime || 0,
+        duration: seg.duration,
+        outputPath: partFile,
+        hasAudio,
+      })
+      const res = await runFfmpeg(extractArgs)
+      if (res.code !== 0) {
+        throw new Error(`Failed to extract segment ${i} (${seg.name || seg.id}): ${res.stderr}`)
+      }
+      partPaths.push(partFile)
+    }
+
+    // 2. Concat screen video parts
+    const concatListPath = path.join(outputDir, `${prefix}_concat.txt`)
+    tempFiles.push(concatListPath)
+    const concatContent = partPaths.map((p) => `file '${p.replace(/\\/g, '/').replace(/'/g, "'\\''")}'`).join('\n')
+    await fsPromises.writeFile(concatListPath, concatContent, 'utf8')
+
+    const concatRes = await runFfmpeg(buildConcatArgs(concatListPath, screenVideoPath))
+    if (concatRes.code !== 0) {
+      throw new Error(`Failed to concat reordered video parts: ${concatRes.stderr}`)
+    }
+
+    // 3. Concat webcam video parts if webcam footage exists
+    let webcamVideoPath: string | undefined
+    const segmentsWithWebcam = segments.filter((s) => Boolean(s.sourceWebcamPath))
+    if (segmentsWithWebcam.length === segments.length) {
+      try {
+        const webcamPartPaths: string[] = []
+        for (let i = 0; i < segments.length; i++) {
+          const seg = segments[i]
+          const partFile = path.join(outputDir, `${prefix}_webcam_part_${i}.mp4`)
+          tempFiles.push(partFile)
+
+          const extractArgs = buildExtractPartArgs({
+            inputPath: seg.sourceWebcamPath!,
+            startTime: seg.sourceStartTime || 0,
+            duration: seg.duration,
+            outputPath: partFile,
+            hasAudio: false,
+          })
+          const res = await runFfmpeg(extractArgs)
+          if (res.code !== 0) throw new Error(res.stderr)
+          webcamPartPaths.push(partFile)
+        }
+
+        const outWebcam = path.join(outputDir, `spliced-${timestamp}-webcam.mp4`)
+        const webcamConcatList = path.join(outputDir, `${prefix}_webcam_concat.txt`)
+        tempFiles.push(webcamConcatList)
+        const wbContent = webcamPartPaths
+          .map((p) => `file '${p.replace(/\\/g, '/').replace(/'/g, "'\\''")}'`)
+          .join('\n')
+        await fsPromises.writeFile(webcamConcatList, wbContent, 'utf8')
+
+        const wbRes = await runFfmpeg(buildConcatArgs(webcamConcatList, outWebcam))
+        if (wbRes.code === 0) {
+          webcamVideoPath = outWebcam
+        }
+      } catch (err) {
+        log.warn('[RecordingSplice] Webcam reorder failed, omitting webcam:', err)
+      }
+    }
+
+    // 4. Merge metadata JSON
+    const metadataByPath: Record<string, RecordingMetadata> = {}
+    for (const seg of segments) {
+      if (seg.sourceMetadataPath && !metadataByPath[seg.sourceMetadataPath]) {
+        try {
+          const raw = await fsPromises.readFile(seg.sourceMetadataPath, 'utf8')
+          metadataByPath[seg.sourceMetadataPath] = JSON.parse(raw)
+        } catch (err) {
+          log.warn(`[RecordingSplice] Could not read metadata for ${seg.sourceMetadataPath}:`, err)
+        }
+      }
+    }
+
+    const mergedMetadata = mergeReorderedMetadata(segments, metadataByPath)
+    await fsPromises.writeFile(metadataPath, JSON.stringify(mergedMetadata, null, 2), 'utf8')
+
+    log.info('[RecordingSplice] Reordered recordings successfully:', {
+      screenVideoPath,
+      metadataPath,
+      webcamVideoPath,
+      segmentCount: segments.length,
+    })
+
+    return {
+      screenVideoPath,
+      metadataPath,
+      webcamVideoPath,
+      addedDuration: 0,
+    }
+  } finally {
+    await Promise.all(tempFiles.map((f) => fsPromises.unlink(f).catch(() => {})))
   }
 }

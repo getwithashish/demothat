@@ -7,6 +7,8 @@ import type {
   CursorTheme,
   CursorImageBitmap,
   SaveStatus,
+  RecordingSegment,
+  AudioClip,
 } from '../../types'
 import type { MetaDataItem, ZoomRegion, CutRegion, SpeedRegion, CursorFrame, CursorImage } from '../../types'
 import { ZOOM } from '../../lib/constants'
@@ -38,6 +40,8 @@ export const initialProjectState: ProjectState = {
   canvasDimensions: { width: 0, height: 0 },
   metadata: [],
   duration: 0,
+  recordingSegments: [],
+  selectedRecordingId: null,
   cursorImages: {},
   cursorBitmapsToRender: new Map<string, CursorImageBitmap>(),
   cursorIconsToRender: new Map<string, CursorImageBitmap>(),
@@ -87,6 +91,7 @@ function projectSignature(state: EditorState): string {
     webcamStyles,
     isWebcamVisible,
     cursorStyles,
+    recordingSegments,
     transcript,
     audioTracks,
     subtitleCues,
@@ -112,6 +117,7 @@ function projectSignature(state: EditorState): string {
     webcamStyles,
     isWebcamVisible,
     cursorStyles,
+    recordingSegments,
     transcript,
     audioTracks,
     subtitleCues,
@@ -395,6 +401,20 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
         state.avSyncOffsetMs = resolvedOffset
         state.syncOffset = resolvedOffset
         state.zoomRegions = newZoomRegions
+        if (!state.recordingSegments || state.recordingSegments.length === 0) {
+          state.recordingSegments = [
+            {
+              id: 'rec-1',
+              name: 'Recording 1',
+              startTime: 0,
+              duration: state.duration,
+              sourceVideoPath: videoPath,
+              sourceMetadataPath: metadataPath,
+              sourceWebcamPath: webcamVideoPath,
+              sourceStartTime: 0,
+            },
+          ]
+        }
         recalculateCanvasDimensions(state)
       })
 
@@ -668,6 +688,9 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
       if (opened.cutRegions) state.cutRegions = opened.cutRegions
       if (opened.speedRegions) state.speedRegions = opened.speedRegions
       if (opened.videoClips) state.videoClips = opened.videoClips
+      if (Array.isArray(opened.recordingSegments) && opened.recordingSegments.length > 0) {
+        state.recordingSegments = opened.recordingSegments
+      }
       if (opened.webcamPosition) state.webcamPosition = opened.webcamPosition
       if (opened.webcamStyles) state.webcamStyles = opened.webcamStyles
       if (opened.isWebcamVisible !== undefined) state.isWebcamVisible = opened.isWebcamVisible
@@ -869,7 +892,16 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
       return false
     }
   },
-  rippleInsertRecording: async ({ videoPath, metadataPath, webcamVideoPath, insertTime, addedDuration }) => {
+  rippleInsertRecording: async ({
+    videoPath,
+    metadataPath,
+    webcamVideoPath,
+    insertTime,
+    addedDuration,
+    rawNewVideoPath,
+    rawNewMetadataPath,
+    rawNewWebcamPath,
+  }) => {
     logger.info(
       `rippleInsertRecording initiated: videoPath=${videoPath}, insertTime=${insertTime}, addedDuration=${addedDuration}`,
     )
@@ -896,6 +928,7 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
     }
 
     set((state) => {
+      const prevDuration = state.duration
       state.videoPath = videoPath
       state.videoUrl = videoUrl
       state.metadataPath = metadataPath
@@ -928,6 +961,87 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
         if (Array.isArray(parsedData.audioTracks) && parsedData.audioTracks.length > 0) {
           state.audioTracks = parsedData.audioTracks
           state.hasAudioTrack = true
+        }
+      }
+
+      // Update recording segments
+      const currentSegments =
+        state.recordingSegments && state.recordingSegments.length > 0
+          ? [...state.recordingSegments]
+          : [
+              {
+                id: `rec-base-${Date.now()}`,
+                name: 'Recording 1',
+                startTime: 0,
+                duration: prevDuration,
+                sourceVideoPath: state.videoPath || videoPath,
+                sourceMetadataPath: state.metadataPath || metadataPath,
+                sourceWebcamPath: state.webcamVideoPath || webcamVideoPath,
+                sourceStartTime: 0,
+              },
+            ]
+
+      const newSegId = `rec-${Date.now()}`
+      const newSegNumber = currentSegments.length + 1
+      const newSegment: RecordingSegment = {
+        id: newSegId,
+        name: `Recording ${newSegNumber}`,
+        startTime: insertTime,
+        duration: addedDuration,
+        sourceVideoPath: rawNewVideoPath || videoPath,
+        sourceMetadataPath: rawNewMetadataPath || metadataPath,
+        sourceWebcamPath: rawNewWebcamPath || webcamVideoPath,
+        sourceStartTime: 0,
+      }
+
+      if (insertTime <= 0) {
+        newSegment.startTime = 0
+        state.recordingSegments = [
+          newSegment,
+          ...currentSegments.map((s) => ({
+            ...s,
+            startTime: Number((s.startTime + addedDuration).toFixed(3)),
+          })),
+        ]
+      } else if (insertTime >= prevDuration) {
+        newSegment.startTime = prevDuration
+        state.recordingSegments = [...currentSegments, newSegment]
+      } else {
+        const splitIdx = currentSegments.findIndex(
+          (s) => s.startTime < insertTime && s.startTime + s.duration > insertTime,
+        )
+        if (splitIdx !== -1) {
+          const s = currentSegments[splitIdx]
+          const p1Dur = Number((insertTime - s.startTime).toFixed(3))
+          const p2Dur = Number((s.duration - p1Dur).toFixed(3))
+          const s1: RecordingSegment = {
+            ...s,
+            id: `${s.id}-p1`,
+            name: `${s.name} (Part 1)`,
+            duration: p1Dur,
+          }
+          const s2: RecordingSegment = {
+            ...s,
+            id: `${s.id}-p2`,
+            name: `${s.name} (Part 2)`,
+            startTime: Number((insertTime + addedDuration).toFixed(3)),
+            duration: p2Dur,
+            sourceStartTime: (s.sourceStartTime || 0) + p1Dur,
+          }
+          const shiftedRest = currentSegments.slice(splitIdx + 1).map((seg) => ({
+            ...seg,
+            startTime: Number((seg.startTime + addedDuration).toFixed(3)),
+          }))
+          state.recordingSegments = [...currentSegments.slice(0, splitIdx), s1, newSegment, s2, ...shiftedRest]
+        } else {
+          const before = currentSegments.filter((s) => s.startTime < insertTime)
+          const after = currentSegments
+            .filter((s) => s.startTime >= insertTime)
+            .map((s) => ({
+              ...s,
+              startTime: Number((s.startTime + addedDuration).toFixed(3)),
+            }))
+          state.recordingSegments = [...before, newSegment, ...after]
         }
       }
 
@@ -966,6 +1080,31 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
               duration: part2Duration,
             }
           }
+        }
+      }
+
+      // Generate auto-zoom regions for clicks inside the new recording segment
+      const newClipClicks = (state.metadata || []).filter(
+        (item) =>
+          item.type === 'click' &&
+          item.pressed &&
+          item.timestamp >= insertTime &&
+          item.timestamp <= insertTime + addedDuration,
+      )
+      if (newClipClicks.length > 0) {
+        const fallbackGeometry: RecordingGeometry = {
+          x: 0,
+          y: 0,
+          width: get().videoDimensions.width,
+          height: get().videoDimensions.height,
+        }
+        const autoZooms = generateAutoZoomRegions(
+          newClipClicks,
+          state.recordingGeometry || fallbackGeometry,
+          get().videoDimensions,
+        )
+        for (const [id, zoom] of Object.entries(autoZooms)) {
+          nextZoomRegions[id] = zoom
         }
       }
       state.zoomRegions = nextZoomRegions
@@ -1077,16 +1216,42 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
         return cue
       })
 
-      // audioClips: shift startTime
-      state.audioClips = state.audioClips.map((clip) => {
-        if (clip.startTime >= insertTime) {
-          return {
-            ...clip,
-            startTime: Number((clip.startTime + addedDuration).toFixed(3)),
+      // audioClips: shift non-click audio clips (music / b-roll)
+      const shiftedNonClickClips = state.audioClips
+        .filter((clip) => clip.kind !== 'click')
+        .map((clip) => {
+          if (clip.startTime >= insertTime) {
+            return {
+              ...clip,
+              startTime: Number((clip.startTime + addedDuration).toFixed(3)),
+            }
           }
-        }
-        return clip
-      })
+          return clip
+        })
+
+      // Re-generate click audio clips so all clicks across all recordings have audible click sounds
+      const clickAudioClips: AudioClip[] = (state.metadata || [])
+        .filter(
+          (item: MetaDataItem) =>
+            item.type === 'click' && item.pressed && Number.isFinite(item.timestamp) && item.timestamp >= 0,
+        )
+        .map((item: MetaDataItem, index: number) => ({
+          id: `click-${index}-${Math.round(item.timestamp * 1000)}`,
+          kind: 'click',
+          name: `Click ${index + 1}`,
+          filePath: '',
+          startTime: item.timestamp,
+          duration: 0.25,
+          sourceStart: 0,
+          sourceDuration: 0.25,
+          volume: 1,
+          fadeIn: 0,
+          fadeOut: 0,
+          loop: false,
+          speed: 1,
+        }))
+
+      state.audioClips = [...shiftedNonClickClips, ...clickAudioClips]
 
       // videoClips: shift startTime
       state.videoClips = state.videoClips.map((clip) => {
@@ -1107,5 +1272,179 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
       recalculateCanvasDimensions(state)
     })
     logger.info(`rippleInsertRecording complete: new duration = ${get().duration}`)
+  },
+  setSelectedRecordingId: (id: string | null) => {
+    set((state) => {
+      state.selectedRecordingId = id
+    })
+  },
+  reorderRecordingSegments: async (newSegments: RecordingSegment[]) => {
+    logger.info('reorderRecordingSegments initiated with count:', newSegments.length)
+    const prevSegments = get().recordingSegments
+
+    // 1. Normalize start times for the new order:
+    let cumulative = 0
+    const normalizedSegments = newSegments.map((seg) => {
+      const updated = {
+        ...seg,
+        startTime: Number(cumulative.toFixed(3)),
+      }
+      cumulative += seg.duration
+      return updated
+    })
+
+    // 2. Map old time ranges to new time ranges for timeline elements
+    const mapTime = (time: number): number => {
+      for (const prev of prevSegments) {
+        const prevStart = prev.startTime
+        const prevEnd = Number((prev.startTime + prev.duration).toFixed(3))
+        if (time >= prevStart && time <= prevEnd) {
+          const next = normalizedSegments.find((n) => n.id === prev.id)
+          if (next) {
+            const offset = time - prevStart
+            return Number((next.startTime + offset).toFixed(3))
+          }
+        }
+      }
+      return time
+    }
+
+    set((state) => {
+      state.recordingSegments = normalizedSegments
+
+      // Shift zoomRegions
+      const updatedZoom: Record<string, ZoomRegion> = {}
+      for (const [id, zoom] of Object.entries(state.zoomRegions)) {
+        updatedZoom[id] = {
+          ...zoom,
+          startTime: mapTime(zoom.startTime),
+        }
+      }
+      state.zoomRegions = updatedZoom
+
+      // Shift cutRegions
+      const updatedCut: Record<string, CutRegion> = {}
+      for (const [id, cut] of Object.entries(state.cutRegions)) {
+        updatedCut[id] = {
+          ...cut,
+          startTime: mapTime(cut.startTime),
+        }
+      }
+      state.cutRegions = updatedCut
+
+      // Shift speedRegions
+      const updatedSpeed: Record<string, SpeedRegion> = {}
+      for (const [id, speed] of Object.entries(state.speedRegions)) {
+        updatedSpeed[id] = {
+          ...speed,
+          startTime: mapTime(speed.startTime),
+        }
+      }
+      state.speedRegions = updatedSpeed
+
+      // Shift cameraMotions
+      state.cameraMotions = state.cameraMotions.map((motion) => ({
+        ...motion,
+        startTime: mapTime(motion.startTime),
+        endTime: mapTime(motion.endTime),
+      }))
+
+      // Shift visualEffects
+      state.visualEffects = state.visualEffects.map((fx) => ({
+        ...fx,
+        startTime: mapTime(fx.startTime),
+      }))
+
+      // Shift compositionLayouts
+      state.compositionLayouts = state.compositionLayouts.map((layout) => ({
+        ...layout,
+        startTime: mapTime(layout.startTime),
+      }))
+
+      // Shift subtitleCues
+      state.subtitleCues = state.subtitleCues.map((cue) => ({
+        ...cue,
+        start: mapTime(cue.start),
+        end: mapTime(cue.end),
+      }))
+
+      // Shift audioClips
+      state.audioClips = state.audioClips.map((clip) => ({
+        ...clip,
+        startTime: mapTime(clip.startTime),
+      }))
+
+      // Shift videoClips
+      state.videoClips = state.videoClips.map((clip) => ({
+        ...clip,
+        startTime: mapTime(clip.startTime),
+      }))
+
+      state.isDirty = true
+      if (state.saveStatus === 'saved') {
+        state.saveStatus = 'unsaved'
+      }
+    })
+
+    // 3. Re-splice media and merge metadata via Electron main process if available
+    if (window?.electronAPI?.reorderRecordings && normalizedSegments.length > 0) {
+      try {
+        const result = await window.electronAPI.reorderRecordings({
+          segments: normalizedSegments,
+        })
+        if (result) {
+          let parsedData: { events?: MetaDataItem[] } | null = null
+          if (window?.electronAPI?.readFile && result.metadataPath) {
+            try {
+              const raw = await window.electronAPI.readFile(result.metadataPath)
+              if (raw) parsedData = JSON.parse(raw)
+            } catch (err) {
+              logger.warn('Failed to read reordered metadata:', err)
+            }
+          }
+
+          set((state) => {
+            state.videoPath = result.screenVideoPath
+            state.videoUrl = mediaUrl(result.screenVideoPath)
+            state.metadataPath = result.metadataPath
+            if (result.webcamVideoPath) {
+              state.webcamVideoPath = result.webcamVideoPath
+              state.webcamVideoUrl = mediaUrl(result.webcamVideoPath)
+            }
+            if (parsedData?.events && Array.isArray(parsedData.events)) {
+              state.metadata = parsedData.events.map((item: MetaDataItem) => ({
+                ...item,
+                timestamp: typeof item.timestamp === 'number' ? item.timestamp / 1000 : 0,
+              }))
+              // Re-sync click audio clips with reordered metadata events
+              const nonClickClips = state.audioClips.filter((c) => c.kind !== 'click')
+              const clickAudioClips: AudioClip[] = state.metadata
+                .filter(
+                  (item: MetaDataItem) =>
+                    item.type === 'click' && item.pressed && Number.isFinite(item.timestamp) && item.timestamp >= 0,
+                )
+                .map((item: MetaDataItem, index: number) => ({
+                  id: `click-${index}-${Math.round(item.timestamp * 1000)}`,
+                  kind: 'click',
+                  name: `Click ${index + 1}`,
+                  filePath: '',
+                  startTime: item.timestamp,
+                  duration: 0.25,
+                  sourceStart: 0,
+                  sourceDuration: 0.25,
+                  volume: 1,
+                  fadeIn: 0,
+                  fadeOut: 0,
+                  loop: false,
+                  speed: 1,
+                }))
+              state.audioClips = [...nonClickClips, ...clickAudioClips]
+            }
+          })
+        }
+      } catch (err) {
+        logger.error('Failed to reorder recordings via backend:', err)
+      }
+    }
   },
 })

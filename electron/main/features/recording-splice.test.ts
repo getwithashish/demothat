@@ -64,13 +64,16 @@ vi.mock('node:child_process', () => ({
 
 import {
   mergeMetadata,
+  mergeReorderedMetadata,
   buildExtractPartArgs,
   buildConcatArgs,
   probeVideoDurationSec,
   runFfmpeg,
   spliceVideoFiles,
   spliceRecordingIntoProject,
+  reorderRecordingsInProject,
   type RecordingMetadata,
+  type RecordingSegment,
 } from './recording-splice'
 
 describe('recording-splice', () => {
@@ -398,6 +401,100 @@ describe('recording-splice', () => {
 
       expect(outcome.webcamVideoPath).toBeDefined()
       expect(outcome.webcamVideoPath).toContain('webcam.mp4')
+    })
+  })
+
+  describe('mergeReorderedMetadata', () => {
+    it('remaps events accurately when segments are reordered', () => {
+      const segA: RecordingSegment = {
+        id: 'seg-a',
+        name: 'Recording 1',
+        startTime: 4.0, // moved after B
+        duration: 5.0,
+        sourceVideoPath: '/path/a.mp4',
+        sourceMetadataPath: '/path/a.json',
+        sourceStartTime: 0,
+      }
+      const segB: RecordingSegment = {
+        id: 'seg-b',
+        name: 'Recording 2',
+        startTime: 0, // moved first
+        duration: 4.0,
+        sourceVideoPath: '/path/b.mp4',
+        sourceMetadataPath: '/path/b.json',
+        sourceStartTime: 0,
+      }
+
+      const metaMap: Record<string, RecordingMetadata> = {
+        '/path/a.json': {
+          platform: 'linux',
+          screenSize: { width: 1920, height: 1080 },
+          events: [
+            { timestamp: 1000, type: 'move' },
+            { timestamp: 3000, type: 'click' },
+          ],
+        },
+        '/path/b.json': {
+          platform: 'linux',
+          screenSize: { width: 1920, height: 1080 },
+          events: [
+            { timestamp: 500, type: 'click' },
+            { timestamp: 2000, type: 'move' },
+          ],
+        },
+      }
+
+      const merged = mergeReorderedMetadata([segB, segA], metaMap)
+
+      expect(merged.events).toHaveLength(4)
+      // B events should be at 0.5s (500ms) and 2.0s (2000ms)
+      expect(merged.events![0].timestamp).toBe(500)
+      expect(merged.events![1].timestamp).toBe(2000)
+      // A events should now start at 4000ms (4.0s) + offset
+      expect(merged.events![2].timestamp).toBe(5000) // 1000 + 4000
+      expect(merged.events![3].timestamp).toBe(7000) // 3000 + 4000
+    })
+  })
+
+  describe('reorderRecordingsInProject', () => {
+    it('slices and concats multiple segments into seamless reordered output', async () => {
+      vi.mocked(fsPromises.readFile).mockResolvedValue(JSON.stringify({ events: [{ timestamp: 1000 }] }))
+
+      const seg1: RecordingSegment = {
+        id: 'rec-2',
+        name: 'Recording 2',
+        startTime: 0,
+        duration: 4.0,
+        sourceVideoPath: '/recordings/new.mp4',
+        sourceMetadataPath: '/recordings/new.json',
+        sourceStartTime: 0,
+      }
+      const seg2: RecordingSegment = {
+        id: 'rec-1',
+        name: 'Recording 1',
+        startTime: 4.0,
+        duration: 10.0,
+        sourceVideoPath: '/recordings/original.mp4',
+        sourceMetadataPath: '/recordings/original.json',
+        sourceStartTime: 0,
+      }
+
+      const res = await reorderRecordingsInProject({
+        segments: [seg1, seg2],
+        outputDir: '/recordings',
+      })
+
+      expect(res.screenVideoPath).toContain('spliced-')
+      expect(res.screenVideoPath).toContain('-screen.mp4')
+      expect(res.metadataPath).toContain('spliced-')
+      expect(res.metadataPath).toContain('.json')
+
+      // Verify concat file was written and ffmpeg called
+      expect(fsPromises.writeFile).toHaveBeenCalled()
+      const concatCall = vi
+        .mocked(fsPromises.writeFile)
+        .mock.calls.find((c) => String(c[0]).includes('reorder_') && String(c[0]).endsWith('_concat.txt'))
+      expect(concatCall).toBeDefined()
     })
   })
 })

@@ -1279,6 +1279,9 @@ export async function stopRecording() {
             webcamVideoPath: spliceResult.webcamVideoPath,
             insertTime,
             addedDuration: spliceResult.addedDuration,
+            rawNewVideoPath: finalizedSession.screenVideoPath,
+            rawNewMetadataPath: finalizedSession.metadataPath,
+            rawNewWebcamPath: finalizedSession.webcamVideoPath,
           })
         } catch (err) {
           log.error('[StopRecord] Failed to splice recording into project:', err)

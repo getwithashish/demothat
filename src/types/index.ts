@@ -197,6 +197,17 @@ export type VideoDimensions = Dimensions
 export type ScreenSize = Dimensions
 export type CursorTheme = Record<number, Record<string, CursorFrame[]>>
 
+export interface RecordingSegment {
+  id: string
+  name: string
+  startTime: number
+  duration: number
+  sourceVideoPath: string
+  sourceMetadataPath?: string
+  sourceWebcamPath?: string
+  sourceStartTime?: number
+}
+
 // --- Slice State & Actions Types ---
 
 export interface ProjectState {
@@ -209,6 +220,8 @@ export interface ProjectState {
   canvasDimensions: Dimensions
   metadata: MetaDataItem[]
   duration: number
+  recordingSegments: RecordingSegment[]
+  selectedRecordingId: string | null
   cursorImages: Record<string, CursorImage>
   cursorBitmapsToRender: Map<string, CursorImageBitmap>
   /** Selectable pointer icons, keyed by style name ('arrow','text',…). */
@@ -338,7 +351,17 @@ export interface ProjectActions {
     webcamVideoPath?: string
     insertTime: number
     addedDuration: number
+    rawNewVideoPath?: string
+    rawNewMetadataPath?: string
+    rawNewWebcamPath?: string
   }) => Promise<void>
+  /** Selects or deselects a recording segment on the screen track. */
+  setSelectedRecordingId: (id: string | null) => void
+  /**
+   * Reorders recording segments on the master timeline, rippling all timeline
+   * elements and re-splicing the underlying video/metadata.
+   */
+  reorderRecordingSegments: (newSegments: RecordingSegment[]) => Promise<void>
   /** Re-reads whether a crash-recovery copy exists (and how old it is). */
   refreshRecoveryCopy: () => Promise<void>
   /**

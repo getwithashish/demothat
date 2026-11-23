@@ -327,6 +327,9 @@ describe('recording-manager', () => {
         webcamVideoPath: undefined,
         insertTime: 5.25,
         addedDuration: 3.5,
+        rawNewVideoPath: '/tmp/clip-screen.mp4',
+        rawNewMetadataPath: '/tmp/clip.json',
+        rawNewWebcamPath: undefined,
       })
       expect(mockEditorWin.show).toHaveBeenCalled()
       expect(mockEditorWin.focus).toHaveBeenCalled()

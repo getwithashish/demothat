@@ -43,6 +43,8 @@ export function EditorPage() {
   usePageLifecycle('EditorPage')
   const {
     loadProject,
+    rippleInsertRecording,
+    setCurrentTime,
     addVideoClip,
     initializePresets,
     initializeSettings,
@@ -437,11 +439,41 @@ export function EditorPage() {
         })
       }
     })
+    const cleanupRipple = window.electronAPI.onRecordingRippleInserted(async (payload) => {
+      try {
+        await rippleInsertRecording({
+          videoPath: payload.screenVideoPath,
+          metadataPath: payload.metadataPath,
+          webcamVideoPath: payload.webcamVideoPath,
+          insertTime: payload.insertTime,
+          addedDuration: payload.addedDuration,
+        })
+        setCurrentTime(payload.insertTime)
+        pushToast({
+          message: `Recording spliced into timeline at ${formatTime(payload.insertTime, true)} (+${payload.addedDuration.toFixed(1)}s)`,
+        })
+      } catch (err) {
+        console.error('[EditorPage] Failed to splice recording into timeline:', err)
+        pushToast({
+          message: err instanceof Error ? err.message : 'Could not splice recording into timeline',
+        })
+      }
+    })
     return () => {
       cleanup()
       cleanupClip()
+      cleanupRipple()
     }
-  }, [loadProject, initializePresets, initializeSettings, initializeRecentProjects, addVideoClip, pushToast])
+  }, [
+    loadProject,
+    rippleInsertRecording,
+    setCurrentTime,
+    initializePresets,
+    initializeSettings,
+    initializeRecentProjects,
+    addVideoClip,
+    pushToast,
+  ])
 
   useEffect(() => {
     const cleanupMenu = window.electronAPI.onMenuCommand((command) => {

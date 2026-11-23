@@ -328,6 +328,17 @@ export interface ProjectActions {
   saveProjectCopy: () => Promise<{ canceled: boolean; path?: string; error?: string }>
   /** Renames the `.dthat` on disk and repoints the session at it. */
   renameCurrentProject: (newName: string) => Promise<{ ok: boolean; path?: string; error?: string }>
+  /**
+   * Splices newly recorded footage directly into the master screen and audio tracks,
+   * rippling forward all downstream timeline regions, clips, and markers.
+   */
+  rippleInsertRecording: (payload: {
+    videoPath: string
+    metadataPath: string
+    webcamVideoPath?: string
+    insertTime: number
+    addedDuration: number
+  }) => Promise<void>
   /** Re-reads whether a crash-recovery copy exists (and how old it is). */
   refreshRecoveryCopy: () => Promise<void>
   /**

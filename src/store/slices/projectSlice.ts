@@ -8,14 +8,14 @@ import type {
   CursorImageBitmap,
   SaveStatus,
 } from '../../types'
-import type { MetaDataItem, ZoomRegion, CursorFrame } from '../../types'
+import type { MetaDataItem, ZoomRegion, CutRegion, SpeedRegion, CursorFrame, CursorImage } from '../../types'
 import { ZOOM } from '../../lib/constants'
 import { initialFrameState, recalculateCanvasDimensions } from './frameSlice'
 import { prepareCursorBitmaps } from '../../lib/utils'
 import { prepareCursorIcons } from '../../lib/cursor-icons'
 import { collectSavePayload, whenSaveIdle, withSaveGuard } from '../../lib/project-file'
 import { projectNameFromPath } from '../../lib/recent-projects'
-import { audioTracksFromManifest, legacyTracks } from '../../../shared/audio-tracks'
+import { audioTracksFromManifest, legacyTracks, type AudioTrack } from '../../../shared/audio-tracks'
 import { mediaUrl } from '../../../shared/media-url'
 import {
   DEFAULT_AV_SYNC_OFFSET_MS,
@@ -868,5 +868,244 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
       console.error('[ProjectSlice] Could not open the recovery copy:', error)
       return false
     }
+  },
+  rippleInsertRecording: async ({ videoPath, metadataPath, webcamVideoPath, insertTime, addedDuration }) => {
+    logger.info(
+      `rippleInsertRecording initiated: videoPath=${videoPath}, insertTime=${insertTime}, addedDuration=${addedDuration}`,
+    )
+    const videoUrl = mediaUrl(videoPath)
+    const webcamVideoUrl = webcamVideoPath ? mediaUrl(webcamVideoPath) : null
+
+    let parsedData: {
+      events?: MetaDataItem[]
+      geometry?: RecordingGeometry
+      screenSize?: { width: number; height: number }
+      cursorImages?: Record<string, CursorImage>
+      audioTracks?: AudioTrack[]
+    } | null = null
+
+    if (window?.electronAPI?.readFile && metadataPath) {
+      try {
+        const metadataContent = await window.electronAPI.readFile(metadataPath)
+        if (metadataContent) {
+          parsedData = JSON.parse(metadataContent)
+        }
+      } catch (error) {
+        logger.error('Failed to read merged metadata file in rippleInsertRecording:', error)
+      }
+    }
+
+    set((state) => {
+      state.videoPath = videoPath
+      state.videoUrl = videoUrl
+      state.metadataPath = metadataPath
+      if (webcamVideoPath !== undefined) {
+        state.webcamVideoPath = webcamVideoPath || null
+        state.webcamVideoUrl = webcamVideoUrl
+        if (webcamVideoUrl) {
+          state.isWebcamVisible = true
+        }
+      }
+
+      state.duration = Number((state.duration + addedDuration).toFixed(3))
+
+      if (parsedData) {
+        if (Array.isArray(parsedData.events)) {
+          state.metadata = parsedData.events.map((item: MetaDataItem) => ({
+            ...item,
+            timestamp: typeof item.timestamp === 'number' ? item.timestamp / 1000 : 0,
+          }))
+        }
+        if (parsedData.geometry) {
+          state.recordingGeometry = parsedData.geometry
+        }
+        if (parsedData.screenSize) {
+          state.screenSize = parsedData.screenSize
+        }
+        if (parsedData.cursorImages) {
+          state.cursorImages = { ...state.cursorImages, ...parsedData.cursorImages }
+        }
+        if (Array.isArray(parsedData.audioTracks) && parsedData.audioTracks.length > 0) {
+          state.audioTracks = parsedData.audioTracks
+          state.hasAudioTrack = true
+        }
+      }
+
+      let splitCounter = 0
+
+      // zoomRegions: shift startTime (and adjust or split if spanning insertTime)
+      const nextZoomRegions: Record<string, ZoomRegion> = {}
+      for (const [id, region] of Object.entries(state.zoomRegions)) {
+        const start = region.startTime
+        const end = Number((region.startTime + region.duration).toFixed(3))
+
+        if (start >= insertTime) {
+          nextZoomRegions[id] = {
+            ...region,
+            startTime: Number((start + addedDuration).toFixed(3)),
+          }
+        } else if (end <= insertTime) {
+          nextZoomRegions[id] = region
+        } else {
+          const part1Duration = Number((insertTime - start).toFixed(3))
+          const part2Duration = Number((end - insertTime).toFixed(3))
+          const part2Start = Number((insertTime + addedDuration).toFixed(3))
+
+          if (part1Duration > 0) {
+            nextZoomRegions[id] = {
+              ...region,
+              duration: part1Duration,
+            }
+          }
+          if (part2Duration > 0) {
+            const part2Id = `${id}-split-${Date.now()}-${splitCounter++}`
+            nextZoomRegions[part2Id] = {
+              ...region,
+              id: part2Id,
+              startTime: part2Start,
+              duration: part2Duration,
+            }
+          }
+        }
+      }
+      state.zoomRegions = nextZoomRegions
+
+      // cutRegions: shift startTime (and adjust or split if spanning insertTime)
+      const nextCutRegions: Record<string, CutRegion> = {}
+      for (const [id, region] of Object.entries(state.cutRegions)) {
+        const start = region.startTime
+        const end = Number((region.startTime + region.duration).toFixed(3))
+
+        if (start >= insertTime) {
+          nextCutRegions[id] = {
+            ...region,
+            startTime: Number((start + addedDuration).toFixed(3)),
+          }
+        } else if (end <= insertTime) {
+          nextCutRegions[id] = region
+        } else {
+          const part1Duration = Number((insertTime - start).toFixed(3))
+          const part2Duration = Number((end - insertTime).toFixed(3))
+          const part2Start = Number((insertTime + addedDuration).toFixed(3))
+
+          if (part1Duration > 0) {
+            nextCutRegions[id] = {
+              ...region,
+              duration: part1Duration,
+            }
+          }
+          if (part2Duration > 0) {
+            const part2Id = `${id}-split-${Date.now()}-${splitCounter++}`
+            nextCutRegions[part2Id] = {
+              ...region,
+              id: part2Id,
+              startTime: part2Start,
+              duration: part2Duration,
+            }
+          }
+        }
+      }
+      state.cutRegions = nextCutRegions
+
+      // speedRegions: shift startTime
+      const nextSpeedRegions: Record<string, SpeedRegion> = {}
+      for (const [id, region] of Object.entries(state.speedRegions)) {
+        if (region.startTime >= insertTime) {
+          nextSpeedRegions[id] = {
+            ...region,
+            startTime: Number((region.startTime + addedDuration).toFixed(3)),
+          }
+        } else {
+          nextSpeedRegions[id] = region
+        }
+      }
+      state.speedRegions = nextSpeedRegions
+
+      // cameraMotions: shift startTime and endTime
+      state.cameraMotions = state.cameraMotions.map((motion) => {
+        if (motion.startTime >= insertTime) {
+          return {
+            ...motion,
+            startTime: Number((motion.startTime + addedDuration).toFixed(3)),
+            endTime: Number((motion.endTime + addedDuration).toFixed(3)),
+          }
+        } else if (motion.endTime > insertTime) {
+          return {
+            ...motion,
+            endTime: Number((motion.endTime + addedDuration).toFixed(3)),
+          }
+        }
+        return motion
+      })
+
+      // visualEffects: shift startTime
+      state.visualEffects = state.visualEffects.map((effect) => {
+        if (effect.startTime >= insertTime) {
+          return {
+            ...effect,
+            startTime: Number((effect.startTime + addedDuration).toFixed(3)),
+          }
+        }
+        return effect
+      })
+
+      // compositionLayouts: shift startTime
+      state.compositionLayouts = state.compositionLayouts.map((layout) => {
+        if (layout.startTime >= insertTime) {
+          return {
+            ...layout,
+            startTime: Number((layout.startTime + addedDuration).toFixed(3)),
+          }
+        }
+        return layout
+      })
+
+      // subtitleCues: shift start and end
+      state.subtitleCues = state.subtitleCues.map((cue) => {
+        if (cue.start >= insertTime) {
+          return {
+            ...cue,
+            start: Number((cue.start + addedDuration).toFixed(3)),
+            end: Number((cue.end + addedDuration).toFixed(3)),
+          }
+        } else if (cue.end > insertTime) {
+          return {
+            ...cue,
+            end: Number((cue.end + addedDuration).toFixed(3)),
+          }
+        }
+        return cue
+      })
+
+      // audioClips: shift startTime
+      state.audioClips = state.audioClips.map((clip) => {
+        if (clip.startTime >= insertTime) {
+          return {
+            ...clip,
+            startTime: Number((clip.startTime + addedDuration).toFixed(3)),
+          }
+        }
+        return clip
+      })
+
+      // videoClips: shift startTime
+      state.videoClips = state.videoClips.map((clip) => {
+        if (clip.startTime >= insertTime) {
+          return {
+            ...clip,
+            startTime: Number((clip.startTime + addedDuration).toFixed(3)),
+          }
+        }
+        return clip
+      })
+
+      state.isDirty = true
+      if (state.saveStatus === 'saved') {
+        state.saveStatus = 'unsaved'
+      }
+
+      recalculateCanvasDimensions(state)
+    })
+    logger.info(`rippleInsertRecording complete: new duration = ${get().duration}`)
   },
 })

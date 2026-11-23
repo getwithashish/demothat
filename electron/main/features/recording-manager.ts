@@ -42,6 +42,7 @@ import { parseDuration } from '../lib/audio-info'
 import { computeCrop } from '../../../shared/wayland-crop'
 import { DEFAULT_AV_SYNC_OFFSET_MS, DEFAULT_WEBCAM_MIC_AV_SYNC_OFFSET_MS } from '../../../shared/virtual-camera-types'
 import { applyCleanDemoMode, restoreCleanDemoMode } from './clean-demo-mode'
+import { spliceRecordingIntoProject } from './recording-splice'
 
 const FFMPEG_PATH = getFFmpegPath()
 const SYSTEM_AUDIO_STOP_TIMEOUT_MS = 5000
@@ -1248,16 +1249,55 @@ export async function stopRecording() {
       metadata: metaStat ? `${metaStat.size} bytes` : 'missing',
     })
     if (appState.recordingTarget === 'editor-clip' && appState.editorWin && !appState.editorWin.isDestroyed()) {
-      log.info(
-        '[StopRecord] Delivering clip recording to existing editor window at time',
-        appState.pendingClipInsertTime,
-      )
-      appState.editorWin.webContents.send('recording:clip-recorded', {
-        screenVideoPath: finalizedSession.screenVideoPath,
-        webcamVideoPath: finalizedSession.webcamVideoPath,
-        metadataPath: finalizedSession.metadataPath,
-        insertTime: appState.pendingClipInsertTime ?? 0,
-      })
+      const insertTime = appState.pendingClipInsertTime ?? 0
+      const baseSession = appState.currentEditorSessionFiles
+
+      if (baseSession) {
+        log.info('[StopRecord] Splicing recording clip into existing editor session at time', insertTime)
+        try {
+          const spliceResult = await spliceRecordingIntoProject({
+            originalVideoPath: baseSession.screenVideoPath,
+            originalMetadataPath: baseSession.metadataPath,
+            originalWebcamPath: baseSession.webcamVideoPath,
+            newVideoPath: finalizedSession.screenVideoPath,
+            newMetadataPath: finalizedSession.metadataPath,
+            newWebcamPath: finalizedSession.webcamVideoPath,
+            insertTime,
+          })
+
+          appState.currentEditorSessionFiles = {
+            ...baseSession,
+            screenVideoPath: spliceResult.screenVideoPath,
+            metadataPath: spliceResult.metadataPath,
+            webcamVideoPath: spliceResult.webcamVideoPath,
+          }
+
+          log.info('[StopRecord] Spliced clip successfully, sending recording:ripple-inserted:', spliceResult)
+          appState.editorWin.webContents.send('recording:ripple-inserted', {
+            screenVideoPath: spliceResult.screenVideoPath,
+            metadataPath: spliceResult.metadataPath,
+            webcamVideoPath: spliceResult.webcamVideoPath,
+            insertTime,
+            addedDuration: spliceResult.addedDuration,
+          })
+        } catch (err) {
+          log.error('[StopRecord] Failed to splice recording into project:', err)
+          appState.editorWin.webContents.send('recording:clip-recorded', {
+            screenVideoPath: finalizedSession.screenVideoPath,
+            webcamVideoPath: finalizedSession.webcamVideoPath,
+            metadataPath: finalizedSession.metadataPath,
+            insertTime,
+          })
+        }
+      } else {
+        log.warn('[StopRecord] currentEditorSessionFiles missing, falling back to recording:clip-recorded')
+        appState.editorWin.webContents.send('recording:clip-recorded', {
+          screenVideoPath: finalizedSession.screenVideoPath,
+          webcamVideoPath: finalizedSession.webcamVideoPath,
+          metadataPath: finalizedSession.metadataPath,
+          insertTime,
+        })
+      }
       appState.editorWin.show()
       appState.editorWin.focus()
     } else {

@@ -54,6 +54,14 @@ export type RecordedClipPayload = {
   insertTime: number
 }
 
+export type RecordedRipplePayload = {
+  screenVideoPath: string
+  metadataPath: string
+  webcamVideoPath?: string
+  insertTime: number
+  addedDuration: number
+}
+
 type ExportPayload = {
   projectState: any
   exportSettings: any
@@ -297,6 +305,15 @@ export const electronAPI = {
 
     return () => {
       ipcRenderer.removeListener('recording:clip-recorded', listener)
+    }
+  },
+
+  onRecordingRippleInserted: (callback: (payload: RecordedRipplePayload) => void) => {
+    const listener = (_event: IpcRendererEvent, payload: RecordedRipplePayload) => callback(payload)
+    ipcRenderer.on('recording:ripple-inserted', listener)
+
+    return () => {
+      ipcRenderer.removeListener('recording:ripple-inserted', listener)
     }
   },
 

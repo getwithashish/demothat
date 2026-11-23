@@ -1,3 +1,9 @@
+## [1.21.0-beta.30](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.29...v1.21.0-beta.30) (2026-11-23)
+
+### Features
+
+* **ci:** add discord notifications and open-source workflows ([ae30d2d](https://github.com/getwithashish/DemoThat/commit/ae30d2d377c3a76888f0c77be8aa38252bb6a8c5))
+
 ## [1.21.0-beta.29](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.28...v1.21.0-beta.29) (2026-11-23)
 
 ### Features

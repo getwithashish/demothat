@@ -964,7 +964,10 @@ export function UnifiedExportPublishModal({
           <div className="flex flex-col items-center p-8 text-center">
             <Loader2 size={ICON_SIZE} strokeWidth={ICON_STROKE} className="mb-4 animate-spin text-accent" />
             <h2 className="text-base font-semibold text-fg">
-              {exportStage && exportStage !== 'Local intermediate render'
+              {exportStage &&
+              exportStage !== 'Local intermediate render' &&
+              exportStage !== 'Rendering' &&
+              exportStage !== 'Rendering…'
                 ? exportStage
                 : exportProgress >= 80
                   ? 'Encoding & multiplexing…'
@@ -972,7 +975,7 @@ export function UnifiedExportPublishModal({
                     ? 'Rendering effects & overlays…'
                     : exportProgress >= 25
                       ? 'Compositing motion & cursor…'
-                      : 'Exporting video…'}
+                      : 'Rendering video…'}
             </h2>
             <p className="mt-1 text-xs text-muted">
               {exportProgress >= 80

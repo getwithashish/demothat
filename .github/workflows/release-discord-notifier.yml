@@ -1,0 +1,81 @@
+name: Discord Release Notification
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  notify-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Discord Release notification
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          TAG: ${{ github.event.release.tag_name }}
+          NAME: ${{ github.event.release.name }}
+          RELEASE_URL: ${{ github.event.release.html_url }}
+          IS_PRERELEASE: ${{ github.event.release.prerelease }}
+          AUTHOR: ${{ github.event.release.author.login }}
+          AUTHOR_AVATAR: ${{ github.event.release.author.avatar_url }}
+          PUBLISHED_AT: ${{ github.event.release.published_at }}
+          TARGET_BRANCH: ${{ github.event.release.target_commitish }}
+          REPO: ${{ github.repository }}
+          BODY: ${{ github.event.release.body }}
+        run: |
+          if [ -z "$DISCORD_WEBHOOK_URL" ]; then
+            echo "DISCORD_WEBHOOK_URL secret not configured; skipping Discord notification."
+            exit 0
+          fi
+
+          DISPLAY_NAME="${NAME:-$TAG}"
+
+          if [ "$IS_PRERELEASE" = "true" ]; then
+            COLOR=10181046          # Purple (#9b59b6)
+            TITLE="🧪 Beta Pre-Release: ${DISPLAY_NAME}"
+            CHANNEL_LABEL="Beta (\`${TARGET_BRANCH}\`)"
+          else
+            COLOR=5763719           # Green (#57f287)
+            TITLE="🚀 Stable Production Release: ${DISPLAY_NAME}"
+            CHANNEL_LABEL="Stable Production (\`${TARGET_BRANCH}\`)"
+          fi
+
+          # Truncate release notes to avoid exceeding Discord limits
+          CLEAN_BODY=$(echo "$BODY" | head -c 1200)
+          if [ ${#BODY} -gt 1200 ]; then
+            CLEAN_BODY="${CLEAN_BODY}..."
+          fi
+
+          PAYLOAD=$(jq -n \
+            --arg title "$TITLE" \
+            --arg url "$RELEASE_URL" \
+            --arg author "$AUTHOR" \
+            --arg avatar "$AUTHOR_AVATAR" \
+            --arg channel "$CHANNEL_LABEL" \
+            --arg tag "$TAG" \
+            --arg body "$CLEAN_BODY" \
+            --arg repo "$REPO" \
+            --arg ts "$PUBLISHED_AT" \
+            --argjson color "$COLOR" \
+            '{
+              embeds: [{
+                title: ($title | .[0:250]),
+                url: $url,
+                description: (if ($body | length) > 0 then $body else "No release notes provided." end),
+                color: $color,
+                author: { name: $author, icon_url: $avatar },
+                fields: [
+                  { name: "Release Channel", value: $channel, inline: true },
+                  { name: "Tag", value: ("`" + $tag + "`"), inline: true }
+                ],
+                footer: { text: $repo },
+                timestamp: $ts
+              }]
+            }')
+
+          curl -sS --fail \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD" \
+            "$DISCORD_WEBHOOK_URL"

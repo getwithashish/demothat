@@ -1,3 +1,9 @@
+## [1.21.0-beta.28](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.27...v1.21.0-beta.28) (2026-11-23)
+
+### Features
+
+* **editor:** consolidate publish and export into single export button ([382fcab](https://github.com/getwithashish/DemoThat/commit/382fcab10643103a0dea220b127c481b8767630e))
+
 ## [1.21.0-beta.27](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.26...v1.21.0-beta.27) (2026-11-23)
 
 ### Features

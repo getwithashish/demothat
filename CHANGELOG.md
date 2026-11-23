@@ -1,3 +1,9 @@
+## [1.21.0-beta.32](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.31...v1.21.0-beta.32) (2026-11-23)
+
+### Features
+
+* **cloud-export:** add high-velocity dynamic subtitles and smooth progress interpolation ([204d044](https://github.com/getwithashish/DemoThat/commit/204d044dde7b3d8d4b7717f25e680d32264018ad))
+
 ## [1.21.0-beta.31](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.30...v1.21.0-beta.31) (2026-11-23)
 
 ### Bug Fixes

@@ -20,7 +20,7 @@ import { BuyCreditsDialog } from '../components/editor/cloud/BuyCreditsDialog'
 import { WaitingForPaymentDialog } from '../components/editor/cloud/WaitingForPaymentDialog'
 import { ResumeCloudDialog } from '../components/editor/cloud/ResumeCloudDialog'
 import { firstPurchaseProductId } from '../../shared/pricing'
-import { Stack3, Loader2, Check, Settings, Share } from 'tabler-icons-react'
+import { Stack3, Loader2, Check, Settings } from 'tabler-icons-react'
 import { ICON_SIZE, ICON_STROKE } from '../components/ui/icons'
 import { cn, formatTime } from '../lib/utils'
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
@@ -174,29 +174,18 @@ export function EditorPage() {
     setUnifiedModalOpen(true)
   }, [clearExportResult, isOperationRunning, isPublishing])
 
-  const handleOpenPublish = useCallback(() => {
-    if (!isOperationRunning) {
-      clearExportResult()
-    }
-    setExportMinimized(false)
-    setUnifiedModalTrigger('#publish-trigger-btn')
-    setUnifiedModalInitialTab(isExporting ? 'export' : duration > 0 ? 'publish' : 'analytics')
-    setUnifiedModalOpen(true)
-  }, [clearExportResult, duration, isExporting, isOperationRunning])
-
   const handleOpenAnalytics = useCallback(() => {
     if (!isOperationRunning) {
       clearExportResult()
     }
     setExportMinimized(false)
-    setUnifiedModalTrigger('#publish-trigger-btn')
+    setUnifiedModalTrigger('#export-trigger-btn')
     setUnifiedModalInitialTab(isExporting ? 'export' : isPublishing ? 'publish' : 'analytics')
     setUnifiedModalOpen(true)
   }, [clearExportResult, isExporting, isOperationRunning, isPublishing])
 
   // Listen to AI tool executions from the main process
   useAIToolDispatcher()
-  const openExportModal = handleOpenExport
   useEffect(() => {
     if (!isOperationRunning) setExportMinimized(false)
   }, [isOperationRunning])
@@ -478,33 +467,10 @@ export function EditorPage() {
       <ExportButton
         key="export"
         isExporting={isExporting}
+        isPublishing={isPublishing}
         onClick={handleOpenExport}
-        disabled={duration <= 0 || isPublishing}
+        disabled={duration <= 0 && !isOperationRunning}
       />,
-      <Button
-        key="publish"
-        id="publish-trigger-btn"
-        variant="secondary"
-        size="sm"
-        onClick={handleOpenPublish}
-        title={
-          isPublishing
-            ? 'Publishing in progress — click to view'
-            : isExporting
-              ? 'Export in progress — click to view'
-              : duration <= 0
-                ? 'View your published videos and analytics'
-                : 'Publish this video behind a share link'
-        }
-        className="h-8"
-      >
-        {isPublishing ? (
-          <Loader2 size={ICON_SIZE} strokeWidth={ICON_STROKE} className="mr-2 animate-spin" />
-        ) : (
-          <Share size={ICON_SIZE} strokeWidth={ICON_STROKE} className="mr-2" />
-        )}
-        {isPublishing ? 'Publishing…' : 'Publish'}
-      </Button>,
       <Button
         key="presets"
         id="presets-trigger-btn"
@@ -673,13 +639,9 @@ export function EditorPage() {
               type="button"
               onClick={() => {
                 setExportMinimized(false)
-                if (isPublishing) {
-                  setUnifiedModalTrigger('#publish-trigger-btn')
-                  setUnifiedModalInitialTab('publish')
-                  setUnifiedModalOpen(true)
-                } else {
-                  openExportModal()
-                }
+                setUnifiedModalTrigger('#export-trigger-btn')
+                setUnifiedModalInitialTab(isPublishing ? 'publish' : 'export')
+                setUnifiedModalOpen(true)
               }}
               title={
                 isPublishing

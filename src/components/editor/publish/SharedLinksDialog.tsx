@@ -132,7 +132,7 @@ export function SharedLinksDialog({
 
   const { surfaceRef, isRendered, requestClose } = useMorphSurface({
     isOpen,
-    triggerSelector: '#publish-trigger-btn',
+    triggerSelector: '#export-trigger-btn',
     targetRadius: 12,
     duration: 600,
     onClosed: onClose,

@@ -9,11 +9,15 @@ export interface CloudProgressInfo {
   stage: CloudStage
   /** Percent within the stage. */
   stagePercent: number
+  framesDone?: number
+  totalFrames?: number
   reserved?: number
   consumed?: number
   etaSeconds?: number | null
   /** The server's minimum charge once GPU work began. */
   minChargeCredits?: number
+  throughput?: string | number
+  fps?: number
 }
 
 export interface ExportResult {
@@ -72,10 +76,14 @@ export const useExportProcess = () => {
         setCloudProgress({
           stage: payload.stage as CloudStage,
           stagePercent: payload.stagePercent ?? payload.progress,
+          framesDone: payload.framesDone,
+          totalFrames: payload.totalFrames,
           reserved: payload.reserved,
           consumed: payload.consumed,
           etaSeconds: payload.etaSeconds ?? null,
           minChargeCredits: payload.minChargeCredits,
+          throughput: payload.throughput,
+          fps: payload.fps,
         })
       }
     })

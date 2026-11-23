@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   CLOUD_WORK_STAGES,
   cloudStagePercent,
+  cloudUpscaleStageLabel,
   isBeforeGpuWork,
   projectCancellation,
   stageFromJobStatus,
@@ -34,6 +35,38 @@ describe('cloudStagePercent', () => {
     expect(cloudStagePercent('Upscaling', -10)).toBe(60)
     expect(cloudStagePercent('Upscaling', 1000)).toBe(92)
     expect(cloudStagePercent('Validating', Number.NaN)).toBe(50)
+  })
+})
+
+describe('cloudUpscaleStageLabel', () => {
+  it('returns accelerating label for 0 to <25%', () => {
+    expect(cloudUpscaleStageLabel(0)).toBe('Accelerating neural tensor cores…')
+    expect(cloudUpscaleStageLabel(12)).toBe('Accelerating neural tensor cores…')
+    expect(cloudUpscaleStageLabel(24.9)).toBe('Accelerating neural tensor cores…')
+  })
+
+  it('returns enhancing details label for 25 to <50%', () => {
+    expect(cloudUpscaleStageLabel(25)).toBe('Enhancing fine details & textures…')
+    expect(cloudUpscaleStageLabel(35)).toBe('Enhancing fine details & textures…')
+    expect(cloudUpscaleStageLabel(49.9)).toBe('Enhancing fine details & textures…')
+  })
+
+  it('returns compositing frames label for 50 to <75%', () => {
+    expect(cloudUpscaleStageLabel(50)).toBe('Compositing high-resolution frames…')
+    expect(cloudUpscaleStageLabel(60)).toBe('Compositing high-resolution frames…')
+    expect(cloudUpscaleStageLabel(74.9)).toBe('Compositing high-resolution frames…')
+  })
+
+  it('returns finalizing multiplexing label for 75 to 100%', () => {
+    expect(cloudUpscaleStageLabel(75)).toBe('Finalizing neural multiplexing…')
+    expect(cloudUpscaleStageLabel(90)).toBe('Finalizing neural multiplexing…')
+    expect(cloudUpscaleStageLabel(100)).toBe('Finalizing neural multiplexing…')
+  })
+
+  it('handles negative, overflowing, or non-finite numbers safely', () => {
+    expect(cloudUpscaleStageLabel(-10)).toBe('Accelerating neural tensor cores…')
+    expect(cloudUpscaleStageLabel(150)).toBe('Finalizing neural multiplexing…')
+    expect(cloudUpscaleStageLabel(Number.NaN)).toBe('Accelerating neural tensor cores…')
   })
 })
 

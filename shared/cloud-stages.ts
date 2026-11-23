@@ -45,6 +45,27 @@ export function cloudStagePercent(stage: CloudStage, stagePercent: number): numb
   return Math.round(from + ((to - from) * clamped) / 100)
 }
 
+/**
+ * Dynamic high-velocity subtitles for the Upscaling stage.
+ * 0-25%: "Accelerating neural tensor cores…"
+ * 25-50%: "Enhancing fine details & textures…"
+ * 50-75%: "Compositing high-resolution frames…"
+ * 75-100%: "Finalizing neural multiplexing…"
+ */
+export function cloudUpscaleStageLabel(percent: number): string {
+  const clamped = Math.max(0, Math.min(100, Number.isFinite(percent) ? percent : 0))
+  if (clamped < 25) {
+    return 'Accelerating neural tensor cores…'
+  }
+  if (clamped < 50) {
+    return 'Enhancing fine details & textures…'
+  }
+  if (clamped < 75) {
+    return 'Compositing high-resolution frames…'
+  }
+  return 'Finalizing neural multiplexing…'
+}
+
 /** The UI stage a job status corresponds to. Null for terminal statuses. */
 export function stageFromJobStatus(status: string): CloudStage | null {
   switch (status) {

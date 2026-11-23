@@ -60,6 +60,8 @@ type ProgressPayload = {
   stagePercent?: number
   framesDone?: number
   totalFrames?: number
+  fps?: number
+  throughput?: string | number
   /** Credits held for this job (cloud). */
   reserved?: number
   /** Credits used so far, from the server (cloud). */

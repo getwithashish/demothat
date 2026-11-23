@@ -160,6 +160,7 @@ export interface BuildChunkExportArgsOptions {
   encoder?: string
   quality?: ExportQuality
   threads?: number
+  intermediate?: boolean
 }
 
 export interface ChunkSlice {
@@ -186,13 +187,7 @@ export interface ParallelExportDecisionOptions {
  * Short exports (<4s or <60 frames), single core machines, and cloud exports use a single worker.
  */
 export function canUseParallelExport(options: ParallelExportDecisionOptions): boolean {
-  return (
-    !options.useCloud &&
-    options.format === 'mp4' &&
-    options.exportDuration >= 4.0 &&
-    options.totalFrames >= 60 &&
-    options.cpuCount >= 2
-  )
+  return options.format === 'mp4' && options.exportDuration >= 4.0 && options.totalFrames >= 60 && options.cpuCount >= 2
 }
 
 /**
@@ -451,6 +446,25 @@ export function buildExportAudioGraph(
 }
 
 /**
+ * The cloud path's intermediate: near-lossless H.264 at the render size, audio
+ * already muxed, so the server only upscales video and copies audio. CRF 14
+ * keeps the upscaler's input clean without a lossless codec's cost, and
+ * faststart helps the server seek the upload.
+ */
+const INTERMEDIATE_VIDEO_ARGS = [
+  '-c:v',
+  'libx264',
+  '-preset',
+  'medium',
+  '-crf',
+  '14',
+  '-pix_fmt',
+  'yuv420p',
+  '-movflags',
+  '+faststart',
+]
+
+/**
  * Pure builder for a single video-only chunk exported from a worker window.
  *
  * Encodes raw video frames from stdin to an MP4 video-only chunk. Note: `-t` is
@@ -459,9 +473,21 @@ export function buildExportAudioGraph(
  * truncation, premature EPIPE, and dropped tail frames at chunk boundaries.
  */
 export function buildChunkExportArgs(options: BuildChunkExportArgsOptions): string[] {
-  const { renderWidth, renderHeight, targetWidth, targetHeight, fps, outputPath, encoder, quality, threads } = options
-  const scaled = renderWidth !== targetWidth || renderHeight !== targetHeight
-  const encodeArgs = encoderToH264Args(encoder, quality, threads)
+  const {
+    renderWidth,
+    renderHeight,
+    targetWidth,
+    targetHeight,
+    fps,
+    outputPath,
+    encoder,
+    quality,
+    threads,
+    intermediate,
+  } = options
+  const isIntermediate = intermediate === true
+  const scaled = !isIntermediate && (renderWidth !== targetWidth || renderHeight !== targetHeight)
+  const encodeArgs = isIntermediate ? INTERMEDIATE_VIDEO_ARGS : encoderToH264Args(encoder, quality, threads)
 
   const args: string[] = [
     '-y',
@@ -587,25 +613,6 @@ export function buildCloudFallbackArgs(options: {
     outputPath,
   ]
 }
-
-/**
- * The cloud path's intermediate: near-lossless H.264 at the render size, audio
- * already muxed, so the server only upscales video and copies audio. CRF 14
- * keeps the upscaler's input clean without a lossless codec's cost, and
- * faststart helps the server seek the upload.
- */
-const INTERMEDIATE_VIDEO_ARGS = [
-  '-c:v',
-  'libx264',
-  '-preset',
-  'medium',
-  '-crf',
-  '14',
-  '-pix_fmt',
-  'yuv420p',
-  '-movflags',
-  '+faststart',
-]
 
 export function buildExportArgs(options: BuildExportArgsOptions): string[] {
   const { projectState, exportSettings, outputPath, renderWidth, renderHeight, targetWidth, targetHeight } = options

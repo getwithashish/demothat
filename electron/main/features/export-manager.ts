@@ -127,6 +127,12 @@ export interface ParallelExportOptions {
   clickSoundPath: string | null
   temporaryFiles: string[]
   perfStartedAt: number
+  useCloud?: boolean
+  cloudJob?: CloudJobCreated | null
+  cloudMinChargeCredits?: number
+  intermediatePath?: string | null
+  cloudCancellation?: CloudCancellation
+  finalOutputPath?: string
 }
 
 interface SingleExportOptions {
@@ -144,6 +150,11 @@ interface SingleExportOptions {
   clickSoundPath: string | null
   temporaryFiles: string[]
   perfStartedAt: number
+  cloudJob?: CloudJobCreated | null
+  cloudMinChargeCredits?: number
+  intermediatePath?: string | null
+  cloudCancellation?: CloudCancellation
+  finalOutputPath?: string
 }
 
 export async function startExport(event: IpcMainInvokeEvent, request: ExportRequest) {
@@ -253,9 +264,47 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
 
   const perfStartedAt = Date.now()
 
+  let cloudJob: CloudJobCreated | null = null
+  let cloudMinChargeCredits = 0
+  let intermediatePath: string | null = null
+  const cloudCancellation: CloudCancellation = { cancelled: false }
+
+  if (useCloud) {
+    registerCloudCancellation(cloudCancellation)
+    const preflight = await preflightCloudExport({
+      targetWidth,
+      targetHeight,
+      renderWidth,
+      renderHeight,
+      fps: exportSettings.fps,
+      durationSec: exportDuration,
+    })
+    if (!preflight.ok) {
+      log.warn(`[ExportManager] Cloud preflight refused: ${preflight.error}`)
+      editorWindow.webContents.send('export:complete', {
+        success: false,
+        error: preflight.error,
+        cloudReason: preflight.code,
+        cost: preflight.cost,
+        balance: preflight.balance,
+      })
+      return
+    }
+    cloudJob = preflight.job
+    cloudMinChargeCredits = preflight.capabilities.minChargeCredits ?? 0
+    intermediatePath = intermediatePathFor(os.tmpdir(), Date.now())
+    await fsPromises.mkdir(path.dirname(intermediatePath), { recursive: true })
+    rememberActiveJob(cloudJob.jobId, outputPath, intermediatePath, targetWidth, targetHeight)
+    log.info(
+      `[ExportManager] Cloud job ${cloudJob.jobId}: rendering intermediate video at ${renderWidth}x${renderHeight}.`,
+    )
+  }
+
+  const localOutputPath = useCloud && intermediatePath ? intermediatePath : outputPath
+
   // Concurrency decision:
-  // Parallel chunked export partitions MP4 exports across 2-4 worker processes.
-  // Short exports (<4s or <60 frames), single core machines, and cloud exports use a single worker.
+  // Parallel chunked export partitions MP4 exports across 2-8 worker processes.
+  // Short exports (<4s or <60 frames), single core machines, and GIF use a single worker.
   const canParallel = canUseParallelExport({
     useCloud,
     format: exportSettings.format,
@@ -269,7 +318,7 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
       editorWindow,
       projectState,
       exportSettings,
-      outputPath,
+      outputPath: localOutputPath,
       renderWidth,
       renderHeight,
       targetWidth,
@@ -279,13 +328,19 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
       clickSoundPath,
       temporaryFiles,
       perfStartedAt,
+      useCloud,
+      cloudJob,
+      cloudMinChargeCredits,
+      intermediatePath,
+      cloudCancellation,
+      finalOutputPath: outputPath,
     })
   } else {
     await runSingleExport({
       editorWindow,
       projectState,
       exportSettings,
-      outputPath,
+      outputPath: localOutputPath,
       renderWidth,
       renderHeight,
       targetWidth,
@@ -296,6 +351,11 @@ export async function startExport(event: IpcMainInvokeEvent, request: ExportRequ
       clickSoundPath,
       temporaryFiles,
       perfStartedAt,
+      cloudJob,
+      cloudMinChargeCredits,
+      intermediatePath,
+      cloudCancellation,
+      finalOutputPath: outputPath,
     })
   }
 }
@@ -318,6 +378,12 @@ export async function runParallelExport(options: ParallelExportOptions) {
     clickSoundPath,
     temporaryFiles,
     perfStartedAt,
+    useCloud = false,
+    cloudJob = null,
+    cloudMinChargeCredits = 0,
+    intermediatePath = null,
+    cloudCancellation,
+    finalOutputPath,
   } = options
 
   const cpuCount = os.cpus().length
@@ -377,6 +443,7 @@ export async function runParallelExport(options: ParallelExportOptions) {
       encoder: bestEncoder,
       quality: exportSettings.quality,
       threads: workerThreads,
+      intermediate: useCloud,
     })
     log.info(`[ExportManager] Spawning chunk proc #${chunk.index} with args:`, chunkArgs.join(' '))
     const proc = spawn(FFMPEG_PATH, chunkArgs)
@@ -445,7 +512,19 @@ export async function runParallelExport(options: ParallelExportOptions) {
       overridePercent !== undefined
         ? overridePercent
         : Math.min(95, Math.round((totalWritten / Math.max(1, totalFrames)) * 95))
-    const stage = overrideStage ?? (totalWritten >= totalFrames ? 'Encoding' : 'Rendering (Parallel)')
+    const stage = overrideStage ?? (totalWritten >= totalFrames ? 'Encoding' : 'Rendering')
+
+    if (useCloud) {
+      editorWindow.webContents.send('export:progress', {
+        progress: cloudStagePercent('Rendering locally', percent),
+        stage: 'Rendering locally',
+        stagePercent: percent,
+        framesDone: totalWritten,
+        totalFrames,
+        minChargeCredits: cloudMinChargeCredits,
+      })
+      return
+    }
 
     editorWindow.webContents.send('export:progress', {
       progress: percent,
@@ -459,6 +538,10 @@ export async function runParallelExport(options: ParallelExportOptions) {
     if (exportAborted) return
     exportAborted = true
     log.warn(`[ExportManager] Aborting parallel export: ${reason}`)
+    if (cloudCancellation) {
+      cloudCancellation.cancelled = true
+      clearCloudCancellation(cloudCancellation)
+    }
 
     for (let i = 0; i < unblockPendingChunkWrites.length; i++) {
       const unblock = unblockPendingChunkWrites[i]
@@ -484,6 +567,9 @@ export async function runParallelExport(options: ParallelExportOptions) {
     fsPromises.rm(sessionDir, { recursive: true, force: true }).catch(() => {})
     for (const f of temporaryFiles) {
       fsPromises.unlink(f).catch(() => {})
+    }
+    if (intermediatePath) {
+      fsPromises.unlink(intermediatePath).catch(() => {})
     }
     if (fs.existsSync(outputPath)) {
       fsPromises.unlink(outputPath).catch((err) => log.error('Failed to delete cancelled export file:', err))
@@ -714,6 +800,68 @@ export async function runParallelExport(options: ParallelExportOptions) {
   appState.renderWorkers = []
 
   if (editorWindow && !editorWindow.isDestroyed()) {
+    if (concatCode === 0 && useCloud && cloudJob && intermediatePath) {
+      const job = cloudJob
+      const intermediate = intermediatePath
+      const minCharge = cloudMinChargeCredits
+      const cancel = cloudCancellation ?? { cancelled: false }
+      const finalOut = finalOutputPath ?? outputPath
+
+      log.info(
+        `[ExportManager] Parallel local intermediate render completed for cloud job ${job.jobId}. Handing off to runCloudExport.`,
+      )
+
+      void runCloudExport({
+        job,
+        intermediatePath: intermediate,
+        outputPath: finalOut,
+        cancel,
+        minChargeCredits: minCharge,
+        onProgress: (progress) => {
+          if (!editorWindow || editorWindow.isDestroyed()) return
+          editorWindow.webContents.send('export:progress', {
+            progress: cloudStagePercent(progress.stage, progress.stagePercent),
+            stage: progress.stage,
+            framesDone: progress.framesDone,
+            totalFrames: progress.totalFrames,
+            reserved: progress.reserved,
+            consumed: progress.consumed,
+            etaSeconds: progress.etaSeconds ?? null,
+            minChargeCredits: minCharge,
+          })
+        },
+      }).then((outcome) => {
+        clearCloudCancellation(cancel)
+        if (editorWindow.isDestroyed()) return
+        if (outcome.ok) {
+          editorWindow.webContents.send('export:complete', {
+            success: true,
+            outputPath: finalOut,
+            charge: outcome.charge,
+            refund: outcome.refund,
+          })
+          return
+        }
+        editorWindow.webContents.send('export:complete', {
+          success: false,
+          error: outcome.error,
+          cloudReason: outcome.reason,
+          charge: outcome.charge,
+          refund: outcome.refund,
+          cost: outcome.cost,
+          intermediatePath: outcome.intermediatePath,
+          canRetryCloud: outcome.canRetryCloud,
+          cloudRetry: {
+            targetWidth,
+            targetHeight,
+            fps: exportSettings.fps,
+            durationSec: exportDuration,
+          },
+        })
+      })
+      return
+    }
+
     if (concatCode === 0) {
       const elapsedSeconds = Math.max(0.001, (Date.now() - perfStartedAt) / 1000)
       const totalWritten = chunkFramesWritten.reduce((a, b) => a + b, 0)
@@ -771,13 +919,15 @@ async function runSingleExport(options: SingleExportOptions) {
     perfStartedAt,
   } = options
 
-  const cloudCancellation: CloudCancellation = { cancelled: false }
-  registerCloudCancellation(cloudCancellation)
-  let cloudJob: CloudJobCreated | null = null
-  let cloudMinChargeCredits = 0
-  let intermediatePath: string | null = null
+  const cloudCancellation: CloudCancellation = options.cloudCancellation ?? { cancelled: false }
+  if (!options.cloudCancellation && useCloud) {
+    registerCloudCancellation(cloudCancellation)
+  }
+  let cloudJob: CloudJobCreated | null = options.cloudJob ?? null
+  let cloudMinChargeCredits = options.cloudMinChargeCredits ?? 0
+  let intermediatePath: string | null = options.intermediatePath ?? null
 
-  if (useCloud) {
+  if (useCloud && !cloudJob) {
     const preflight = await preflightCloudExport({
       targetWidth,
       targetHeight,
@@ -808,7 +958,7 @@ async function runSingleExport(options: SingleExportOptions) {
   }
 
   let workerProjectState = projectState
-  if (!useCloud && projectState.videoPath) {
+  if (projectState.videoPath) {
     const singleSessionDir = path.join(
       os.tmpdir(),
       `demothat-single-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -1071,11 +1221,12 @@ async function runSingleExport(options: SingleExportOptions) {
         const job = cloudJob
         const intermediate = intermediatePath
         const minCharge = cloudMinChargeCredits
+        const finalOut = options.finalOutputPath ?? outputPath
         cloudContinuation = () => {
           void runCloudExport({
             job,
             intermediatePath: intermediate,
-            outputPath,
+            outputPath: finalOut,
             cancel: cloudCancellation,
             minChargeCredits: minCharge,
             onProgress: emitCloudProgress,
@@ -1085,7 +1236,7 @@ async function runSingleExport(options: SingleExportOptions) {
             if (outcome.ok) {
               editorWindow.webContents.send('export:complete', {
                 success: true,
-                outputPath,
+                outputPath: finalOut,
                 charge: outcome.charge,
                 refund: outcome.refund,
               })

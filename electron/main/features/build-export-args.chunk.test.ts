@@ -108,6 +108,22 @@ describe('buildChunkExportArgs', () => {
     expect(vtArgs).toContain('-bf')
     expect(vtArgs).toContain('0')
   })
+
+  it('uses near-lossless intermediate video args without Lanczos scale when intermediate is true', () => {
+    const args = buildChunkExportArgs({
+      renderWidth: 1920,
+      renderHeight: 1080,
+      targetWidth: 3840,
+      targetHeight: 2160,
+      fps: 30,
+      chunkDuration: 4,
+      outputPath: '/tmp/chunk_intermediate.mp4',
+      intermediate: true,
+    })
+    expect(args).toContain('-crf')
+    expect(args[args.indexOf('-crf') + 1]).toBe('14')
+    expect(args.join(' ')).not.toContain('scale=3840:2160')
+  })
 })
 
 describe('buildConcatExportArgs', () => {
@@ -261,8 +277,8 @@ describe('canUseParallelExport', () => {
     expect(canUseParallelExport(baseOptions)).toBe(true)
   })
 
-  it('disables parallel export for cloud exports', () => {
-    expect(canUseParallelExport({ ...baseOptions, useCloud: true })).toBe(false)
+  it('enables parallel export for cloud intermediate MP4 renders', () => {
+    expect(canUseParallelExport({ ...baseOptions, useCloud: true })).toBe(true)
   })
 
   it('disables parallel export for non-mp4 formats (e.g. gif, webm)', () => {

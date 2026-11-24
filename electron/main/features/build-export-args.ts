@@ -80,12 +80,25 @@ export type RecordingGeometry = ExportRecordingGeometry
 export type MetaDataItem = ExportMetaDataItem
 export type CursorStyles = ExportCursorStyles
 
+export interface ExportWebcamClip {
+  id: string
+  name: string
+  filePath: string
+  startTime: number
+  duration: number
+  sourceStart: number
+  sourceDuration: number
+  audioClipId?: string | null
+  hasAudio?: boolean
+}
+
 /** Shapes the renderer sends over IPC for an export (structural mirror of src/types). */
 export interface ExportProjectState {
   aspectRatio: string
   duration: number
   videoPath?: string
   webcamVideoPath?: string | null
+  webcamClips?: ExportWebcamClip[]
   videoDimensions?: { width: number; height: number }
   recordingGeometry?: ExportRecordingGeometry | null
   metadata?: ExportMetaDataItem[]

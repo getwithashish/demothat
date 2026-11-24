@@ -43,6 +43,7 @@ export function serializeEditorState(state: EditorState): Record<string, unknown
     webcamPosition: state.webcamPosition,
     webcamStyles: state.webcamStyles,
     isWebcamVisible: state.isWebcamVisible,
+    webcamClips: state.webcamClips,
     cursorStyles: state.cursorStyles,
     activePresetId: state.activePresetId,
     avSyncOffsetMs: state.avSyncOffsetMs,

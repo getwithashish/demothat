@@ -38,6 +38,7 @@ export const Preview = memo(
       cutRegions,
       speedRegions,
       webcamVideoUrl,
+      webcamClips,
       duration,
       currentTime,
       togglePlay,
@@ -65,6 +66,7 @@ export const Preview = memo(
         cutRegions: state.cutRegions,
         speedRegions: state.speedRegions,
         webcamVideoUrl: state.webcamVideoUrl,
+        webcamClips: state.webcamClips,
         duration: state.duration,
         currentTime: state.currentTime,
         togglePlay: state.togglePlay,
@@ -118,6 +120,7 @@ export const Preview = memo(
       }
     }, [])
     const webcamVideoRef = useRef<HTMLVideoElement>(null)
+    const webcamClipRefs = useRef<Map<string, HTMLVideoElement>>(new Map())
     const clipVideoRefs = useRef<Map<string, HTMLVideoElement>>(new Map())
     const animationFrameId = useRef<number>()
     const studioTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -618,6 +621,37 @@ export const Preview = memo(
       [videoClips],
     )
 
+    const syncWebcamVideos = useCallback(
+      (playing: boolean, time: number) => {
+        const offsetSec = (avSyncOffsetMs ?? syncOffset ?? 0) / 1000
+        const clips = webcamClips || []
+        for (const clip of clips) {
+          const element = webcamClipRefs.current.get(clip.id)
+          if (!element) continue
+          const active = time >= clip.startTime && time < clip.startTime + clip.duration
+          if (!active) {
+            if (!element.paused) element.pause()
+            continue
+          }
+          const maxDuration =
+            clip.sourceDuration ||
+            (Number.isFinite(element.duration) && element.duration > 0 ? element.duration : Infinity)
+          const sourceTime = Math.max(0, Math.min(maxDuration, time - clip.startTime + clip.sourceStart - offsetSec))
+          if (videoRef.current) {
+            element.playbackRate = videoRef.current.playbackRate
+          }
+          if (playing) {
+            if (Math.abs(element.currentTime - sourceTime) > 0.3) element.currentTime = sourceTime
+            if (element.paused) void element.play().catch(() => undefined)
+          } else {
+            if (!element.paused) element.pause()
+            if (Math.abs(element.currentTime - sourceTime) > 0.02) element.currentTime = sourceTime
+          }
+        }
+      },
+      [webcamClips, avSyncOffsetMs, syncOffset, videoRef],
+    )
+
     const cancelScheduledRender = useCallback(() => {
       if (rvfcHandleRef.current !== null && videoRef.current && 'cancelVideoFrameCallback' in videoRef.current) {
         try {
@@ -725,22 +759,35 @@ export const Preview = memo(
         const state = useEditorStore.getState()
         const canvas = canvasRef.current
         const video = videoRef.current
-        const webcamVideo = webcamVideoRef.current
         const ctx = canvas?.getContext('2d')
         if (!canvas || !video || !ctx || !state.videoDimensions.width) {
           return
         }
         syncClipVideos(state.isPlaying, video.currentTime)
+        syncWebcamVideos(state.isPlaying, video.currentTime)
         const clipLayers: VideoClipLayer[] = []
         for (const clip of state.videoClips) {
           const element = clipVideoRefs.current.get(clip.id)
           if (element && element.readyState >= 2) clipLayers.push({ clip, element })
         }
+        let activeWebcamVideo: HTMLVideoElement | null = null
+        const currentWebcamClips = state.webcamClips || []
+        if (currentWebcamClips.length > 0) {
+          const activeClip = currentWebcamClips.find(
+            (c) => video.currentTime >= c.startTime && video.currentTime < c.startTime + c.duration,
+          )
+          if (activeClip) {
+            const el = webcamClipRefs.current.get(activeClip.id)
+            if (el && el.readyState >= 2) activeWebcamVideo = el
+          }
+        } else if (webcamVideoRef.current && webcamVideoRef.current.readyState >= 2) {
+          activeWebcamVideo = webcamVideoRef.current
+        }
         await drawScene(
           ctx,
           state,
           video,
-          webcamVideo,
+          activeWebcamVideo,
           video.currentTime,
           canvas.width,
           canvas.height,
@@ -760,7 +807,7 @@ export const Preview = memo(
       if (isVirtualStudioActive && canvasRef.current) {
         virtualStudioStreamer.pushRenderedCanvas(canvasRef.current, videoRef.current?.currentTime)
       }
-    }, [videoRef, bgImage, syncClipVideos, isVirtualStudioActive, scheduleNextRender])
+    }, [videoRef, bgImage, syncClipVideos, syncWebcamVideos, isVirtualStudioActive, scheduleNextRender])
 
     renderCanvasRef.current = renderCanvas
 
@@ -830,6 +877,7 @@ export const Preview = memo(
     // Dedicated effect for instant still-frame rendering when scrubbing/seeking while paused
     useEffect(() => {
       if (!isPlaying) {
+        syncWebcamVideos(false, videoRef.current ? videoRef.current.currentTime : currentTime)
         if (webcamVideoRef.current && videoRef.current) {
           const offsetSec = (avSyncOffsetMs ?? syncOffset ?? 0) / 1000
           const targetWebcamTime = Math.max(0, videoRef.current.currentTime - offsetSec)
@@ -839,7 +887,7 @@ export const Preview = memo(
         }
         void renderCanvasRef.current?.()
       }
-    }, [isPlaying, currentTime, avSyncOffsetMs, syncOffset, videoRef])
+    }, [isPlaying, currentTime, avSyncOffsetMs, syncOffset, videoRef, syncWebcamVideos])
 
     useEffect(() => {
       const video = videoRef.current
@@ -851,6 +899,10 @@ export const Preview = memo(
       } else {
         video.pause()
         webcamVideo?.pause()
+        for (const el of webcamClipRefs.current.values()) {
+          el.pause()
+          el.playbackRate = 1
+        }
         // When pausing, reset playbackRate to 1 so scrubbing is at normal speed
         video.playbackRate = 1
         if (webcamVideo) webcamVideo.playbackRate = 1
@@ -902,6 +954,7 @@ export const Preview = memo(
         video.currentTime = endTrimRegion.startTime
         video.pause()
       }
+      syncWebcamVideos(true, newTime)
       if (webcamVideoRef.current) {
         const offsetSec = (avSyncOffsetMs ?? syncOffset ?? 0) / 1000
         const targetWebcamTime = Math.max(0, newTime - offsetSec)
@@ -948,6 +1001,7 @@ export const Preview = memo(
         video.addEventListener('seeked', onSeekComplete)
         // Restore the video's time from the store to prevent rewinding
         video.currentTime = timeFromStore
+        syncWebcamVideos(isPlaying, timeFromStore)
       }
     }
 
@@ -970,6 +1024,7 @@ export const Preview = memo(
         videoRef.current.currentTime = value
         setCurrentTime(value)
       }
+      syncWebcamVideos(false, value)
       if (webcamVideoRef.current) {
         const offsetSec = (avSyncOffsetMs ?? syncOffset ?? 0) / 1000
         webcamVideoRef.current.currentTime = Math.max(0, value - offsetSec)
@@ -983,6 +1038,7 @@ export const Preview = memo(
       if (videoRef.current) {
         videoRef.current.currentTime = rewindTime
       }
+      syncWebcamVideos(false, rewindTime)
       if (webcamVideoRef.current) {
         const offsetSec = (avSyncOffsetMs ?? syncOffset ?? 0) / 1000
         webcamVideoRef.current.currentTime = Math.max(0, rewindTime - offsetSec)
@@ -992,14 +1048,16 @@ export const Preview = memo(
     // Immediately re-sync webcam video when lip sync offset is adjusted while paused or playing
     useEffect(() => {
       const mainVideo = videoRef.current
+      if (!mainVideo) return
+      syncWebcamVideos(isPlaying, mainVideo.currentTime)
       const webcamVideo = webcamVideoRef.current
-      if (webcamVideo && mainVideo) {
+      if (webcamVideo) {
         const offsetSec = (avSyncOffsetMs ?? syncOffset ?? 0) / 1000
         const targetTime = Math.max(0, mainVideo.currentTime - offsetSec)
         webcamVideo.currentTime = targetTime
-        void renderCanvas()
       }
-    }, [videoRef, avSyncOffsetMs, syncOffset, renderCanvas])
+      void renderCanvas()
+    }, [videoRef, avSyncOffsetMs, syncOffset, renderCanvas, syncWebcamVideos, isPlaying])
 
     // The caption under the playhead. The cues are in export time — they are what the
     // sidecar file will carry — and the preview plays the recording, so the playhead
@@ -1179,7 +1237,49 @@ export const Preview = memo(
             zIndex: -1,
           }}
         />
-        {webcamVideoUrl && (
+        {/* Hidden decoders for webcam clips */}
+        {webcamClips?.map((clip) => (
+          <video
+            key={clip.id}
+            ref={(element) => {
+              if (element) webcamClipRefs.current.set(clip.id, element)
+              else webcamClipRefs.current.delete(clip.id)
+            }}
+            src={mediaUrl(clip.filePath)}
+            muted
+            playsInline
+            preload="auto"
+            onLoadedMetadata={() => {
+              const mainVideo = videoRef.current
+              const time = mainVideo ? mainVideo.currentTime : useEditorStore.getState().currentTime
+              syncWebcamVideos(isPlaying, time)
+              if (!isPlaying) {
+                void renderCanvasRef.current?.()
+              }
+            }}
+            onLoadedData={() => {
+              if (!isPlaying) {
+                void renderCanvasRef.current?.()
+              }
+            }}
+            onSeeked={() => {
+              if (!isPlaying) {
+                void renderCanvasRef.current?.()
+              }
+            }}
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '1px',
+              height: '1px',
+              opacity: 0.001,
+              pointerEvents: 'none',
+              zIndex: -1,
+            }}
+          />
+        ))}
+        {(!webcamClips || webcamClips.length === 0) && webcamVideoUrl && (
           <video
             ref={webcamVideoRef}
             src={webcamVideoUrl}

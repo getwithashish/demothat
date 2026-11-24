@@ -84,6 +84,26 @@ describe('deleteSelected', () => {
     expect(useEditorStore.getState().selectedRegionId).toBeNull()
   })
 
+  it('deletes a webcam clip', () => {
+    useEditorStore.setState({
+      webcamClips: [
+        {
+          id: 'clip-w',
+          name: 'Webcam Clip',
+          filePath: '/x.mp4',
+          startTime: 0,
+          duration: 5,
+          sourceStart: 0,
+          sourceDuration: 10,
+        },
+      ],
+    } as unknown as State)
+    useEditorStore.getState().setSelectedRegionId('clip-w')
+    useEditorStore.getState().deleteSelected()
+    expect(useEditorStore.getState().webcamClips.some((c) => c.id === 'clip-w')).toBe(false)
+    expect(useEditorStore.getState().selectedRegionId).toBeNull()
+  })
+
   it('only affects the selected item type', () => {
     useEditorStore.setState({
       zoomRegions: { 'zoom-1': { id: 'zoom-1', type: 'zoom', startTime: 1, duration: 2 } },

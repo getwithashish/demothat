@@ -11,6 +11,7 @@ import type {
   CompositionLayoutRange,
   AudioClip,
   VideoClip,
+  WebcamClip,
 } from '../../types'
 import type { SubtitleCue } from '../../../shared/subtitles'
 
@@ -331,6 +332,27 @@ describe('rippleInsertRecording', () => {
       },
     ]
 
+    const webcamClips: WebcamClip[] = [
+      {
+        id: 'webcam-before',
+        name: 'Webcam 1',
+        filePath: '/tmp/cam1.mp4',
+        startTime: 1.5,
+        duration: 1.0,
+        sourceStart: 0,
+        sourceDuration: 1.0,
+      },
+      {
+        id: 'webcam-after',
+        name: 'Webcam 2',
+        filePath: '/tmp/cam2.mp4',
+        startTime: 8.5,
+        duration: 1.0,
+        sourceStart: 0,
+        sourceDuration: 1.0,
+      },
+    ]
+
     useEditorStore.setState((state) => {
       state.duration = 10.0
       state.zoomRegions = {
@@ -353,6 +375,7 @@ describe('rippleInsertRecording', () => {
       state.subtitleCues = subtitleCues
       state.audioClips = audioClips
       state.videoClips = videoClips
+      state.webcamClips = webcamClips
     })
 
     // Splicing 4.0s of footage at insertTime = 5.0
@@ -455,6 +478,13 @@ describe('rippleInsertRecording', () => {
 
     const vcAfter = state.videoClips.find((vc) => vc.id === 'clip-after')!
     expect(vcAfter.startTime).toBe(12.5) // 8.5 + 4.0
+
+    // 10. Webcam clips
+    const wcBefore = state.webcamClips.find((wc) => wc.id === 'webcam-before')!
+    expect(wcBefore.startTime).toBe(1.5)
+
+    const wcAfter = state.webcamClips.find((wc) => wc.id === 'webcam-after')!
+    expect(wcAfter.startTime).toBe(12.5) // 8.5 + 4.0
   })
 
   it('handles ripple insert at timeline start (insertTime = 0)', async () => {

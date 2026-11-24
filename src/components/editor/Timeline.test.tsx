@@ -79,16 +79,16 @@ describe('Timeline default height & geometry', () => {
   })
 
   it('calculates fitted height without empty space below the bottom masking track', () => {
-    // 8 default tracks: Screen, Recorded audio, Music, Clicks, Camera, Zoom, Layout, Masking = 8 * 34 = 272px
-    const trackHeight = 8 * ROW_HEIGHT
+    // 9 default tracks: Screen, Webcam, Recorded audio, Music, Clicks, Camera, Zoom, Layout, Masking = 9 * 34 = 306px
+    const trackHeight = 9 * ROW_HEIGHT
     expect(ROW_HEIGHT).toBe(34)
     expect(RULER_HEIGHT).toBe(22)
     expect(RESIZE_HANDLE_HEIGHT).toBe(16)
     expect(TIMELINE_SCROLLBAR_GUTTER).toBe(8)
 
     const expectedHeight = RESIZE_HANDLE_HEIGHT + RULER_HEIGHT + trackHeight + TIMELINE_SCROLLBAR_GUTTER
-    expect(expectedHeight).toBe(318)
-    expect(calculateFittedTimelineHeight(trackHeight)).toBe(318)
+    expect(expectedHeight).toBe(352)
+    expect(calculateFittedTimelineHeight(trackHeight)).toBe(352)
   })
 
   it('renders Timeline with default fitted height matching track rows', async () => {
@@ -98,8 +98,8 @@ describe('Timeline default height & geometry', () => {
     const timelineContainer = dom.querySelector('[role="separator"]')?.parentElement as HTMLElement
     expect(timelineContainer).not.toBeNull()
 
-    // 8 default tracks = 272px -> fitted height = 318px (not the old 464px)
-    expect(timelineContainer.style.height).toBe('318px')
+    // 9 default tracks = 306px -> fitted height = 352px
+    expect(timelineContainer.style.height).toBe('352px')
   })
 
   it('resizes when dragging the separator handle and resets on double-click', async () => {
@@ -108,7 +108,7 @@ describe('Timeline default height & geometry', () => {
 
     const separator = dom.querySelector('[role="separator"]') as HTMLElement
     const timelineContainer = separator.parentElement as HTMLElement
-    expect(timelineContainer.style.height).toBe('318px')
+    expect(timelineContainer.style.height).toBe('352px')
 
     // Drag upwards by 50px
     act(() => {
@@ -117,15 +117,15 @@ describe('Timeline default height & geometry', () => {
       window.dispatchEvent(new MouseEvent('mouseup', { clientY: 450, bubbles: true }))
     })
 
-    // Height should have increased by 50px (318 + 50 = 368px)
-    expect(timelineContainer.style.height).toBe('368px')
+    // Height should have increased by 50px (352 + 50 = 402px)
+    expect(timelineContainer.style.height).toBe('402px')
 
     // Double clicking separator snaps back to fitted default height
     act(() => {
       separator.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
     })
 
-    expect(timelineContainer.style.height).toBe('318px')
+    expect(timelineContainer.style.height).toBe('352px')
   })
 
   it('resets custom height back to default fit when loading a different video', async () => {
@@ -134,7 +134,7 @@ describe('Timeline default height & geometry', () => {
 
     const separator = dom.querySelector('[role="separator"]') as HTMLElement
     const timelineContainer = separator.parentElement as HTMLElement
-    expect(timelineContainer.style.height).toBe('318px')
+    expect(timelineContainer.style.height).toBe('352px')
 
     // Drag resize
     act(() => {
@@ -142,7 +142,7 @@ describe('Timeline default height & geometry', () => {
       window.dispatchEvent(new MouseEvent('mousemove', { clientY: 400, bubbles: true }))
       window.dispatchEvent(new MouseEvent('mouseup', { clientY: 400, bubbles: true }))
     })
-    expect(timelineContainer.style.height).toBe('418px')
+    expect(timelineContainer.style.height).toBe('452px')
 
     // Load new video path
     await act(async () => {
@@ -150,6 +150,6 @@ describe('Timeline default height & geometry', () => {
     })
 
     // Should reset to fitted default height
-    expect(timelineContainer.style.height).toBe('318px')
+    expect(timelineContainer.style.height).toBe('352px')
   })
 })

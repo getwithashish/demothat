@@ -117,6 +117,18 @@ export interface VideoClip {
   hasAudio?: boolean
 }
 
+export interface WebcamClip {
+  id: string
+  name: string
+  filePath: string
+  startTime: number
+  duration: number
+  sourceStart: number
+  sourceDuration: number
+  audioClipId?: string | null
+  hasAudio?: boolean
+}
+
 export interface SpeedRegion {
   id: string
   type: 'speed'
@@ -531,11 +543,17 @@ export interface WebcamState {
   isWebcamVisible: boolean
   webcamPosition: WebcamPosition
   webcamStyles: WebcamStyles
+  webcamClips: WebcamClip[]
 }
 export interface WebcamActions {
   setWebcamPosition: (position: WebcamPosition) => void
   setWebcamVisibility: (isVisible: boolean) => void
   updateWebcamStyle: (style: Partial<WebcamStyles>) => void
+  addWebcamClip: (clip: Omit<WebcamClip, 'id'>) => string
+  updateWebcamClip: (id: string, updates: Partial<WebcamClip>) => void
+  deleteWebcamClip: (id: string) => void
+  splitWebcamClip: (id: string, splitTime: number) => void
+  replaceWebcamClipSource: (id: string, filePath: string, sourceDuration: number) => void
 }
 
 /** A short, dismissible message in the corner of the editor. */
@@ -756,7 +774,9 @@ export type RenderableState = Pick<
   | 'syncOffset'
   | 'cursorTheme'
   | 'cursorStyles'
->
+> & {
+  webcamClips?: WebcamClip[]
+}
 
 // Combined state type for the editor store
 export type EditorState = ProjectState &

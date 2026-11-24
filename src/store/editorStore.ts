@@ -90,6 +90,7 @@ export const useEditorStore = create(
           webcamPosition,
           webcamStyles,
           isWebcamVisible,
+          webcamClips,
         } = state
 
         return {
@@ -113,6 +114,7 @@ export const useEditorStore = create(
           webcamPosition,
           webcamStyles,
           isWebcamVisible,
+          webcamClips,
         }
       },
       equality: shallow,

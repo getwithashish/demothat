@@ -1,3 +1,9 @@
+## [1.21.0-beta.34](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.33...v1.21.0-beta.34) (2026-11-24)
+
+### Features
+
+* **timeline:** implement dedicated webcam track with multi-feed editing and audio linking ([27a98ef](https://github.com/getwithashish/DemoThat/commit/27a98ef449ca0caa579b6a1ad55165c3fd6627b5))
+
 ## [1.21.0-beta.33](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.32...v1.21.0-beta.33) (2026-11-24)
 
 ### Features

@@ -1,3 +1,9 @@
+## [1.21.0-beta.33](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.32...v1.21.0-beta.33) (2026-11-24)
+
+### Features
+
+* **timeline:** support multiple recordings and clip insertion ([#89](https://github.com/getwithashish/DemoThat/issues/89)) ([7588f2c](https://github.com/getwithashish/DemoThat/commit/7588f2c47d7b94acbfad2579d1413a33a99d599b))
+
 ## [1.21.0-beta.32](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.31...v1.21.0-beta.32) (2026-11-23)
 
 ### Features

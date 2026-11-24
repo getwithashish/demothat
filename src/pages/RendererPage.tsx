@@ -12,7 +12,7 @@ import { drawScene, getClipSourceTime, type VideoClipLayer } from '../lib/render
 import { prepareCursorBitmaps, mapExportTimeToSourceTime } from '../lib/utils'
 import { prepareCursorIcons } from '../lib/cursor-icons'
 import { loadVideo, seekVideo } from '../lib/video-seek'
-import type { VideoClip } from '../types'
+import type { VideoClip, WebcamClip } from '../types'
 
 type RenderStartPayload = {
   projectState: Omit<EditorState, keyof EditorActions>
@@ -213,14 +213,27 @@ export function RendererPage() {
           projectStateWithCursorBitmaps.webcamVideoPath &&
           typeof projectStateWithCursorBitmaps.webcamVideoPath === 'string',
         )
-        if (hasWebcam && webcamVideo) {
+        const webcamVideos: { clip: WebcamClip; element: HTMLVideoElement }[] = []
+        const webcamClips = projectStateWithCursorBitmaps.webcamClips
+        const clipContainer = clipContainerRef.current
+        if (clipContainer) clipContainer.innerHTML = ''
+
+        if (Array.isArray(webcamClips) && webcamClips.length > 0) {
+          for (const clip of webcamClips) {
+            const el = document.createElement('video')
+            el.preload = 'auto'
+            el.muted = true
+            el.playsInline = true
+            clipContainer?.appendChild(el)
+            loadPromises.push(loadVideo(el, `Webcam clip ${clip.name}`, clip.filePath))
+            webcamVideos.push({ clip, element: el })
+          }
+        } else if (hasWebcam && webcamVideo) {
           loadPromises.push(loadVideo(webcamVideo, 'Webcam video', projectStateWithCursorBitmaps.webcamVideoPath!))
         }
         await Promise.all(loadPromises)
 
         // --- 3b. LOAD IMPORTED VIDEO CLIPS ---
-        const clipContainer = clipContainerRef.current
-        if (clipContainer) clipContainer.innerHTML = ''
         const clipVideos: { clip: VideoClip; element: HTMLVideoElement }[] = []
         const waitForMetadata = (element: HTMLVideoElement, label: string): Promise<void> =>
           new Promise((resolve) => {
@@ -331,9 +344,22 @@ export function RendererPage() {
           )
 
           const preSeekPromises: Promise<void>[] = [seekVideo(video, initialSourceTimestamp, 5000)]
-          if (hasWebcam && webcamVideo) {
-            const rawOffset = projectState.avSyncOffsetMs ?? projectState.syncOffset ?? 0
-            const offsetSec = (Number.isFinite(rawOffset) ? Number(rawOffset) : 0) / 1000
+          const rawOffset = projectState.avSyncOffsetMs ?? projectState.syncOffset ?? 0
+          const offsetSec = (Number.isFinite(rawOffset) ? Number(rawOffset) : 0) / 1000
+
+          if (webcamVideos.length > 0) {
+            const initialActive = webcamVideos.find(
+              ({ clip }) =>
+                initialSourceTimestamp >= clip.startTime && initialSourceTimestamp < clip.startTime + clip.duration,
+            )
+            if (initialActive) {
+              const initialTarget = Math.max(
+                0,
+                initialSourceTimestamp - initialActive.clip.startTime + initialActive.clip.sourceStart - offsetSec,
+              )
+              preSeekPromises.push(seekVideo(initialActive.element, initialTarget, 5000))
+            }
+          } else if (hasWebcam && webcamVideo) {
             const webcamInitialTimestamp = Math.max(0, initialSourceTimestamp - offsetSec)
             preSeekPromises.push(seekVideo(webcamVideo, webcamInitialTimestamp, 5000))
           }
@@ -401,8 +427,27 @@ export function RendererPage() {
           const mainSeek = seekVideo(video, seekSourceTimestamp)
           const rawOffset = projectState.avSyncOffsetMs ?? projectState.syncOffset ?? 0
           const offsetSec = (Number.isFinite(rawOffset) ? Number(rawOffset) : 0) / 1000
-          const webcamSeekTime = Math.max(0, seekSourceTimestamp - offsetSec)
-          const webcamSeek = hasWebcam && webcamVideo ? seekVideo(webcamVideo, webcamSeekTime) : Promise.resolve()
+
+          let activeWebcamVideo: HTMLVideoElement | null = null
+          const webcamSeeks: Promise<void>[] = []
+          if (webcamVideos.length > 0) {
+            const activeItem = webcamVideos.find(
+              ({ clip }) =>
+                nominalSourceTimestamp >= clip.startTime && nominalSourceTimestamp < clip.startTime + clip.duration,
+            )
+            if (activeItem) {
+              activeWebcamVideo = activeItem.element
+              const targetTime = Math.max(
+                0,
+                seekSourceTimestamp - activeItem.clip.startTime + activeItem.clip.sourceStart - offsetSec,
+              )
+              webcamSeeks.push(seekVideo(activeItem.element, targetTime))
+            }
+          } else if (hasWebcam && webcamVideo) {
+            activeWebcamVideo = webcamVideo
+            const webcamSeekTime = Math.max(0, seekSourceTimestamp - offsetSec)
+            webcamSeeks.push(seekVideo(webcamVideo, webcamSeekTime))
+          }
 
           // Imported clips only contribute frames while the playhead is inside
           // their range; each one is seeked to its own source time.
@@ -417,7 +462,7 @@ export function RendererPage() {
           }
 
           // Wait for all seeks to complete
-          await Promise.all([mainSeek, webcamSeek, ...clipSeeks])
+          await Promise.all([mainSeek, ...webcamSeeks, ...clipSeeks])
 
           // Draw the scene using the precise nominalSourceTimestamp for exact frame-accurate
           // sync with cursor positions, ripple animations, camera motion, and audio track.
@@ -425,7 +470,7 @@ export function RendererPage() {
             ctx,
             projectStateWithCursorBitmaps,
             video,
-            webcamVideo,
+            activeWebcamVideo,
             nominalSourceTimestamp,
             outputWidth,
             outputHeight,

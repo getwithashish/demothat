@@ -8,13 +8,14 @@ import { Playhead } from './timeline/Playhead'
 import { cn } from '../../lib/utils'
 import { Scissors } from 'tabler-icons-react'
 import { formatTime, calculateRulerInterval } from '../../lib/utils'
+import { mediaUrl } from '../../../shared/media-url'
 import { useTimelineInteraction } from '../../hooks/useTimelineInteraction'
 import { FlipScissorsIcon } from '../ui/icons'
-import { Camera, Music, GripVertical, Search, Volume, VolumeOff } from 'tabler-icons-react'
+import { Camera, Music, GripVertical, Search, Volume, VolumeOff, Plus } from 'tabler-icons-react'
 import { AudioTimelinePreview } from './timeline/AudioTimelinePreview'
 import { ICON_SIZE, ICON_STROKE } from '../ui/icons'
 import { Slider } from '../ui/slider'
-import { buildTrackRows, SUBTITLE_ROW_KEY } from './timeline/track-rows'
+import { buildTrackRows, SUBTITLE_ROW_KEY, WEBCAM_ROW_KEY } from './timeline/track-rows'
 import { COMPOSITION_LAYOUTS } from '../../lib/constants'
 import { ContextMenu, ContextMenuItem, ContextMenuDivider, ContextMenuLabel } from '../ui/context-menu'
 import { Wand, Bolt, ZoomIn } from 'tabler-icons-react'
@@ -34,6 +35,7 @@ import {
 // the SCREEN lane, which stays the bottom-most video layer.
 const FIXED_ROWS: { key: string; label: string; height: number }[] = [
   { key: 'screen', label: 'Screen', height: ROW_HEIGHT },
+  { key: WEBCAM_ROW_KEY, label: 'Webcam', height: ROW_HEIGHT },
   { key: 'recorded-audio', label: 'Recorded audio', height: ROW_HEIGHT },
   { key: SUBTITLE_ROW_KEY, label: 'Subtitles', height: ROW_HEIGHT },
   { key: 'music', label: 'Music', height: ROW_HEIGHT },
@@ -209,6 +211,17 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
   const audioClips = useEditorStore((state) => state.audioClips)
   const videoClips = useEditorStore((state) => state.videoClips)
   const updateVideoClip = useEditorStore((state) => state.updateVideoClip)
+  const webcamClips = useEditorStore((state) => state.webcamClips || [])
+  const addWebcamClip = useEditorStore((state) => state.addWebcamClip)
+  const updateWebcamClip = useEditorStore((state) => state.updateWebcamClip)
+  const deleteWebcamClip = useEditorStore((state) => state.deleteWebcamClip)
+  const splitWebcamClip = useEditorStore((state) => state.splitWebcamClip)
+  const replaceWebcamClipSource = useEditorStore((state) => state.replaceWebcamClipSource)
+  const [clipContextMenu, setClipContextMenu] = useState<{
+    x: number
+    y: number
+    clipId: string
+  } | null>(null)
   const mouseClickSoundsEnabled = useEditorStore((state) => state.mouseClickSoundsEnabled)
   const videoPath = useEditorStore((state) => state.videoPath)
   const audioTracks = useEditorStore((state) => state.audioTracks)
@@ -488,6 +501,176 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
     [pxToTime, setSelectedRegionId, updateVideoClip],
   )
 
+  const beginWebcamTrim = useCallback(
+    (event: React.MouseEvent, clipId: string, edge: 'left' | 'right') => {
+      event.stopPropagation()
+      event.preventDefault()
+      setSelectedRegionId(clipId)
+      const clip = useEditorStore.getState().webcamClips?.find((item) => item.id === clipId)
+      if (!clip) return
+      const startX = event.clientX
+      const initial = {
+        startTime: clip.startTime,
+        duration: clip.duration,
+        sourceStart: clip.sourceStart,
+      }
+      const move = (moveEvent: MouseEvent) => {
+        const delta = pxToTime(moveEvent.clientX - startX)
+        if (edge === 'left') {
+          const minDelta = Math.max(-initial.startTime, -initial.sourceStart)
+          const maxDelta = initial.duration - 0.1
+          const applied = Math.max(minDelta, Math.min(maxDelta, delta))
+          updateWebcamClip(clipId, {
+            startTime: initial.startTime + applied,
+            sourceStart: initial.sourceStart + applied,
+            duration: initial.duration - applied,
+          })
+          return
+        }
+        updateWebcamClip(clipId, { duration: Math.max(0.1, initial.duration + delta) })
+      }
+      const up = () => {
+        window.removeEventListener('mousemove', move)
+        window.removeEventListener('mouseup', up)
+      }
+      window.addEventListener('mousemove', move)
+      window.addEventListener('mouseup', up)
+    },
+    [pxToTime, setSelectedRegionId, updateWebcamClip],
+  )
+
+  const beginWebcamDrag = useCallback(
+    (event: React.MouseEvent, clipId: string) => {
+      event.stopPropagation()
+      event.preventDefault()
+      setSelectedRegionId(clipId)
+      const currentClips = useEditorStore.getState().webcamClips || []
+      const clip = currentClips.find((item) => item.id === clipId)
+      if (!clip) return
+
+      const startX = event.clientX
+      const initialStart = clip.startTime
+      const clipDuration = clip.duration
+
+      // Build snap targets: 0, playhead (currentTime), ends of screen segments, starts/ends of other webcam clips
+      const snapCandidates = [0, currentTime]
+      for (const seg of displayRecordingSegments) {
+        snapCandidates.push(seg.startTime, seg.startTime + seg.duration)
+      }
+      for (const other of currentClips) {
+        if (other.id !== clipId) {
+          snapCandidates.push(other.startTime, other.startTime + other.duration)
+        }
+      }
+
+      const snapThresholdTime = pxToTime(8) // 8 pixels magnetic snap threshold
+
+      const move = (moveEvent: MouseEvent) => {
+        const rawNewStart = Math.max(0, initialStart + pxToTime(moveEvent.clientX - startX))
+        let targetStart = rawNewStart
+        let minDiff = snapThresholdTime
+
+        // Test snapping clip start to candidates
+        for (const cand of snapCandidates) {
+          const diff = Math.abs(cand - rawNewStart)
+          if (diff < minDiff) {
+            minDiff = diff
+            targetStart = cand
+          }
+        }
+        // Test snapping clip end (rawNewStart + clipDuration) to candidates
+        for (const cand of snapCandidates) {
+          const diff = Math.abs(cand - (rawNewStart + clipDuration))
+          if (diff < minDiff) {
+            minDiff = diff
+            targetStart = Math.max(0, cand - clipDuration)
+          }
+        }
+
+        updateWebcamClip(clipId, { startTime: targetStart })
+      }
+
+      const up = () => {
+        window.removeEventListener('mousemove', move)
+        window.removeEventListener('mouseup', up)
+      }
+      window.addEventListener('mousemove', move)
+      window.addEventListener('mouseup', up)
+    },
+    [currentTime, displayRecordingSegments, pxToTime, setSelectedRegionId, updateWebcamClip],
+  )
+
+  const importWebcamFile = useCallback(
+    async (filePath: string, fileName: string, startTime: number) => {
+      try {
+        const video = document.createElement('video')
+        video.preload = 'metadata'
+        video.src = mediaUrl(filePath)
+        await new Promise<void>((resolve, reject) => {
+          video.onloadedmetadata = () => resolve()
+          video.onerror = () => reject(new Error(`Could not read video metadata for ${fileName}`))
+          video.load()
+        })
+        const sourceDuration = Number.isFinite(video.duration) ? video.duration : 0
+        if (sourceDuration <= 0) return
+        let hasAudio = false
+        try {
+          hasAudio = (await window.electronAPI.videoHasAudio?.(filePath)) ?? false
+        } catch {
+          // Probe failure is non-fatal
+        }
+        addWebcamClip({
+          name: fileName,
+          filePath,
+          startTime,
+          duration: sourceDuration,
+          sourceStart: 0,
+          sourceDuration,
+          audioClipId: null,
+          hasAudio,
+        })
+      } catch (err) {
+        console.error('Failed to import webcam file:', err)
+      }
+    },
+    [addWebcamClip],
+  )
+
+  const handleAddWebcamFeed = useCallback(async () => {
+    try {
+      const result = await window.electronAPI.openVideoFiles()
+      if (result.canceled || !result.files?.length) return
+      for (const file of result.files) {
+        await importWebcamFile(file.filePath, file.fileName, currentTime)
+      }
+    } catch (err) {
+      console.error('Failed to add webcam feed:', err)
+    }
+  }, [currentTime, importWebcamFile])
+
+  const handleReplaceWebcamSource = useCallback(
+    async (clipId: string) => {
+      try {
+        const result = await window.electronAPI.openVideoFiles()
+        if (result.canceled || !result.files?.length) return
+        const file = result.files[0]
+        const video = document.createElement('video')
+        video.preload = 'metadata'
+        video.src = mediaUrl(file.filePath)
+        await new Promise<void>((resolve, reject) => {
+          video.onloadedmetadata = () => resolve()
+          video.onerror = () => reject(new Error(`Could not read metadata for ${file.fileName}`))
+          video.load()
+        })
+        const sourceDuration = Number.isFinite(video.duration) ? video.duration : 0
+        replaceWebcamClipSource(clipId, file.filePath, sourceDuration)
+      } catch (err) {
+        console.error('Failed to replace webcam video source:', err)
+      }
+    },
+    [replaceWebcamClipSource],
+  )
+
   const beginHeightResize = useCallback(
     (event: React.MouseEvent) => {
       event.preventDefault()
@@ -557,10 +740,27 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
             {trackLayout.rows.map((row) => (
               <div
                 key={row.key}
-                className="flex items-center pl-4 text-sm font-medium text-muted"
+                className="flex items-center justify-between px-3 text-sm font-medium text-muted"
                 style={{ height: row.height }}
               >
-                <span className="truncate">{row.label}</span>
+                <div className="flex items-center gap-1.5 truncate">
+                  {row.key === 'webcam' && <Camera size={13} className="shrink-0 text-muted" />}
+                  <span className="truncate">{row.label}</span>
+                </div>
+                {row.key === 'webcam' && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      void handleAddWebcamFeed()
+                    }}
+                    title="Add webcam feed at playhead"
+                    aria-label="Add webcam feed"
+                    className="flex h-5 w-5 items-center justify-center rounded text-muted hover:bg-ctl hover:text-fg"
+                  >
+                    <Plus size={12} />
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -689,6 +889,104 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
                           <span className="ml-auto shrink-0 px-1 py-0.5 rounded text-[11px] font-mono text-muted bg-panel/75 tabular-nums">
                             {formatTime(segment.duration, true)}
                           </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {/* Interactive clips on the Webcam track */}
+                {trackLayout.topByKey[WEBCAM_ROW_KEY] !== undefined && (
+                  <div
+                    className="pointer-events-auto absolute inset-x-0"
+                    style={{
+                      top: `${trackLayout.topByKey[WEBCAM_ROW_KEY] + LANE_INSET}px`,
+                      height: CLIP_HEIGHT,
+                      zIndex: 10,
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      e.dataTransfer.dropEffect = 'copy'
+                    }}
+                    onDrop={async (e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      const files = Array.from(e.dataTransfer.files)
+                      const videoFile = files.find(
+                        (f) => f.type.startsWith('video/') || /\.(mp4|mov|webm|mkv)$/i.test(f.name),
+                      )
+                      if (!videoFile) return
+                      const filePath = (videoFile as { path?: string }).path || videoFile.name
+                      const timelineBounds = timelineRef.current?.getBoundingClientRect()
+                      const dropX = timelineBounds ? e.clientX - timelineBounds.left : 0
+                      const dropTime = Math.max(0, pxToTime(dropX))
+                      await importWebcamFile(filePath, videoFile.name, dropTime)
+                    }}
+                  >
+                    {webcamClips.map((clip) => {
+                      const left = timeToPx(clip.startTime)
+                      const width = Math.max(28, timeToPx(clip.duration))
+                      const selected = selectedRegionId === clip.id
+                      return (
+                        <div
+                          key={clip.id}
+                          data-region-id={clip.id}
+                          className="absolute"
+                          style={{
+                            left: `${left}px`,
+                            width: `${width}px`,
+                            height: CLIP_HEIGHT,
+                            zIndex: selected ? 130 : 12,
+                          }}
+                        >
+                          <div
+                            role="button"
+                            tabIndex={0}
+                            title={`${clip.name} · ${formatTime(clip.startTime)}`}
+                            aria-label={`Webcam clip ${clip.name}`}
+                            className={cn(
+                              'relative flex h-full w-full cursor-grab select-none items-center overflow-hidden rounded-clip border bg-clip-screen px-2 text-sm font-medium text-fg',
+                              selected
+                                ? 'border-transparent outline-solid outline-2 outline-accent'
+                                : 'border-line hover:border-muted',
+                            )}
+                            onContextMenu={(event) => {
+                              event.preventDefault()
+                              event.stopPropagation()
+                              setClipContextMenu({
+                                x: event.clientX,
+                                y: event.clientY,
+                                clipId: clip.id,
+                              })
+                            }}
+                            onMouseDown={(event) => beginWebcamDrag(event, clip.id)}
+                          >
+                            <span
+                              data-webcam-edge="left"
+                              role="button"
+                              tabIndex={0}
+                              aria-label={`Trim the start of ${clip.name}`}
+                              title="Drag to trim the start"
+                              onMouseDown={(event) => beginWebcamTrim(event, clip.id, 'left')}
+                              className="absolute left-0 top-0 z-10 flex h-full w-2 cursor-ew-resize items-center justify-center"
+                            >
+                              <span className="h-[calc(100%-10px)] w-[3px] rounded-[2px] bg-accent" />
+                            </span>
+                            <Camera size={ICON_SIZE} strokeWidth={ICON_STROKE} className="mr-1 shrink-0 text-muted" />
+                            <span className="truncate">{clip.name}</span>
+                            <span
+                              data-webcam-edge="right"
+                              role="button"
+                              tabIndex={0}
+                              aria-label={`Trim the end of ${clip.name}`}
+                              title="Drag to trim the end"
+                              onMouseDown={(event) => beginWebcamTrim(event, clip.id, 'right')}
+                              className="absolute right-0 top-0 z-10 flex h-full w-2 cursor-ew-resize items-center justify-center"
+                            >
+                              <span className="h-[calc(100%-10px)] w-[3px] rounded-[2px] bg-accent" />
+                            </span>
+                          </div>
                         </div>
                       )
                     })}
@@ -1409,6 +1707,55 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
           >
             <Wand size={14} className="text-accent" />
             <span>Ask Ed about this moment</span>
+          </ContextMenuItem>
+        </ContextMenu>
+      )}
+
+      {clipContextMenu && (
+        <ContextMenu
+          isOpen={true}
+          position={{ x: clipContextMenu.x, y: clipContextMenu.y }}
+          onClose={() => setClipContextMenu(null)}
+        >
+          <ContextMenuLabel>Webcam Clip</ContextMenuLabel>
+          <ContextMenuItem
+            onClick={() => {
+              const id = clipContextMenu.clipId
+              setClipContextMenu(null)
+              void handleReplaceWebcamSource(id)
+            }}
+          >
+            <Camera size={14} className="text-muted" />
+            <span>Replace Video Source...</span>
+          </ContextMenuItem>
+          {(() => {
+            const clip = webcamClips.find((c) => c.id === clipContextMenu.clipId)
+            const canSplit = !!clip && currentTime > clip.startTime && currentTime < clip.startTime + clip.duration
+            return (
+              <ContextMenuItem
+                disabled={!canSplit}
+                onClick={() => {
+                  const id = clipContextMenu.clipId
+                  setClipContextMenu(null)
+                  if (canSplit) {
+                    splitWebcamClip(id, currentTime)
+                  }
+                }}
+              >
+                <Scissors size={14} className="text-muted" />
+                <span>Split at Playhead ({formatTime(currentTime)})</span>
+              </ContextMenuItem>
+            )
+          })()}
+          <ContextMenuDivider />
+          <ContextMenuItem
+            onClick={() => {
+              const id = clipContextMenu.clipId
+              setClipContextMenu(null)
+              deleteWebcamClip(id)
+            }}
+          >
+            <span className="text-danger">Delete Clip</span>
           </ContextMenuItem>
         </ContextMenu>
       )}

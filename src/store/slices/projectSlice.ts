@@ -9,6 +9,7 @@ import type {
   SaveStatus,
   RecordingSegment,
   AudioClip,
+  WebcamClip,
 } from '../../types'
 import type { MetaDataItem, ZoomRegion, CutRegion, SpeedRegion, CursorFrame, CursorImage } from '../../types'
 import { ZOOM } from '../../lib/constants'
@@ -90,6 +91,7 @@ function projectSignature(state: EditorState): string {
     webcamPosition,
     webcamStyles,
     isWebcamVisible,
+    webcamClips,
     cursorStyles,
     recordingSegments,
     transcript,
@@ -116,6 +118,7 @@ function projectSignature(state: EditorState): string {
     webcamPosition,
     webcamStyles,
     isWebcamVisible,
+    webcamClips,
     cursorStyles,
     recordingSegments,
     transcript,
@@ -336,6 +339,20 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
       state.webcamVideoPath = webcamVideoPath || null
       state.webcamVideoUrl = webcamVideoUrl
       state.isWebcamVisible = !!webcamVideoUrl
+      state.webcamClips = webcamVideoPath
+        ? [
+            {
+              id: `webcam-clip-${Date.now()}`,
+              name: 'Webcam',
+              filePath: webcamVideoPath,
+              startTime: 0,
+              duration: state.duration || 0,
+              sourceStart: 0,
+              sourceDuration: state.duration || 0,
+              audioClipId: null,
+            },
+          ]
+        : []
     })
 
     try {
@@ -485,7 +502,12 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
     }),
   setDuration: (duration) =>
     set((state) => {
-      state.duration = duration
+      const maxClipEnd = Math.max(
+        duration,
+        ...(state.webcamClips || []).map((c) => c.startTime + c.duration),
+        ...(state.videoClips || []).map((c) => c.startTime + c.duration),
+      )
+      state.duration = maxClipEnd
       if (!state.recordingSegments || state.recordingSegments.length === 0) {
         state.recordingSegments = [
           {
@@ -513,6 +535,25 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
           region.duration = Math.max(0.1, duration - region.startTime)
         }
       })
+      if (state.webcamVideoPath && (!state.webcamClips || state.webcamClips.length === 0)) {
+        state.webcamClips = [
+          {
+            id: `webcam-clip-${Date.now()}`,
+            name: 'Webcam',
+            filePath: state.webcamVideoPath,
+            startTime: 0,
+            duration,
+            sourceStart: 0,
+            sourceDuration: duration,
+            audioClipId: null,
+          },
+        ]
+      } else if (state.webcamClips?.length === 1 && state.webcamClips[0].filePath === state.webcamVideoPath) {
+        if (state.webcamClips[0].duration <= 0 || state.webcamClips[0].sourceDuration <= 0) {
+          state.webcamClips[0].duration = duration
+          state.webcamClips[0].sourceDuration = duration
+        }
+      }
     }),
   resetProjectState: () => {
     logger.info('resetProjectState')
@@ -522,6 +563,8 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
       state.cutRegions = {}
       state.selectedRegionId = null
       state.audioClips = []
+      state.videoClips = []
+      state.webcamClips = []
       state.activeZoomRegionId = null
       state.isCurrentlyCut = false
       state.currentTime = 0
@@ -716,6 +759,9 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
       if (opened.webcamPosition) state.webcamPosition = opened.webcamPosition
       if (opened.webcamStyles) state.webcamStyles = opened.webcamStyles
       if (opened.isWebcamVisible !== undefined) state.isWebcamVisible = opened.isWebcamVisible
+      if (Array.isArray(opened.webcamClips)) {
+        state.webcamClips = opened.webcamClips
+      }
       if (opened.cursorStyles) state.cursorStyles = opened.cursorStyles
       if (opened.activePresetId !== undefined) state.activePresetId = opened.activePresetId
       if (opened.avSyncOffsetMs !== undefined) {
@@ -1316,6 +1362,61 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
         return clip
       })
 
+      // webcamClips: shift startTime (and adjust or split if spanning insertTime)
+      const nextWebcamClips: WebcamClip[] = []
+      for (const clip of state.webcamClips || []) {
+        const start = clip.startTime
+        const end = Number((clip.startTime + clip.duration).toFixed(3))
+
+        if (start >= insertTime) {
+          nextWebcamClips.push({
+            ...clip,
+            startTime: Number((start + addedDuration).toFixed(3)),
+          })
+        } else if (end <= insertTime) {
+          nextWebcamClips.push(clip)
+        } else {
+          const part1Duration = Number((insertTime - start).toFixed(3))
+          const part2Duration = Number((end - insertTime).toFixed(3))
+          const part2Start = Number((insertTime + addedDuration).toFixed(3))
+
+          if (part1Duration > 0) {
+            nextWebcamClips.push({
+              ...clip,
+              duration: part1Duration,
+            })
+          }
+          if (part2Duration > 0) {
+            const part2Id = `${clip.id}-split-${Date.now()}-${splitCounter++}`
+            nextWebcamClips.push({
+              ...clip,
+              id: part2Id,
+              name: `${clip.name} (Part 2)`,
+              startTime: part2Start,
+              duration: part2Duration,
+              sourceStart: clip.sourceStart + part1Duration,
+              audioClipId: null,
+            })
+          }
+        }
+      }
+
+      const newWebcamPath =
+        rawNewWebcamPath || (webcamVideoPath && webcamVideoPath !== prevWebcamPath ? webcamVideoPath : undefined)
+      if (newWebcamPath) {
+        nextWebcamClips.push({
+          id: `webcam-clip-${Date.now()}-${splitCounter++}`,
+          name: newSegment.name ? `${newSegment.name} (Webcam)` : 'Webcam',
+          filePath: newWebcamPath,
+          startTime: insertTime,
+          duration: addedDuration,
+          sourceStart: 0,
+          sourceDuration: addedDuration,
+          audioClipId: null,
+        })
+      }
+      state.webcamClips = nextWebcamClips.sort((a, b) => a.startTime - b.startTime)
+
       state.isDirty = true
       if (state.saveStatus === 'saved') {
         state.saveStatus = 'unsaved'
@@ -1435,6 +1536,12 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
 
       // Shift videoClips
       state.videoClips = state.videoClips.map((clip) => ({
+        ...clip,
+        startTime: mapTime(clip.startTime),
+      }))
+
+      // Shift webcamClips
+      state.webcamClips = (state.webcamClips || []).map((clip) => ({
         ...clip,
         startTime: mapTime(clip.startTime),
       }))

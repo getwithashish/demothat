@@ -17,6 +17,9 @@ export interface TimelineRow {
 /** The row that stands in for the recording's audio, replaced by the real tracks. */
 export const RECORDED_AUDIO_ROW_KEY = 'recorded-audio'
 
+/** The row dedicated to webcam feeds. */
+export const WEBCAM_ROW_KEY = 'webcam'
+
 export interface BuildTrackRowsOptions {
   /** Imported video clips, already ordered top-first. */
   videoClipIds: string[]

@@ -62,6 +62,19 @@ describe('loadProject video URLs', () => {
     const { videoUrl } = useEditorStore.getState()
     expect(videoUrl).toBe('media:///tmp/rec%231/what%3F.mp4')
   })
+
+  it('restores empty webcamClips array from saved project', async () => {
+    const project = {
+      videoPath: '/tmp/screen.mp4',
+      metadataPath: '/tmp/metadata.json',
+      webcamVideoPath: '/tmp/webcam.mp4',
+      webcamClips: [], // User explicitly deleted all webcam clips before saving
+    }
+
+    await useEditorStore.getState().applyOpenedProject(project, '/tmp/project.demothat')
+
+    expect(useEditorStore.getState().webcamClips).toEqual([])
+  })
 })
 
 describe('setHasAudioTrack audio track fallback', () => {

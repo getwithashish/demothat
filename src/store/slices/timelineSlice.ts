@@ -336,6 +336,8 @@ export const createTimelineSlice: Slice<TimelineState, TimelineActions> = (set, 
       get().deleteVideoClip(id)
     } else if (state.audioClips.some((clip) => clip.id === id)) {
       get().deleteAudioClip(id)
+    } else if (state.webcamClips?.some((clip) => clip.id === id)) {
+      get().deleteWebcamClip(id)
     } else if (state.compositionLayouts.some((layout) => layout.id === id)) {
       get().deleteCompositionLayout(id)
     } else if (state.cameraMotions.some((motion) => motion.id === id)) {

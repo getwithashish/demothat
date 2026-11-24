@@ -46,6 +46,7 @@ export function EditorPage() {
     rippleInsertRecording,
     setCurrentTime,
     addVideoClip,
+    addWebcamClip,
     initializePresets,
     initializeSettings,
     initializeRecentProjects,
@@ -429,6 +430,18 @@ export function EditorPage() {
           hasAudio: true,
         })
 
+        if (payload.webcamVideoPath) {
+          addWebcamClip({
+            name: `${clipName} (Webcam)`,
+            filePath: payload.webcamVideoPath,
+            startTime: payload.insertTime,
+            duration: sourceDuration,
+            sourceStart: 0,
+            sourceDuration,
+            audioClipId: null,
+          })
+        }
+
         pushToast({
           message: `${clipName} added to timeline at ${formatTime(payload.insertTime, true)}`,
         })
@@ -475,6 +488,7 @@ export function EditorPage() {
     initializeSettings,
     initializeRecentProjects,
     addVideoClip,
+    addWebcamClip,
     pushToast,
   ])
 

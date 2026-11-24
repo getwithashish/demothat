@@ -5,7 +5,13 @@
 // the system audio were separated must get exactly one — not two, and not none.
 
 import { describe, expect, it } from 'vitest'
-import { buildTrackRows, RECORDED_AUDIO_ROW_KEY, SUBTITLE_ROW_KEY, type TimelineRow } from './track-rows'
+import {
+  buildTrackRows,
+  RECORDED_AUDIO_ROW_KEY,
+  SUBTITLE_ROW_KEY,
+  WEBCAM_ROW_KEY,
+  type TimelineRow,
+} from './track-rows'
 
 const ROW_HEIGHT = 34
 
@@ -112,5 +118,25 @@ describe('the subtitle lane', () => {
     const rows = build([], [], ['cue-1'])
 
     expect(rows.map((row) => row.key)).toEqual(['screen', SUBTITLE_ROW_KEY, 'music', 'clicks'])
+  })
+})
+
+describe('the webcam lane', () => {
+  it('sits immediately below screen and above recorded audio', () => {
+    const fixedWithWebcam: TimelineRow[] = [
+      { key: 'screen', label: 'Screen', height: ROW_HEIGHT },
+      { key: WEBCAM_ROW_KEY, label: 'Webcam', height: ROW_HEIGHT },
+      { key: RECORDED_AUDIO_ROW_KEY, label: 'Recorded audio', height: ROW_HEIGHT },
+      { key: 'music', label: 'Music', height: ROW_HEIGHT },
+    ]
+    const rows = buildTrackRows({
+      videoClipIds: [],
+      audioTracks: [MIC],
+      subtitleCueIds: [],
+      fixedRows: fixedWithWebcam,
+      rowHeight: ROW_HEIGHT,
+    })
+    expect(rows.map((r) => r.key)).toEqual(['screen', WEBCAM_ROW_KEY, 'audio-mic-0', 'music'])
+    expect(rows.find((r) => r.key === WEBCAM_ROW_KEY)?.label).toBe('Webcam')
   })
 })

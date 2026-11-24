@@ -699,10 +699,17 @@ export async function runParallelExport(options: ParallelExportOptions) {
     const [intraMainVideoPath, intraWebcamVideoPath] = await intraProxyPromise
     if (exportAborted) return
 
+    const workerWebcamClips = projectState.webcamClips?.map((clip) =>
+      clip.filePath === projectState.webcamVideoPath && intraWebcamVideoPath
+        ? { ...clip, filePath: intraWebcamVideoPath }
+        : clip,
+    )
+
     const workerProjectState: ExportProjectState = {
       ...projectState,
       videoPath: intraMainVideoPath,
       webcamVideoPath: intraWebcamVideoPath,
+      webcamClips: workerWebcamClips,
     }
 
     const worker = workerWindows[chunkIndex]
@@ -980,10 +987,15 @@ async function runSingleExport(options: SingleExportOptions) {
         })
       : projectState.webcamVideoPath
 
+    const singleWorkerWebcamClips = projectState.webcamClips?.map((clip) =>
+      clip.filePath === projectState.webcamVideoPath && intraWebcam ? { ...clip, filePath: intraWebcam } : clip,
+    )
+
     workerProjectState = {
       ...projectState,
       videoPath: intraMain,
       webcamVideoPath: intraWebcam,
+      webcamClips: singleWorkerWebcamClips,
     }
   }
 

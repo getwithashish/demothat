@@ -63,6 +63,7 @@ export interface ProjectFileState {
   }
   audioClips?: Array<Record<string, unknown> & { filePath?: string }>
   videoClips?: Array<Record<string, unknown> & { filePath?: string }>
+  webcamClips?: Array<Record<string, unknown> & { filePath?: string }>
   [key: string]: unknown
 }
 
@@ -219,6 +220,9 @@ export function collectMediaSources(project: ProjectFileState): string[] {
     if (typeof clip.metadataPath === 'string' && clip.metadataPath) sources.push(clip.metadataPath)
     if (typeof clip.webcamVideoPath === 'string' && clip.webcamVideoPath) sources.push(clip.webcamVideoPath)
   }
+  for (const clip of project.webcamClips ?? []) {
+    if (typeof clip.filePath === 'string' && clip.filePath) sources.push(clip.filePath)
+  }
   const image = project.frameStyles?.background?.imageUrl
   if (image && !isBuiltinAsset(image) && !image.startsWith('blob:')) sources.push(image)
   return sources
@@ -255,6 +259,9 @@ function mapProjectPaths(project: ProjectFileState, map: (value: string) => stri
     if (typeof clip.metadataPath === 'string' && clip.metadataPath) clip.metadataPath = map(clip.metadataPath)
     if (typeof clip.webcamVideoPath === 'string' && clip.webcamVideoPath)
       clip.webcamVideoPath = map(clip.webcamVideoPath)
+  }
+  for (const clip of project.webcamClips ?? []) {
+    if (typeof clip.filePath === 'string' && clip.filePath) clip.filePath = map(clip.filePath)
   }
   const image = project.frameStyles?.background?.imageUrl
   if (image && !isBuiltinAsset(image) && !image.startsWith('blob:')) {

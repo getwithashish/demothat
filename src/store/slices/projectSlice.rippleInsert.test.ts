@@ -628,4 +628,62 @@ describe('rippleInsertRecording', () => {
     expect(state.zoomRegions['z-seg2'].startTime).toBe(1.0) // was 6.0 (offset 1.0) -> now 0 + 1.0 = 1.0
     expect(state.audioClips[0].startTime).toBe(1.5) // was 6.5 (offset 1.5) -> now 0 + 1.5 = 1.5
   })
+
+  it('updates recordingSegments[0].duration in setDuration and avoids tiny 0s blocks or blank timeline spaces on ripple insert', async () => {
+    // Simulate initial project load where duration is 0
+    useEditorStore.setState({
+      duration: 0,
+      recordingSegments: [
+        {
+          id: 'rec-1',
+          name: 'Recording 1',
+          startTime: 0,
+          duration: 0,
+          sourceVideoPath: '/tmp/original.mp4',
+          sourceStartTime: 0,
+        },
+      ],
+    })
+
+    // Video metadata loads in preview and calls setDuration(10.0)
+    useEditorStore.getState().setDuration(10.0)
+    expect(useEditorStore.getState().duration).toBe(10.0)
+    expect(useEditorStore.getState().recordingSegments[0].duration).toBe(10.0)
+
+    // Now insert a second recording in the middle (insertTime: 3.0, addedDuration: 4.0)
+    await useEditorStore.getState().rippleInsertRecording({
+      videoPath: '/tmp/spliced.mp4',
+      metadataPath: '/tmp/spliced.json',
+      insertTime: 3.0,
+      addedDuration: 4.0,
+      rawNewVideoPath: '/tmp/new_clip.mp4',
+      rawNewMetadataPath: '/tmp/new_clip.json',
+    })
+
+    const state = useEditorStore.getState()
+    expect(state.duration).toBe(14.0)
+    expect(state.recordingSegments.length).toBe(3)
+
+    // Verify all 3 segments are continuous with no 0s blocks or gaps:
+    // Part 1: [0 .. 3.0]
+    expect(state.recordingSegments[0].name).toContain('Part 1')
+    expect(state.recordingSegments[0].startTime).toBe(0)
+    expect(state.recordingSegments[0].duration).toBe(3.0)
+
+    // Spliced clip: [3.0 .. 7.0]
+    expect(state.recordingSegments[1].name).toBe('Recording 2')
+    expect(state.recordingSegments[1].startTime).toBe(3.0)
+    expect(state.recordingSegments[1].duration).toBe(4.0)
+    expect(state.recordingSegments[1].sourceVideoPath).toBe('/tmp/new_clip.mp4')
+
+    // Part 2: [7.0 .. 14.0]
+    expect(state.recordingSegments[2].name).toContain('Part 2')
+    expect(state.recordingSegments[2].startTime).toBe(7.0)
+    expect(state.recordingSegments[2].duration).toBe(7.0)
+    expect(state.recordingSegments[2].sourceStartTime).toBe(3.0)
+
+    // Sum of durations must equal total duration
+    const totalSegmentsDuration = state.recordingSegments.reduce((sum, s) => sum + s.duration, 0)
+    expect(totalSegmentsDuration).toBe(14.0)
+  })
 })

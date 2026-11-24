@@ -486,6 +486,28 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
   setDuration: (duration) =>
     set((state) => {
       state.duration = duration
+      if (!state.recordingSegments || state.recordingSegments.length === 0) {
+        state.recordingSegments = [
+          {
+            id: 'rec-1',
+            name: 'Recording 1',
+            startTime: 0,
+            duration,
+            sourceVideoPath: state.videoPath || '',
+            sourceMetadataPath: state.metadataPath || '',
+            sourceWebcamPath: state.webcamVideoPath || undefined,
+            sourceStartTime: 0,
+          },
+        ]
+      } else if (state.recordingSegments.length === 1) {
+        state.recordingSegments[0] = {
+          ...state.recordingSegments[0],
+          duration,
+          sourceVideoPath: state.recordingSegments[0].sourceVideoPath || state.videoPath || '',
+          sourceMetadataPath: state.recordingSegments[0].sourceMetadataPath || state.metadataPath || '',
+          sourceWebcamPath: state.recordingSegments[0].sourceWebcamPath || state.webcamVideoPath || undefined,
+        }
+      }
       Object.values({ ...state.zoomRegions, ...state.cutRegions }).forEach((region) => {
         if (region.startTime + region.duration > duration) {
           region.duration = Math.max(0.1, duration - region.startTime)
@@ -929,6 +951,10 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
 
     set((state) => {
       const prevDuration = state.duration
+      const prevVideoPath = state.videoPath
+      const prevMetadataPath = state.metadataPath
+      const prevWebcamPath = state.webcamVideoPath
+
       state.videoPath = videoPath
       state.videoUrl = videoUrl
       state.metadataPath = metadataPath
@@ -965,21 +991,34 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
       }
 
       // Update recording segments
-      const currentSegments =
-        state.recordingSegments && state.recordingSegments.length > 0
-          ? [...state.recordingSegments]
-          : [
-              {
-                id: `rec-base-${Date.now()}`,
-                name: 'Recording 1',
-                startTime: 0,
-                duration: prevDuration,
-                sourceVideoPath: state.videoPath || videoPath,
-                sourceMetadataPath: state.metadataPath || metadataPath,
-                sourceWebcamPath: state.webcamVideoPath || webcamVideoPath,
-                sourceStartTime: 0,
-              },
-            ]
+      let currentSegments: RecordingSegment[]
+      if (state.recordingSegments && state.recordingSegments.length > 0) {
+        currentSegments = [...state.recordingSegments]
+        // If there was only 1 recording segment previously, ensure its duration reflects the full previous duration
+        if (currentSegments.length === 1) {
+          currentSegments[0] = {
+            ...currentSegments[0],
+            startTime: 0,
+            duration: prevDuration > 0 ? prevDuration : currentSegments[0].duration,
+            sourceVideoPath: currentSegments[0].sourceVideoPath || prevVideoPath || videoPath,
+            sourceMetadataPath: currentSegments[0].sourceMetadataPath || prevMetadataPath || metadataPath,
+            sourceWebcamPath: currentSegments[0].sourceWebcamPath || prevWebcamPath || webcamVideoPath || undefined,
+          }
+        }
+      } else {
+        currentSegments = [
+          {
+            id: `rec-base-${Date.now()}`,
+            name: 'Recording 1',
+            startTime: 0,
+            duration: prevDuration,
+            sourceVideoPath: prevVideoPath || videoPath,
+            sourceMetadataPath: prevMetadataPath || metadataPath,
+            sourceWebcamPath: prevWebcamPath || webcamVideoPath || undefined,
+            sourceStartTime: 0,
+          },
+        ]
+      }
 
       const newSegId = `rec-${Date.now()}`
       const newSegNumber = currentSegments.length + 1
@@ -990,7 +1029,7 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
         duration: addedDuration,
         sourceVideoPath: rawNewVideoPath || videoPath,
         sourceMetadataPath: rawNewMetadataPath || metadataPath,
-        sourceWebcamPath: rawNewWebcamPath || webcamVideoPath,
+        sourceWebcamPath: rawNewWebcamPath || webcamVideoPath || undefined,
         sourceStartTime: 0,
       }
 
@@ -1019,6 +1058,7 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
             id: `${s.id}-p1`,
             name: `${s.name} (Part 1)`,
             duration: p1Dur,
+            sourceStartTime: s.sourceStartTime || 0,
           }
           const s2: RecordingSegment = {
             ...s,
@@ -1044,6 +1084,18 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
           state.recordingSegments = [...before, newSegment, ...after]
         }
       }
+
+      // Guarantee strict contiguous tiling across the timeline with no gaps or zero durations
+      let contiguousOffset = 0
+      state.recordingSegments = state.recordingSegments.map((seg) => {
+        const normalized = {
+          ...seg,
+          startTime: Number(contiguousOffset.toFixed(3)),
+          duration: Number(Math.max(0.05, seg.duration).toFixed(3)),
+        }
+        contiguousOffset = Number((contiguousOffset + normalized.duration).toFixed(3))
+        return normalized
+      })
 
       let splitCounter = 0
 
@@ -1295,10 +1347,13 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
 
     // 2. Map old time ranges to new time ranges for timeline elements
     const mapTime = (time: number): number => {
-      for (const prev of prevSegments) {
+      for (let i = 0; i < prevSegments.length; i++) {
+        const prev = prevSegments[i]
         const prevStart = prev.startTime
         const prevEnd = Number((prev.startTime + prev.duration).toFixed(3))
-        if (time >= prevStart && time <= prevEnd) {
+        const isLast = i === prevSegments.length - 1
+        const isInRange = isLast ? time >= prevStart && time <= prevEnd : time >= prevStart && time < prevEnd
+        if (isInRange) {
           const next = normalizedSegments.find((n) => n.id === prev.id)
           if (next) {
             const offset = time - prevStart
@@ -1311,6 +1366,10 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
 
     set((state) => {
       state.recordingSegments = normalizedSegments
+      const totalDur = Number(cumulative.toFixed(3))
+      if (totalDur > 0 && Math.abs(state.duration - totalDur) > 0.05) {
+        state.duration = totalDur
+      }
 
       // Shift zoomRegions
       const updatedZoom: Record<string, ZoomRegion> = {}

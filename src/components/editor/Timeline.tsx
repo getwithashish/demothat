@@ -229,7 +229,19 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
 
   const displayRecordingSegments = useMemo(() => {
     if (recordingSegments && recordingSegments.length > 0) {
-      return recordingSegments
+      if (recordingSegments.length === 1 && duration > 0) {
+        return [
+          {
+            ...recordingSegments[0],
+            startTime: 0,
+            duration: Math.max(recordingSegments[0].duration, duration),
+          },
+        ]
+      }
+      const hasInvalid = recordingSegments.some((s) => s.duration <= 0)
+      if (!hasInvalid) {
+        return recordingSegments
+      }
     }
     if (!videoPath || duration <= 0) return []
     return [
@@ -252,13 +264,13 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
     isDragging: boolean
   } | null>(null)
 
-  const { previewOrder, previewPositions } = useMemo(() => {
+  const { previewOrder, previewPositions, targetSlot } = useMemo(() => {
     if (!recordingDrag || !recordingDrag.isDragging || displayRecordingSegments.length <= 1) {
       const pos: Record<string, number> = {}
       for (const s of displayRecordingSegments) {
         pos[s.id] = s.startTime
       }
-      return { previewOrder: displayRecordingSegments, previewPositions: pos }
+      return { previewOrder: displayRecordingSegments, previewPositions: pos, targetSlot: null }
     }
 
     const draggedSeg = displayRecordingSegments.find((s) => s.id === recordingDrag.segmentId)
@@ -267,29 +279,50 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
       for (const s of displayRecordingSegments) {
         pos[s.id] = s.startTime
       }
-      return { previewOrder: displayRecordingSegments, previewPositions: pos }
+      return { previewOrder: displayRecordingSegments, previewPositions: pos, targetSlot: null }
     }
 
+    const otherSegments = displayRecordingSegments.filter((s) => s.id !== draggedSeg.id)
     const deltaX = recordingDrag.currentX - recordingDrag.startX
     const deltaTime = pxToTime(deltaX)
-    const currentDragTime = Math.max(0, Math.min(duration - draggedSeg.duration, draggedSeg.startTime + deltaTime))
-    const dragCenter = currentDragTime + draggedSeg.duration / 2
+    const rawDragTime = Math.max(0, Math.min(duration - draggedSeg.duration, draggedSeg.startTime + deltaTime))
+    const dragCenter = rawDragTime + draggedSeg.duration / 2
 
-    // Sort segments by their centers compared to dragCenter
-    const sorted = [...displayRecordingSegments].sort((a, b) => {
-      const centerA = a.id === recordingDrag.segmentId ? dragCenter : a.startTime + a.duration / 2
-      const centerB = b.id === recordingDrag.segmentId ? dragCenter : b.startTime + b.duration / 2
-      return centerA - centerB
-    })
+    // Find the slot index (0 to otherSegments.length) whose center is closest to dragCenter
+    let bestSlotIndex = 0
+    let minDistance = Infinity
+    for (let k = 0; k <= otherSegments.length; k++) {
+      const slotStartTime = otherSegments.slice(0, k).reduce((sum, s) => sum + s.duration, 0)
+      const slotCenter = slotStartTime + draggedSeg.duration / 2
+      const dist = Math.abs(dragCenter - slotCenter)
+      if (dist < minDistance) {
+        minDistance = dist
+        bestSlotIndex = k
+      }
+    }
+
+    const targetSlotStartTime = otherSegments.slice(0, bestSlotIndex).reduce((sum, s) => sum + s.duration, 0)
+    const sorted = [...otherSegments.slice(0, bestSlotIndex), draggedSeg, ...otherSegments.slice(bestSlotIndex)]
 
     let accTime = 0
     const pos: Record<string, number> = {}
-    for (const s of sorted) {
-      pos[s.id] = accTime
-      accTime += s.duration
+    for (let i = 0; i < otherSegments.length; i++) {
+      if (i === bestSlotIndex) {
+        accTime += draggedSeg.duration
+      }
+      pos[otherSegments[i].id] = accTime
+      accTime += otherSegments[i].duration
     }
 
-    return { previewOrder: sorted, previewPositions: pos }
+    return {
+      previewOrder: sorted,
+      previewPositions: pos,
+      targetSlot: {
+        index: bestSlotIndex,
+        startTime: targetSlotStartTime,
+        duration: draggedSeg.duration,
+      },
+    }
   }, [recordingDrag, displayRecordingSegments, pxToTime, duration])
 
   useEffect(() => {
@@ -312,6 +345,9 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
         const orderChanged = previewOrder.some((s, idx) => s.id !== displayRecordingSegments[idx]?.id)
         if (orderChanged) {
           void reorderRecordingSegments(previewOrder)
+          if (targetSlot) {
+            setCurrentTime(targetSlot.startTime)
+          }
         }
       } else {
         // Just a click: select recording and seek playhead
@@ -334,6 +370,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
   }, [
     recordingDrag,
     previewOrder,
+    targetSlot,
     displayRecordingSegments,
     reorderRecordingSegments,
     setSelectedRecordingId,
@@ -575,14 +612,34 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
                       zIndex: 8,
                     }}
                   >
+                    {/* Magnetic drop slot highlight when dragging */}
+                    {recordingDrag?.isDragging && targetSlot && (
+                      <div
+                        className="pointer-events-none absolute flex items-center justify-center overflow-hidden rounded-clip border-2 border-dashed border-accent/80 bg-accent/20 transition-all duration-150"
+                        style={{
+                          left: `${timeToPx(targetSlot.startTime)}px`,
+                          width: `${Math.max(28, timeToPx(targetSlot.duration))}px`,
+                          height: CLIP_HEIGHT,
+                          zIndex: 12,
+                        }}
+                      >
+                        <span className="truncate px-1 text-[11px] font-medium text-accent select-none">Snap Here</span>
+                      </div>
+                    )}
+
                     {displayRecordingSegments.map((segment, index) => {
                       const isDragged = recordingDrag?.segmentId === segment.id && recordingDrag.isDragging
                       const isSelected = selectedRecordingId === segment.id
                       const deltaX = isDragged ? recordingDrag.currentX - recordingDrag.startX : 0
                       const deltaTime = isDragged ? pxToTime(deltaX) : 0
-                      const leftTime = isDragged
+                      const rawDragTime = isDragged
                         ? Math.max(0, Math.min(duration - segment.duration, segment.startTime + deltaTime))
                         : (previewPositions[segment.id] ?? segment.startTime)
+                      const isMagneticallySnapped =
+                        isDragged &&
+                        targetSlot !== null &&
+                        Math.abs(timeToPx(rawDragTime) - timeToPx(targetSlot.startTime)) < 24
+                      const leftTime = isMagneticallySnapped && targetSlot ? targetSlot.startTime : rawDragTime
                       const leftPx = timeToPx(leftTime)
                       const widthPx = Math.max(28, timeToPx(segment.duration))
 

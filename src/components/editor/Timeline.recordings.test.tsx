@@ -148,4 +148,55 @@ describe('Timeline recording segments and reordering', () => {
     expect(useEditorStore.getState().selectedRecordingId).toBe('rec-2')
     expect(useEditorStore.getState().currentTime).toBe(5.0)
   })
+
+  it('initiates magnetic drag and reorders recording segments on drag release', async () => {
+    const seg1: RecordingSegment = {
+      id: 'rec-1',
+      name: 'Recording 1',
+      startTime: 0,
+      duration: 5.0,
+      sourceVideoPath: '/path/1.mp4',
+      sourceStartTime: 0,
+    }
+    const seg2: RecordingSegment = {
+      id: 'rec-2',
+      name: 'Recording 2',
+      startTime: 5.0,
+      duration: 5.0,
+      sourceVideoPath: '/path/2.mp4',
+      sourceStartTime: 0,
+    }
+
+    act(() => {
+      useEditorStore.setState({
+        videoPath: '/test/spliced.mp4',
+        duration: 10.0,
+        timelineZoom: 1,
+        recordingSegments: [seg1, seg2],
+        audioTracks: [],
+      })
+    })
+
+    const el = await renderAsync(<Timeline videoRef={{ current: null }} />)
+    const card2 = el.querySelector('[data-recording-id="rec-2"]') as HTMLElement
+    expect(card2).not.toBeNull()
+
+    // Mouse down on rec-2 at x = 1000
+    act(() => {
+      card2.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: 1000, clientY: 50 }))
+    })
+
+    // Pointer move across to the left to x = 100 (delta = -900px, which moves rec-2 before rec-1)
+    act(() => {
+      window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: 100, clientY: 50 }))
+    })
+
+    // Pointer up to release
+    await act(async () => {
+      window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: 100, clientY: 50 }))
+      await Promise.resolve()
+    })
+
+    expect(window.electronAPI.reorderRecordings).toHaveBeenCalled()
+  })
 })

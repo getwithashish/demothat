@@ -17,6 +17,7 @@ export function serializeEditorState(state: EditorState): Record<string, unknown
     videoPath: state.videoPath,
     metadataPath: state.metadataPath,
     webcamVideoPath: state.webcamVideoPath,
+    recordingSegments: state.recordingSegments,
     frameStyles: state.frameStyles,
     aspectRatio: state.aspectRatio,
     cameraMotions: state.cameraMotions,

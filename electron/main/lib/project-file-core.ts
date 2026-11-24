@@ -215,7 +215,9 @@ export function collectMediaSources(project: ProjectFileState): string[] {
     if (clip.filePath) sources.push(clip.filePath)
   }
   for (const clip of project.videoClips ?? []) {
-    if (clip.filePath) sources.push(clip.filePath)
+    if (clip.filePath) sources.push(clip.filePath as string)
+    if (typeof clip.metadataPath === 'string' && clip.metadataPath) sources.push(clip.metadataPath)
+    if (typeof clip.webcamVideoPath === 'string' && clip.webcamVideoPath) sources.push(clip.webcamVideoPath)
   }
   const image = project.frameStyles?.background?.imageUrl
   if (image && !isBuiltinAsset(image) && !image.startsWith('blob:')) sources.push(image)
@@ -249,7 +251,10 @@ function mapProjectPaths(project: ProjectFileState, map: (value: string) => stri
     if (clip.filePath) clip.filePath = map(clip.filePath)
   }
   for (const clip of project.videoClips ?? []) {
-    if (clip.filePath) clip.filePath = map(clip.filePath)
+    if (clip.filePath) clip.filePath = map(clip.filePath as string)
+    if (typeof clip.metadataPath === 'string' && clip.metadataPath) clip.metadataPath = map(clip.metadataPath)
+    if (typeof clip.webcamVideoPath === 'string' && clip.webcamVideoPath)
+      clip.webcamVideoPath = map(clip.webcamVideoPath)
   }
   const image = project.frameStyles?.background?.imageUrl
   if (image && !isBuiltinAsset(image) && !image.startsWith('blob:')) {

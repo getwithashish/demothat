@@ -222,6 +222,161 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
   const [cueDraft, setCueDraft] = useState('')
   const updateAudioTrack = useEditorStore((state) => state.updateAudioTrack)
   const clickClips = useMemo(() => audioClips.filter((clip) => clip.kind === 'click'), [audioClips])
+  const recordingSegments = useEditorStore((state) => state.recordingSegments)
+  const selectedRecordingId = useEditorStore((state) => state.selectedRecordingId)
+  const setSelectedRecordingId = useEditorStore((state) => state.setSelectedRecordingId)
+  const reorderRecordingSegments = useEditorStore((state) => state.reorderRecordingSegments)
+
+  const displayRecordingSegments = useMemo(() => {
+    if (recordingSegments && recordingSegments.length > 0) {
+      if (recordingSegments.length === 1 && duration > 0) {
+        return [
+          {
+            ...recordingSegments[0],
+            startTime: 0,
+            duration: Math.max(recordingSegments[0].duration, duration),
+          },
+        ]
+      }
+      const hasInvalid = recordingSegments.some((s) => s.duration <= 0)
+      if (!hasInvalid) {
+        return recordingSegments
+      }
+    }
+    if (!videoPath || duration <= 0) return []
+    return [
+      {
+        id: 'rec-1',
+        name: 'Recording 1',
+        startTime: 0,
+        duration,
+        sourceVideoPath: videoPath,
+        sourceStartTime: 0,
+      },
+    ]
+  }, [recordingSegments, videoPath, duration])
+
+  const [recordingDrag, setRecordingDrag] = useState<{
+    segmentId: string
+    startX: number
+    startTime: number
+    currentX: number
+    isDragging: boolean
+  } | null>(null)
+
+  const { previewOrder, previewPositions, targetSlot } = useMemo(() => {
+    if (!recordingDrag || !recordingDrag.isDragging || displayRecordingSegments.length <= 1) {
+      const pos: Record<string, number> = {}
+      for (const s of displayRecordingSegments) {
+        pos[s.id] = s.startTime
+      }
+      return { previewOrder: displayRecordingSegments, previewPositions: pos, targetSlot: null }
+    }
+
+    const draggedSeg = displayRecordingSegments.find((s) => s.id === recordingDrag.segmentId)
+    if (!draggedSeg) {
+      const pos: Record<string, number> = {}
+      for (const s of displayRecordingSegments) {
+        pos[s.id] = s.startTime
+      }
+      return { previewOrder: displayRecordingSegments, previewPositions: pos, targetSlot: null }
+    }
+
+    const otherSegments = displayRecordingSegments.filter((s) => s.id !== draggedSeg.id)
+    const deltaX = recordingDrag.currentX - recordingDrag.startX
+    const deltaTime = pxToTime(deltaX)
+    const rawDragTime = Math.max(0, Math.min(duration - draggedSeg.duration, draggedSeg.startTime + deltaTime))
+    const dragCenter = rawDragTime + draggedSeg.duration / 2
+
+    // Find the slot index (0 to otherSegments.length) whose center is closest to dragCenter
+    let bestSlotIndex = 0
+    let minDistance = Infinity
+    for (let k = 0; k <= otherSegments.length; k++) {
+      const slotStartTime = otherSegments.slice(0, k).reduce((sum, s) => sum + s.duration, 0)
+      const slotCenter = slotStartTime + draggedSeg.duration / 2
+      const dist = Math.abs(dragCenter - slotCenter)
+      if (dist < minDistance) {
+        minDistance = dist
+        bestSlotIndex = k
+      }
+    }
+
+    const targetSlotStartTime = otherSegments.slice(0, bestSlotIndex).reduce((sum, s) => sum + s.duration, 0)
+    const sorted = [...otherSegments.slice(0, bestSlotIndex), draggedSeg, ...otherSegments.slice(bestSlotIndex)]
+
+    let accTime = 0
+    const pos: Record<string, number> = {}
+    for (let i = 0; i < otherSegments.length; i++) {
+      if (i === bestSlotIndex) {
+        accTime += draggedSeg.duration
+      }
+      pos[otherSegments[i].id] = accTime
+      accTime += otherSegments[i].duration
+    }
+
+    return {
+      previewOrder: sorted,
+      previewPositions: pos,
+      targetSlot: {
+        index: bestSlotIndex,
+        startTime: targetSlotStartTime,
+        duration: draggedSeg.duration,
+      },
+    }
+  }, [recordingDrag, displayRecordingSegments, pxToTime, duration])
+
+  useEffect(() => {
+    if (!recordingDrag) return
+
+    const handlePointerMove = (e: PointerEvent) => {
+      const deltaX = Math.abs(e.clientX - recordingDrag.startX)
+      setRecordingDrag((prev) => {
+        if (!prev) return null
+        return {
+          ...prev,
+          currentX: e.clientX,
+          isDragging: prev.isDragging || deltaX > 4,
+        }
+      })
+    }
+
+    const handlePointerUp = () => {
+      if (recordingDrag.isDragging) {
+        const orderChanged = previewOrder.some((s, idx) => s.id !== displayRecordingSegments[idx]?.id)
+        if (orderChanged) {
+          void reorderRecordingSegments(previewOrder)
+          if (targetSlot) {
+            setCurrentTime(targetSlot.startTime)
+          }
+        }
+      } else {
+        // Just a click: select recording and seek playhead
+        setSelectedRecordingId(recordingDrag.segmentId)
+        setSelectedRegionId(null)
+        const clickedSeg = displayRecordingSegments.find((s) => s.id === recordingDrag.segmentId)
+        if (clickedSeg) {
+          setCurrentTime(clickedSeg.startTime)
+        }
+      }
+      setRecordingDrag(null)
+    }
+
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', handlePointerUp)
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+    }
+  }, [
+    recordingDrag,
+    previewOrder,
+    targetSlot,
+    displayRecordingSegments,
+    reorderRecordingSegments,
+    setSelectedRecordingId,
+    setSelectedRegionId,
+    setCurrentTime,
+  ])
 
   // Imported clips are stacked top-first: the top row is drawn last (on top),
   // and the SCREEN lane always stays underneath every clip.
@@ -320,9 +475,8 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
           return
         }
         // The tail moves; past the end of the source the last frame is held, so
-        // the only limit is the end of the timeline.
-        const maxDuration = Math.max(0.1, duration - initial.startTime)
-        updateVideoClip(clipId, { duration: Math.max(0.1, Math.min(maxDuration, initial.duration + delta)) })
+        // it can extend and automatically expand the timeline duration.
+        updateVideoClip(clipId, { duration: Math.max(0.1, initial.duration + delta) })
       }
       const up = () => {
         window.removeEventListener('mousemove', move)
@@ -331,7 +485,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
       window.addEventListener('mousemove', move)
       window.addEventListener('mouseup', up)
     },
-    [pxToTime, duration, setSelectedRegionId, updateVideoClip],
+    [pxToTime, setSelectedRegionId, updateVideoClip],
   )
 
   const beginHeightResize = useCallback(
@@ -429,6 +583,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
               const clickX = e.clientX - rect.left + (e.currentTarget as HTMLDivElement).scrollLeft
               updateVideoTime(pxToTime(clickX))
               setSelectedRegionId(null)
+              setSelectedRecordingId(null)
             }}
           >
             <div
@@ -447,19 +602,97 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
                   />
                 ))}
 
-                {/* The base screen recording occupies the whole timeline on its own lane. */}
+                {/* Interactive, distinguishable recording clips on the Screen track */}
                 {videoPath && duration > 0 && (
                   <div
-                    className="pointer-events-none absolute rounded-clip border border-line bg-clip-screen"
+                    className="absolute inset-x-0 pointer-events-auto"
                     style={{
                       top: `${trackLayout.topByKey.screen + LANE_INSET}px`,
-                      left: 0,
-                      width: `${timeToPx(duration)}px`,
                       height: CLIP_HEIGHT,
                       zIndex: 8,
                     }}
-                    aria-hidden="true"
-                  />
+                  >
+                    {/* Magnetic drop slot highlight when dragging */}
+                    {recordingDrag?.isDragging && targetSlot && (
+                      <div
+                        className="pointer-events-none absolute flex items-center justify-center overflow-hidden rounded-clip border-2 border-dashed border-accent/80 bg-accent/20 transition-all duration-150"
+                        style={{
+                          left: `${timeToPx(targetSlot.startTime)}px`,
+                          width: `${Math.max(28, timeToPx(targetSlot.duration))}px`,
+                          height: CLIP_HEIGHT,
+                          zIndex: 12,
+                        }}
+                      >
+                        <span className="truncate px-1 text-[11px] font-medium text-accent select-none">Snap Here</span>
+                      </div>
+                    )}
+
+                    {displayRecordingSegments.map((segment, index) => {
+                      const isDragged = recordingDrag?.segmentId === segment.id && recordingDrag.isDragging
+                      const isSelected = selectedRecordingId === segment.id
+                      const deltaX = isDragged ? recordingDrag.currentX - recordingDrag.startX : 0
+                      const deltaTime = isDragged ? pxToTime(deltaX) : 0
+                      const rawDragTime = isDragged
+                        ? Math.max(0, Math.min(duration - segment.duration, segment.startTime + deltaTime))
+                        : (previewPositions[segment.id] ?? segment.startTime)
+                      const isMagneticallySnapped =
+                        isDragged &&
+                        targetSlot !== null &&
+                        Math.abs(timeToPx(rawDragTime) - timeToPx(targetSlot.startTime)) < 24
+                      const leftTime = isMagneticallySnapped && targetSlot ? targetSlot.startTime : rawDragTime
+                      const leftPx = timeToPx(leftTime)
+                      const widthPx = Math.max(28, timeToPx(segment.duration))
+
+                      return (
+                        <div
+                          key={segment.id}
+                          data-recording-id={segment.id}
+                          className={cn(
+                            'group absolute flex items-center gap-1.5 overflow-hidden rounded-clip border px-2 select-none cursor-pointer',
+                            index % 2 === 1 ? 'border-line bg-clip-screen/90' : 'border-line bg-clip-screen',
+                            isSelected && 'border-accent ring-2 ring-accent/70 shadow-md',
+                            isDragged && 'z-30 shadow-xl cursor-grabbing ring-2 ring-accent opacity-95',
+                          )}
+                          style={{
+                            left: `${leftPx}px`,
+                            width: `${widthPx}px`,
+                            height: CLIP_HEIGHT,
+                            transition: isDragged ? 'none' : 'left 150ms cubic-bezier(0.2, 0, 0, 1)',
+                            zIndex: isDragged ? 35 : isSelected ? 20 : 10,
+                          }}
+                          title={`${segment.name} (${formatTime(segment.duration, true)})\nClick to select, drag to arrange`}
+                          onMouseDown={(e) => {
+                            // Prevent timeline seek on recording drag initiation
+                            e.stopPropagation()
+                            setRecordingDrag({
+                              segmentId: segment.id,
+                              startX: e.clientX,
+                              startTime: segment.startTime,
+                              currentX: e.clientX,
+                              isDragging: false,
+                            })
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setSelectedRecordingId(segment.id)
+                            setSelectedRegionId(null)
+                            setCurrentTime(segment.startTime)
+                          }}
+                        >
+                          {displayRecordingSegments.length > 1 && (
+                            <GripVertical
+                              className="size-3 text-muted/60 shrink-0 group-hover:text-fg"
+                              aria-hidden="true"
+                            />
+                          )}
+                          <span className="truncate text-xs font-medium text-fg">{segment.name}</span>
+                          <span className="ml-auto shrink-0 px-1 py-0.5 rounded text-[11px] font-mono text-muted bg-panel/75 tabular-nums">
+                            {formatTime(segment.duration, true)}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
                 )}
 
                 {/* One lane per audio source captured with the recording. The bar is
@@ -484,6 +717,17 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
                     // seek target.
                     onMouseDown={(event) => event.stopPropagation()}
                   >
+                    {displayRecordingSegments.length > 1 &&
+                      displayRecordingSegments
+                        .slice(1)
+                        .map((seg) => (
+                          <div
+                            key={`seam-${seg.id}`}
+                            className="pointer-events-none absolute top-0 bottom-0 border-l border-line/60 z-20"
+                            style={{ left: `${timeToPx(seg.startTime)}px` }}
+                            aria-hidden="true"
+                          />
+                        ))}
                     <button
                       type="button"
                       title={track.muted ? `Unmute ${track.label}` : `Mute ${track.label}`}
@@ -621,13 +865,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
                           const initialStart = clip.startTime
                           const move = (moveEvent: MouseEvent) =>
                             updateVideoClip(clip.id, {
-                              startTime: Math.max(
-                                0,
-                                Math.min(
-                                  Math.max(0, duration - clip.duration),
-                                  initialStart + pxToTime(moveEvent.clientX - startX),
-                                ),
-                              ),
+                              startTime: Math.max(0, initialStart + pxToTime(moveEvent.clientX - startX)),
                             })
                           const up = () => {
                             window.removeEventListener('mousemove', move)

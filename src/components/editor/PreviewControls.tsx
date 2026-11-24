@@ -12,6 +12,7 @@ import {
   LayoutBoard,
   ChevronDown,
   Bolt,
+  CircleDot,
 } from 'tabler-icons-react'
 import { useEditorStore } from '../../store/editorStore'
 import type { AspectRatio, CompositionLayout, VisualEffectKind } from '../../types'
@@ -88,6 +89,19 @@ export function PreviewControls() {
   return (
     <div className="flex flex-wrap items-center justify-between gap-y-1.5 border-b border-line bg-panel px-3 py-2.5">
       <div className="flex items-center gap-1">
+        <ToolbarButton
+          icon={<CircleDot {...iconProps} className="text-danger" />}
+          title="Record additional clip at the playhead (Ctrl+Alt+R)"
+          aria-label="Record additional clip at the playhead"
+          onClick={() => {
+            window.electronAPI.requestClipRecording(currentTime)
+          }}
+        >
+          Record
+        </ToolbarButton>
+
+        <div className="mx-0.5 h-5 w-px bg-line" />
+
         <div className="flex items-center">
           <ToolbarButton
             icon={<LayoutBoard {...iconProps} />}

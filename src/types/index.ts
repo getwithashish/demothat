@@ -111,6 +111,10 @@ export interface VideoClip {
    * The screen recording always sits below every imported clip.
    */
   order: number
+  metadataPath?: string | null
+  webcamVideoPath?: string | null
+  audioClipId?: string | null
+  hasAudio?: boolean
 }
 
 export interface SpeedRegion {
@@ -193,6 +197,17 @@ export type VideoDimensions = Dimensions
 export type ScreenSize = Dimensions
 export type CursorTheme = Record<number, Record<string, CursorFrame[]>>
 
+export interface RecordingSegment {
+  id: string
+  name: string
+  startTime: number
+  duration: number
+  sourceVideoPath: string
+  sourceMetadataPath?: string
+  sourceWebcamPath?: string
+  sourceStartTime?: number
+}
+
 // --- Slice State & Actions Types ---
 
 export interface ProjectState {
@@ -205,6 +220,8 @@ export interface ProjectState {
   canvasDimensions: Dimensions
   metadata: MetaDataItem[]
   duration: number
+  recordingSegments: RecordingSegment[]
+  selectedRecordingId: string | null
   cursorImages: Record<string, CursorImage>
   cursorBitmapsToRender: Map<string, CursorImageBitmap>
   /** Selectable pointer icons, keyed by style name ('arrow','text',…). */
@@ -324,6 +341,27 @@ export interface ProjectActions {
   saveProjectCopy: () => Promise<{ canceled: boolean; path?: string; error?: string }>
   /** Renames the `.dthat` on disk and repoints the session at it. */
   renameCurrentProject: (newName: string) => Promise<{ ok: boolean; path?: string; error?: string }>
+  /**
+   * Splices newly recorded footage directly into the master screen and audio tracks,
+   * rippling forward all downstream timeline regions, clips, and markers.
+   */
+  rippleInsertRecording: (payload: {
+    videoPath: string
+    metadataPath: string
+    webcamVideoPath?: string
+    insertTime: number
+    addedDuration: number
+    rawNewVideoPath?: string
+    rawNewMetadataPath?: string
+    rawNewWebcamPath?: string
+  }) => Promise<void>
+  /** Selects or deselects a recording segment on the screen track. */
+  setSelectedRecordingId: (id: string | null) => void
+  /**
+   * Reorders recording segments on the master timeline, rippling all timeline
+   * elements and re-splicing the underlying video/metadata.
+   */
+  reorderRecordingSegments: (newSegments: RecordingSegment[]) => Promise<void>
   /** Re-reads whether a crash-recovery copy exists (and how old it is). */
   refreshRecoveryCopy: () => Promise<void>
   /**
@@ -560,10 +598,12 @@ export interface AudioClip {
   fadeIn: number
   fadeOut: number
   loop: boolean
-  /** Music clips use a source file; click clips represent one removable mouse-click sound. */
-  kind?: 'music' | 'click'
+  /** Music clips use a source file; click clips represent one removable mouse-click sound; recording clips are linked to an added video clip. */
+  kind?: 'music' | 'click' | 'recording'
   /** Playback rate, where 1 is normal speed. */
   speed?: number
+  /** Linked video clip ID if this audio originated from a recorded/imported video clip. */
+  videoClipId?: string | null
 }
 
 export interface AudioState {

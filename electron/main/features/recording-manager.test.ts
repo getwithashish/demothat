@@ -5,6 +5,15 @@ const mockSavingWin = {
   close: vi.fn(),
 }
 
+const mockEditorWin = {
+  isDestroyed: vi.fn(() => false),
+  show: vi.fn(),
+  focus: vi.fn(),
+  webContents: {
+    send: vi.fn(),
+  },
+}
+
 const mockRecorderWin = {
   minimize: vi.fn(),
   show: vi.fn(),
@@ -163,6 +172,15 @@ vi.mock('./audio-tracks', () => ({
   }),
 }))
 
+vi.mock('./recording-splice', () => ({
+  spliceRecordingIntoProject: vi.fn().mockResolvedValue({
+    screenVideoPath: '/tmp/spliced-screen.mp4',
+    metadataPath: '/tmp/spliced.json',
+    webcamVideoPath: undefined,
+    addedDuration: 3.5,
+  }),
+}))
+
 import { stopRecording, markSystemAudioStopped, markScreenCaptureStopped, getVideoStartTime } from './recording-manager'
 import { appState } from '../state'
 import { probeAudioTracks } from './audio-tracks'
@@ -276,6 +294,80 @@ describe('recording-manager', () => {
         y: 200,
         timestamp: 5000,
       })
+    })
+
+    it('splices recording and sends recording:ripple-inserted when recordingTarget is editor-clip and session exists', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      appState.recorderWin = mockRecorderWin as any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      appState.savingWin = mockSavingWin as any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      appState.editorWin = mockEditorWin as any
+      appState.recordingTarget = 'editor-clip'
+      appState.pendingClipInsertTime = 5.25
+      appState.currentEditorSessionFiles = {
+        screenVideoPath: '/tmp/base-screen.mp4',
+        metadataPath: '/tmp/base.json',
+        recordingGeometry: { x: 0, y: 0, width: 1920, height: 1080 },
+      }
+      appState.currentRecordingSession = {
+        screenVideoPath: '/tmp/clip-screen.mp4',
+        metadataPath: '/tmp/clip.json',
+        recordingGeometry: { x: 0, y: 0, width: 1920, height: 1080 },
+        hasMicAudio: true,
+      }
+      appState.recordedMouseEvents = []
+      appState.ffmpegProcess = null
+
+      await stopRecording()
+
+      expect(mockEditorWin.webContents.send).toHaveBeenCalledWith('recording:ripple-inserted', {
+        screenVideoPath: '/tmp/spliced-screen.mp4',
+        metadataPath: '/tmp/spliced.json',
+        webcamVideoPath: undefined,
+        insertTime: 5.25,
+        addedDuration: 3.5,
+        rawNewVideoPath: '/tmp/clip-screen.mp4',
+        rawNewMetadataPath: '/tmp/clip.json',
+        rawNewWebcamPath: undefined,
+      })
+      expect(mockEditorWin.show).toHaveBeenCalled()
+      expect(mockEditorWin.focus).toHaveBeenCalled()
+      expect(appState.recordingTarget).toBe('new-project')
+      expect(appState.pendingClipInsertTime).toBeNull()
+    })
+
+    it('falls back to delivering clip recording to existing editorWin when currentEditorSessionFiles is missing', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      appState.recorderWin = mockRecorderWin as any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      appState.savingWin = mockSavingWin as any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      appState.editorWin = mockEditorWin as any
+      appState.recordingTarget = 'editor-clip'
+      appState.pendingClipInsertTime = 5.25
+      appState.currentEditorSessionFiles = null
+      appState.currentRecordingSession = {
+        screenVideoPath: '/tmp/clip-screen.mp4',
+        metadataPath: '/tmp/clip.json',
+        recordingGeometry: { x: 0, y: 0, width: 1920, height: 1080 },
+        hasMicAudio: true,
+      }
+      appState.recordedMouseEvents = []
+      appState.ffmpegProcess = null
+
+      await stopRecording()
+
+      expect(mockEditorWin.webContents.send).toHaveBeenCalledWith('recording:clip-recorded', {
+        screenVideoPath: '/tmp/clip-screen.mp4',
+        webcamVideoPath: undefined,
+        metadataPath: '/tmp/clip.json',
+        insertTime: 5.25,
+      })
+      expect(mockEditorWin.show).toHaveBeenCalled()
+      expect(mockEditorWin.focus).toHaveBeenCalled()
+      expect(appState.recordingTarget).toBe('new-project')
+      expect(appState.pendingClipInsertTime).toBeNull()
     })
   })
 

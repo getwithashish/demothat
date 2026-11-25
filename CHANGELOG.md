@@ -1,3 +1,9 @@
+## [1.21.0-beta.35](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.34...v1.21.0-beta.35) (2026-11-25)
+
+### Features
+
+* **cloud:** add upscale crash resilience and detailed publishing status ([7fd2ae7](https://github.com/getwithashish/DemoThat/commit/7fd2ae7934d61955b024ecd5baf22cc18d5b6557))
+
 ## [1.21.0-beta.34](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.33...v1.21.0-beta.34) (2026-11-24)
 
 ### Features

@@ -30,6 +30,13 @@ export interface PublishProgress {
   stagePercent: number
   detail?: string
   estimatedCost?: number
+  bytesSent?: number
+  totalBytes?: number
+  throughputBps?: number
+  fps?: number
+  etaSeconds?: number | null
+  currentStep?: number
+  totalSteps?: number
 }
 
 export interface PublishRequest {
@@ -212,12 +219,16 @@ export function usePublish() {
       let combinedPercent: number
       let stageHeading: string
       let stageDetail: string
+      let currentStep = 1
+      const totalSteps = hasRender ? 4 : 3
 
       if (payload.stage === 'Preparing') {
+        currentStep = hasRender ? 2 : 1
         combinedPercent = hasRender ? 52 : Math.min(5, Math.round(rawPercent * 0.05))
         stageHeading = 'Preparing cloud publication…'
         stageDetail = 'Creating upload session and reserving cloud resources…'
       } else if (payload.stage === 'Uploading') {
+        currentStep = hasRender ? 3 : 2
         if (hasRender) {
           // 53% to 95%
           combinedPercent = Math.min(95, Math.round(53 + rawPercent * 0.42))
@@ -234,23 +245,39 @@ export function usePublish() {
           stageDetail = 'Finalizing cloud chunk transfers…'
         }
       } else if (payload.stage === 'Activating') {
+        currentStep = hasRender ? 4 : 3
         combinedPercent = hasRender ? 97 : 96
         stageHeading = 'Generating instant share links…'
         stageDetail = 'Activating publication, linking captions, and generating shareable URL…'
       } else if (payload.stage === 'Done') {
+        currentStep = hasRender ? 4 : 3
         combinedPercent = 100
         stageHeading = 'Published successfully!'
         stageDetail = 'Your video and instant share link are ready.'
       } else {
+        currentStep = hasRender ? 3 : 2
         combinedPercent = hasRender ? Math.min(95, Math.round(53 + rawPercent * 0.42)) : rawPercent
         stageHeading = payload.stage || 'Publishing…'
         stageDetail = 'Processing video publication in cloud…'
+      }
+
+      const p = payload as typeof payload & {
+        bytesSent?: number
+        totalBytes?: number
+        throughputBps?: number
+        etaSeconds?: number | null
       }
 
       setProgress({
         stage: stageHeading,
         stagePercent: combinedPercent,
         detail: stageDetail,
+        currentStep,
+        totalSteps,
+        ...(p.bytesSent !== undefined ? { bytesSent: p.bytesSent } : {}),
+        ...(p.totalBytes !== undefined ? { totalBytes: p.totalBytes } : {}),
+        ...(p.throughputBps !== undefined ? { throughputBps: p.throughputBps } : {}),
+        ...(p.etaSeconds !== undefined ? { etaSeconds: p.etaSeconds } : {}),
         ...(payload.estimatedCost !== undefined ? { estimatedCost: payload.estimatedCost } : {}),
       })
     })
@@ -299,6 +326,8 @@ export function usePublish() {
         stage: 'Preparing cloud publication…',
         stagePercent: 0,
         detail: 'Connecting to cloud service…',
+        currentStep: 1,
+        totalSteps: 3,
       })
       try {
         const outcome = (await window.electronAPI.startPublish(request)) as PublishOutcome
@@ -383,7 +412,7 @@ export function usePublish() {
 
       canceledRef.current = false
       setPublishing(true)
-      setProgress({ stage: 'Rendering', stagePercent: 0 })
+      setProgress({ stage: 'Rendering', stagePercent: 0, currentStep: 1, totalSteps: 4 })
 
       try {
         if (tempRenderPathRef.current) {
@@ -410,6 +439,8 @@ export function usePublish() {
           stage: 'Rendering video frames…',
           stagePercent: 0,
           detail: 'Starting local render pipeline…',
+          currentStep: 1,
+          totalSteps: 4,
         })
         const renderResult = await new Promise<{ ok: boolean; reason?: 'canceled' | 'failed'; error?: string }>(
           (resolve) => {
@@ -459,6 +490,11 @@ export function usePublish() {
                 stage: stageHeading,
                 stagePercent: combinedPercent,
                 detail: stageDetail,
+                currentStep: 1,
+                totalSteps: 4,
+                ...(payload.etaSeconds !== undefined ? { etaSeconds: payload.etaSeconds } : {}),
+                ...(payload.fps !== undefined ? { fps: payload.fps } : {}),
+                ...(typeof payload.throughput === 'number' ? { throughputBps: payload.throughput } : {}),
               })
             })
 
@@ -514,6 +550,8 @@ export function usePublish() {
           stage: 'Verifying rendered video…',
           stagePercent: 51,
           detail: 'Inspecting container and preparing cloud publication pipeline…',
+          currentStep: 2,
+          totalSteps: 4,
         })
         const probeResult = await window.electronAPI.probePublishFile(tempPath)
         if (!probeResult.ok) {
@@ -536,6 +574,8 @@ export function usePublish() {
           stage: 'Preparing cloud publication…',
           stagePercent: 52,
           detail: 'Allocating cloud storage and initializing secure upload session…',
+          currentStep: 2,
+          totalSteps: 4,
         })
 
         const outcome = (await window.electronAPI.startPublish({

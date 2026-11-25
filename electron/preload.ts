@@ -604,7 +604,17 @@ export const electronAPI = {
   ): Promise<{ ok: true; analytics: PublicationAnalytics } | { ok: false; error: string }> =>
     ipcRenderer.invoke('publish:analytics', { publicationId, range }),
 
-  onPublishProgress: (callback: (payload: { stage: string; stagePercent: number; estimatedCost?: number }) => void) => {
+  onPublishProgress: (
+    callback: (payload: {
+      stage: string
+      stagePercent: number
+      estimatedCost?: number
+      bytesSent?: number
+      totalBytes?: number
+      throughputBps?: number
+      etaSeconds?: number | null
+    }) => void,
+  ) => {
     const listener = (_event: IpcRendererEvent, payload: any) => callback(payload)
     ipcRenderer.on('publish:progress', listener)
     return () => ipcRenderer.removeListener('publish:progress', listener)

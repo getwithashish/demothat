@@ -331,15 +331,10 @@ export async function runCloudExport(request: RunCloudExportRequest): Promise<Cl
     }
 
     log.error(`[CloudExport] Job ${job.jobId} failed: ${cloudError.message}`)
-    // Ask the server to settle, so the user gets the refund it owes them.
-    const settled = await cancelAndSettle(job.jobId, lastView)
-    log.info(`[CloudExport] Job ${job.jobId} failure settled: charge=${settled.charge}, refund=${settled.refund}`)
     return {
       ok: false,
       reason: 'failed',
       error: cloudError.message,
-      charge: settled.charge,
-      refund: settled.refund,
       intermediatePath,
       canRetryCloud: true,
     }
@@ -394,7 +389,7 @@ export interface ResumeWatchRequest {
 export async function watchActiveJob(request: ResumeWatchRequest): Promise<CloudExportResult> {
   const { jobId, outputPath, intermediatePath, cancel, onProgress } = request
   try {
-    onProgress({ stage: 'Waiting for GPU', stagePercent: 0 })
+    onProgress({ stage: 'Waiting for compute', stagePercent: 0 })
     const view = await pollJob(jobId, {
       cancel,
       onUpdate: (polled) => {

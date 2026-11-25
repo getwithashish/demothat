@@ -314,4 +314,33 @@ describe('the orchestrator', () => {
     await expect(startJob(jobId)).resolves.toBeUndefined()
     expect((await pollJob(jobId)).status).toBe('succeeded')
   })
+
+  it('does not clear the active job on unexpected non-cancel error', async () => {
+    const { jobId, estimatedCost, upload } = await createJobFor(2048)
+    const { saveActiveJob, getActiveJob } = await import('../lib/cloud-store')
+    saveActiveJob({
+      jobId,
+      outputPath: OUTPUT(),
+      intermediatePath,
+      targetWidth: 7680,
+      targetHeight: 4320,
+      startedAt: Date.now(),
+    })
+
+    const outcome = await runCloudExport({
+      job: { jobId, estimatedCost, upload },
+      intermediatePath: '/non/existent/path/video.mp4',
+      outputPath: OUTPUT(),
+      cancel: { cancelled: false },
+      minChargeCredits: 10,
+      onProgress: () => undefined,
+    })
+
+    expect(outcome.ok).toBe(false)
+    if (outcome.ok) return
+    expect(outcome.reason).toBe('failed')
+    expect(outcome.canRetryCloud).toBe(true)
+    expect(getActiveJob()).not.toBeNull()
+    expect((getActiveJob() as { jobId: string })?.jobId).toBe(jobId)
+  })
 })

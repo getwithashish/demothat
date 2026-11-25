@@ -115,6 +115,35 @@ function formatDuration(seconds: number): string {
   return `${hours}h ${minutes % 60}m`
 }
 
+/** Formats bytes to decimal representation (e.g. 45.2 MB) */
+function formatDataBytes(bytes: number): string {
+  if (bytes <= 0) return '0 B'
+  if (bytes < 1000) return `${bytes} B`
+  const units = ['kB', 'MB', 'GB', 'TB']
+  let value = bytes / 1000
+  let unit = 0
+  while (value >= 1000 && unit < units.length - 1) {
+    value /= 1000
+    unit += 1
+  }
+  return `${value.toFixed(1)} ${units[unit]}`
+}
+
+/** Formats ETA seconds to friendly countdown text (e.g. ~15s remaining) */
+function formatPublishEta(etaSeconds?: number | null): string | null {
+  if (typeof etaSeconds !== 'number' || !Number.isFinite(etaSeconds) || etaSeconds <= 0) return null
+  const rounded = Math.round(etaSeconds)
+  if (rounded < 60) {
+    return `~${rounded}s remaining`
+  }
+  const minutes = Math.floor(rounded / 60)
+  const remainingSeconds = rounded % 60
+  if (remainingSeconds > 0) {
+    return `~${minutes}m ${remainingSeconds}s remaining`
+  }
+  return `~${minutes}m remaining`
+}
+
 /** Generates default filename */
 function generateFilename(prefix = 'DemoThat', format = 'mp4'): string {
   const now = new Date()
@@ -384,6 +413,45 @@ export function UnifiedExportPublishModal({
   ])
 
   const upscaleSubtitle = cloudUpscaleStageLabel(targetPercent)
+
+  const publishThroughput = useMemo(() => {
+    if (typeof publishProgress?.throughputBps === 'number' && publishProgress.throughputBps > 0) {
+      if (publishProgress.throughputBps >= 1_000_000) {
+        return `${(publishProgress.throughputBps / 1_000_000).toFixed(1)} MB/s`
+      }
+      return `${(publishProgress.throughputBps / 1_000).toFixed(1)} kB/s`
+    }
+    if (typeof publishProgress?.fps === 'number' && publishProgress.fps > 0) {
+      return `~${Math.round(publishProgress.fps)} fps`
+    }
+    if (
+      publishProgress?.stage?.toLowerCase().includes('render') ||
+      publishProgress?.stage?.toLowerCase().includes('upscal')
+    ) {
+      if (measuredFps !== null && measuredFps > 0) {
+        return `~${Math.round(measuredFps)} fps`
+      }
+    }
+    return null
+  }, [publishProgress?.throughputBps, publishProgress?.fps, publishProgress?.stage, measuredFps])
+
+  const publishTransferred = useMemo(() => {
+    if (
+      typeof publishProgress?.bytesSent === 'number' &&
+      typeof publishProgress?.totalBytes === 'number' &&
+      publishProgress.totalBytes > 0
+    ) {
+      return `${formatDataBytes(publishProgress.bytesSent)} / ${formatDataBytes(publishProgress.totalBytes)}`
+    }
+    if (typeof publishProgress?.bytesSent === 'number' && publishProgress.bytesSent > 0) {
+      return `${formatDataBytes(publishProgress.bytesSent)} transferred`
+    }
+    return null
+  }, [publishProgress?.bytesSent, publishProgress?.totalBytes])
+
+  const publishEta = useMemo(() => {
+    return formatPublishEta(publishProgress?.etaSeconds)
+  }, [publishProgress?.etaSeconds])
 
   // Hardware capabilities and cloud status
   const [encoderCapabilities, setEncoderCapabilities] = useState<{ libx265: boolean } | null>(null)
@@ -1558,26 +1626,51 @@ export function UnifiedExportPublishModal({
                   )}
                 </div>
               ) : isPublishing ? (
-                /* Dual-Stage Progress */
+                /* Dual-Stage Progress / Publishing Progress View (Full parity with Export progress) */
                 <div className="flex flex-col items-center p-8 text-center">
                   <Loader2 size={ICON_SIZE} strokeWidth={ICON_STROKE} className="mb-4 animate-spin text-accent" />
-                  <h3 className="text-sm font-semibold text-fg">{publishProgress?.stage || 'Publishing to cloud…'}</h3>
-                  <p className="mt-1 text-xs text-muted">
+                  <h3 className="text-sm font-semibold text-fg">
+                    {publishProgress?.currentStep && publishProgress?.totalSteps
+                      ? `Step ${publishProgress.currentStep} of ${publishProgress.totalSteps} · ${publishProgress.stage}`
+                      : publishProgress?.stage || 'Publishing to cloud…'}
+                  </h3>
+                  <p className="mt-1 text-xs font-medium text-accent animate-pulse" data-testid="publish-subtitle">
                     {publishProgress?.detail ||
                       (publishProgress?.stage?.toLowerCase().includes('render')
                         ? 'Stitching camera feed, mouse click animations, and zoom motions…'
                         : 'Uploading and generating instant share links…')}
                   </p>
-                  <div className="mt-5 h-1.5 w-full overflow-hidden rounded-full bg-ctl">
+                  <div
+                    className="mt-5 h-1.5 w-full overflow-hidden rounded-full bg-ctl"
+                    role="progressbar"
+                    aria-valuenow={Math.round(publishProgress?.stagePercent ?? 0)}
+                  >
                     <div
                       className="h-full bg-accent transition-all duration-300"
                       style={{ width: `${Math.max(3, publishProgress?.stagePercent ?? 0)}%` }}
                     />
                   </div>
-                  <p className="mt-2 font-mono text-xs tabular-nums text-muted">
-                    {Math.round(publishProgress?.stagePercent ?? 0)}%
-                  </p>
-                  <Button variant="secondary" size="sm" onClick={onCancelPublish} className="mt-6">
+                  <div className="mt-3 flex items-center justify-center gap-2 whitespace-nowrap font-mono text-sm tabular-nums text-fg">
+                    <span>{Math.round(publishProgress?.stagePercent ?? 0)}%</span>
+                    {publishEta && <span data-testid="publish-eta">· {publishEta}</span>}
+                  </div>
+                  {publishThroughput && (
+                    <p
+                      className="mt-1.5 whitespace-nowrap font-mono text-xs tabular-nums text-muted"
+                      data-testid="publish-throughput"
+                    >
+                      Throughput: <span className="font-medium text-fg">{publishThroughput}</span>
+                    </p>
+                  )}
+                  {publishTransferred && (
+                    <p
+                      className="mt-1 whitespace-nowrap font-mono text-xs tabular-nums text-muted"
+                      data-testid="publish-transferred"
+                    >
+                      {publishTransferred}
+                    </p>
+                  )}
+                  <Button variant="secondary" size="sm" onClick={onCancelPublish} className="mt-6 w-full">
                     Cancel
                   </Button>
                 </div>

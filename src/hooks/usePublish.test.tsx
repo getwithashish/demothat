@@ -25,8 +25,17 @@ function TestHarness() {
 describe('usePublish & renderAndPublish pipeline', () => {
   let exportProgressCb: ((payload: { progress: number; stage: string }) => void) | null = null
   let exportCompleteCb: ((payload: { success: boolean; error?: string }) => void) | null = null
-  let publishProgressCb: ((payload: { stage: string; stagePercent: number; estimatedCost?: number }) => void) | null =
-    null
+  let publishProgressCb:
+    | ((payload: {
+        stage: string
+        stagePercent: number
+        estimatedCost?: number
+        bytesSent?: number
+        totalBytes?: number
+        throughputBps?: number
+        etaSeconds?: number | null
+      }) => void)
+    | null = null
 
   let mockGetTempPublishPath: ReturnType<typeof vi.fn>
   let mockSaveTempPublishFile: ReturnType<typeof vi.fn>
@@ -214,6 +223,8 @@ describe('usePublish & renderAndPublish pipeline', () => {
       stage: 'Compositing motion & cursor…',
       detail: 'Rendering zoom transitions, cursor movements, and click ripples…',
       stagePercent: 23,
+      currentStep: 1,
+      totalSteps: 4,
     })
 
     // Render completes successfully
@@ -247,6 +258,8 @@ describe('usePublish & renderAndPublish pipeline', () => {
       detail: 'Finalizing cloud chunk transfers…',
       stagePercent: 82,
       estimatedCost: 10,
+      currentStep: 3,
+      totalSteps: 4,
     })
 
     act(() => {
@@ -577,5 +590,89 @@ describe('usePublish & renderAndPublish pipeline', () => {
     expect(extracted.mouseClickSoundPath).toBe('/sounds/click.wav')
     expect(extracted.subtitlesEnabled).toBe(true)
     expect(extracted.subtitleFormat).toBe('vtt')
+  })
+
+  it('computes 3-step numbering and forwards throughput and eta for direct publish', async () => {
+    await renderHook()
+
+    let resolvePublish: (val: PublishOutcome) => void = () => {}
+    mockStartPublish.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolvePublish = resolve
+        }),
+    )
+
+    let promise: Promise<PublishOutcome>
+    act(() => {
+      promise = hookResult!.start({
+        filePath: '/direct/path.mp4',
+        kind: 'page',
+        storageDays: 30,
+      })
+    })
+
+    // Initial state
+    expect(hookResult!.progress?.currentStep).toBe(1)
+    expect(hookResult!.progress?.totalSteps).toBe(3)
+
+    // Preparing
+    act(() => {
+      publishProgressCb?.({ stage: 'Preparing', stagePercent: 50 })
+    })
+    expect(hookResult!.progress?.currentStep).toBe(1)
+    expect(hookResult!.progress?.totalSteps).toBe(3)
+
+    // Uploading with metrics
+    act(() => {
+      publishProgressCb?.({
+        stage: 'Uploading',
+        stagePercent: 45,
+        bytesSent: 45_200_000,
+        totalBytes: 118_000_000,
+        throughputBps: 14_200_000,
+        etaSeconds: 15,
+      })
+    })
+    expect(hookResult!.progress?.currentStep).toBe(2)
+    expect(hookResult!.progress?.totalSteps).toBe(3)
+    expect(hookResult!.progress?.bytesSent).toBe(45_200_000)
+    expect(hookResult!.progress?.totalBytes).toBe(118_000_000)
+    expect(hookResult!.progress?.throughputBps).toBe(14_200_000)
+    expect(hookResult!.progress?.etaSeconds).toBe(15)
+
+    // Activating
+    act(() => {
+      publishProgressCb?.({ stage: 'Activating', stagePercent: 98 })
+    })
+    expect(hookResult!.progress?.currentStep).toBe(3)
+    expect(hookResult!.progress?.totalSteps).toBe(3)
+
+    act(() => {
+      resolvePublish({
+        ok: true,
+        publication: {
+          publicationId: 'direct-pub-1',
+          slug: 'direct-video',
+          title: 'Direct Video',
+          kind: 'page',
+          status: 'active',
+          storageDays: 30,
+          createdAt: '2026-11-20T12:00:00Z',
+          expiresAt: '2026-12-20T12:00:00Z',
+          estimatedCost: 10,
+          hasCaptions: false,
+          served: { page: true, embed: false, links: true },
+          links: {
+            pageUrl: 'https://demo.that/p/direct-pub-1',
+            videoDownloadUrl: 'https://demo.that/download/direct-pub-1.mp4',
+          },
+        },
+        captionsIncluded: false,
+      })
+    })
+    await act(async () => {
+      await promise
+    })
   })
 })

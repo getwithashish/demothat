@@ -18,7 +18,6 @@ import { ActivationDialog } from '../components/editor/cloud/ActivationDialog'
 import { DevicesDialog } from '../components/editor/cloud/DevicesDialog'
 import { BuyCreditsDialog } from '../components/editor/cloud/BuyCreditsDialog'
 import { WaitingForPaymentDialog } from '../components/editor/cloud/WaitingForPaymentDialog'
-import { ResumeCloudDialog } from '../components/editor/cloud/ResumeCloudDialog'
 import { firstPurchaseProductId } from '../../shared/pricing'
 import { mediaUrl } from '../../shared/media-url'
 import { Stack3, Loader2, Check, Settings } from 'tabler-icons-react'
@@ -98,14 +97,29 @@ export function EditorPage() {
     stage: exportStage,
     cloudProgress: exportCloudProgress,
     result: exportResult,
-    cloudResumeOffer,
+    isAutoResumed,
+    recoveredJobError,
     startExport,
     cancelExport,
     retryCloud,
-    resumeCloudWatch,
-    dismissCloudResume,
     clearResult: clearExportResult,
   } = useExportProcess()
+
+  // Auto-resumed background jobs have isExportMinimized = true so the circular progress capsule appears
+  useEffect(() => {
+    if (isAutoResumed && isExporting) {
+      setExportMinimized(true)
+    }
+  }, [isAutoResumed, isExporting])
+
+  // If a recovered job failed or was rejected on the server, open UnifiedExportPublishModal in error state
+  useEffect(() => {
+    if (recoveredJobError || (isAutoResumed && exportResult && !exportResult.success)) {
+      setExportMinimized(false)
+      setUnifiedModalInitialTab('export')
+      setUnifiedModalOpen(true)
+    }
+  }, [recoveredJobError, isAutoResumed, exportResult])
 
   // Publishing: the library, the run in flight, and the terms the server offers.
   const {
@@ -825,12 +839,6 @@ export function EditorPage() {
         onGetPro={() => void startFirstPurchase()}
       />
       <DevicesDialog isOpen={isDevicesOpen} onClose={() => setDevicesOpen(false)} />
-      <ResumeCloudDialog
-        isOpen={cloudResumeOffer !== null}
-        outputPath={cloudResumeOffer?.outputPath ?? null}
-        onResume={() => void resumeCloudWatch()}
-        onDismiss={() => void dismissCloudResume()}
-      />
       <BuyCreditsDialog
         isOpen={buyCreditsOpen}
         shortfall={buyCreditsShortfall}

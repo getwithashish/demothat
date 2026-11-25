@@ -15,6 +15,7 @@ import {
 } from '../../features/cloud-client'
 import {
   preflightCloudExport,
+  rememberActiveJob,
   runCloudExport,
   watchActiveJob,
   type CloudExportProgress,
@@ -175,6 +176,14 @@ export async function handleCloudRetry(
       })
       return { ok: false, error: preflight.error }
     }
+
+    rememberActiveJob(
+      preflight.job.jobId,
+      request.outputPath,
+      request.intermediatePath,
+      request.targetWidth,
+      request.targetHeight,
+    )
 
     const outcome = await runCloudExport({
       job: preflight.job,

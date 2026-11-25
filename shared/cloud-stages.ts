@@ -5,14 +5,14 @@
 // a stage is called, how far along it is, or what cancelling costs.
 
 export type CloudStage =
-  'Rendering locally' | 'Uploading' | 'Validating' | 'Waiting for GPU' | 'Upscaling' | 'Downloading' | 'Done'
+  'Rendering locally' | 'Uploading' | 'Validating' | 'Waiting for compute' | 'Upscaling' | 'Downloading' | 'Done'
 
 /** The stages the user waits through; `Done` is the terminal state. */
 export const CLOUD_WORK_STAGES: CloudStage[] = [
   'Rendering locally',
   'Uploading',
   'Validating',
-  'Waiting for GPU',
+  'Waiting for compute',
   'Upscaling',
   'Downloading',
 ]
@@ -32,7 +32,7 @@ const STAGE_WEIGHTS: Record<CloudStage, { from: number; to: number }> = {
   'Rendering locally': { from: 0, to: 40 },
   Uploading: { from: 40, to: 50 },
   Validating: { from: 50, to: 55 },
-  'Waiting for GPU': { from: 55, to: 60 },
+  'Waiting for compute': { from: 55, to: 60 },
   Upscaling: { from: 60, to: 92 },
   Downloading: { from: 92, to: 100 },
   Done: { from: 100, to: 100 },
@@ -76,7 +76,7 @@ export function stageFromJobStatus(status: string): CloudStage | null {
     case 'validating':
       return 'Validating'
     case 'queued':
-      return 'Waiting for GPU'
+      return 'Waiting for compute'
     case 'running':
     case 'canceling':
       return 'Upscaling'
@@ -91,7 +91,9 @@ export function stageFromJobStatus(status: string): CloudStage | null {
 
 /** True while cancelling costs nothing, because no GPU work has begun (§0.3). */
 export function isBeforeGpuWork(stage: CloudStage): boolean {
-  return stage === 'Rendering locally' || stage === 'Uploading' || stage === 'Validating' || stage === 'Waiting for GPU'
+  return (
+    stage === 'Rendering locally' || stage === 'Uploading' || stage === 'Validating' || stage === 'Waiting for compute'
+  )
 }
 
 export interface CancelProjectionInput {

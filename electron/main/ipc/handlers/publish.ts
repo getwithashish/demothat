@@ -110,6 +110,10 @@ function progressRelay(window: BrowserWindow | null) {
       stage: progress.stage,
       stagePercent: progress.stagePercent,
       estimatedCost: progress.estimatedCost,
+      bytesSent: progress.bytesSent,
+      totalBytes: progress.totalBytes,
+      throughputBps: progress.throughputBps,
+      etaSeconds: progress.etaSeconds,
     })
   }
 }

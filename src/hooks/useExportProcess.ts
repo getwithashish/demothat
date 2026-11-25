@@ -63,6 +63,9 @@ export const useExportProcess = () => {
   const [result, setResult] = useState<ExportResult | null>(null)
   /** A cloud job that outlived the last session, offered for watching again. */
   const [cloudResumeOffer, setCloudResumeOffer] = useState<{ jobId: string; outputPath: string } | null>(null)
+  const [isAutoResumed, setIsAutoResumed] = useState(false)
+  const [recoveredJobError, setRecoveredJobError] = useState<ExportResult | null>(null)
+  const isRecoveredJobRef = useRef(false)
   const isExportActiveRef = useRef(false)
 
   // Effect to set up and tear down IPC listeners for export progress and completion
@@ -96,13 +99,25 @@ export const useExportProcess = () => {
       setResult(payload)
       setCloudProgress(null)
 
+      if (isRecoveredJobRef.current && !payload.success) {
+        setRecoveredJobError(payload)
+      }
+
       const store = useEditorStore.getState()
       // The balance moved (or a job was refused), so re-read it for the capsule.
       if (payload.charge !== undefined || payload.cost !== undefined) void store.refreshBalance()
       if (payload.success && payload.charge !== undefined) {
-        store.pushToast({ message: `Cloud upscale finished. ${formatCredits(payload.charge)} credits used.` })
+        store.pushToast({
+          message: `Cloud upscale finished. ${formatCredits(payload.charge)} credits used.`,
+          actionLabel: 'Open',
+          revealPath: payload.outputPath,
+        })
       } else if (payload.success) {
-        store.pushToast({ message: 'Export completed successfully.' })
+        store.pushToast({
+          message: 'Export completed successfully.',
+          actionLabel: 'Open',
+          revealPath: payload.outputPath,
+        })
       }
       if (!payload.success && payload.refund !== undefined && payload.refund > 0) {
         store.pushToast({ message: `${formatCredits(payload.refund)} credits returned.` })
@@ -115,17 +130,6 @@ export const useExportProcess = () => {
       cleanProgressListener()
       cleanCompleteListener()
     }
-  }, [])
-
-  // A job that was still running when the app closed continues on the server:
-  // offer to watch it again rather than downloading without asking.
-  useEffect(() => {
-    window.electronAPI
-      .getActiveCloudJob?.()
-      .then((job) => {
-        if (job) setCloudResumeOffer(job)
-      })
-      .catch(() => undefined)
   }, [])
 
   // Handler to initiate the export process
@@ -248,6 +252,7 @@ export const useExportProcess = () => {
   const resumeCloudWatch = useCallback(async () => {
     setCloudResumeOffer(null)
     setResult(null)
+    setRecoveredJobError(null)
     setIsExporting(true)
     isExportActiveRef.current = true
     setProgress(0)
@@ -256,9 +261,29 @@ export const useExportProcess = () => {
     } catch (e) {
       isExportActiveRef.current = false
       setIsExporting(false)
-      setResult({ success: false, error: `Resume cloud watch failed: ${e}` })
+      const errResult: ExportResult = { success: false, error: `Resume cloud watch failed: ${e}` }
+      setResult(errResult)
+      if (isRecoveredJobRef.current) {
+        setRecoveredJobError(errResult)
+      }
     }
   }, [])
+
+  // A job that was still running when the app closed continues on the server:
+  // auto-trigger resumeCloudWatch() silently.
+  useEffect(() => {
+    window.electronAPI
+      .getActiveCloudJob?.()
+      .then((job) => {
+        if (job) {
+          isRecoveredJobRef.current = true
+          setIsAutoResumed(true)
+          setCloudResumeOffer(job)
+          void resumeCloudWatch()
+        }
+      })
+      .catch(() => undefined)
+  }, [resumeCloudWatch])
 
   /** Drops the remembered job instead of watching it. */
   const dismissCloudResume = useCallback(async () => {
@@ -269,6 +294,9 @@ export const useExportProcess = () => {
   // Clear completed export result explicitly
   const clearResult = useCallback(() => {
     setResult(null)
+    setRecoveredJobError(null)
+    isRecoveredJobRef.current = false
+    setIsAutoResumed(false)
   }, [])
 
   // Handler to close the modal and reset its state
@@ -287,6 +315,9 @@ export const useExportProcess = () => {
     cloudProgress,
     result,
     cloudResumeOffer,
+    isAutoResumed,
+    recoveredJobError,
+    isRecoveredJob: isRecoveredJobRef.current,
     openExportModal: () => setModalOpen(true),
     closeExportModal: handleCloseModal,
     startExport: handleStartExport,

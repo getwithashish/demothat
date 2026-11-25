@@ -621,5 +621,80 @@ describe('UnifiedExportPublishModal', () => {
       const progressbar = host.querySelector('[role="progressbar"]')
       expect(progressbar).not.toBeNull()
     })
+
+    it('renders full parity publishing progress with multi-step header, subtitle, throughput, transferred data, and countdown ETA', async () => {
+      const host = await render(
+        <UnifiedExportPublishModal
+          {...defaultProps()}
+          initialTab="publish"
+          isPublishing={true}
+          publishProgress={{
+            stage: 'Uploading to cloud (45%)…',
+            stagePercent: 45,
+            detail: 'Transmitting high-speed video data in parallel…',
+            currentStep: 2,
+            totalSteps: 3,
+            bytesSent: 45_200_000,
+            totalBytes: 118_000_000,
+            throughputBps: 14_200_000,
+            etaSeconds: 15,
+          }}
+        />,
+      )
+
+      // Multi-step header
+      expect(host.textContent).toContain('Step 2 of 3 · Uploading to cloud (45%)…')
+
+      // Animated dynamic subtitle
+      const subtitle = host.querySelector('[data-testid="publish-subtitle"]')
+      expect(subtitle).not.toBeNull()
+      expect(subtitle?.textContent).toBe('Transmitting high-speed video data in parallel…')
+
+      // Progress bar and percentage
+      const progressbar = host.querySelector('[role="progressbar"]')
+      expect(progressbar).not.toBeNull()
+      expect(host.textContent).toContain('45%')
+
+      // Throughput
+      const throughput = host.querySelector('[data-testid="publish-throughput"]')
+      expect(throughput).not.toBeNull()
+      expect(throughput?.textContent).toContain('Throughput:')
+      expect(throughput?.textContent).toContain('14.2 MB/s')
+
+      // Transferred data
+      const transferred = host.querySelector('[data-testid="publish-transferred"]')
+      expect(transferred).not.toBeNull()
+      expect(transferred?.textContent).toContain('45.2 MB / 118.0 MB')
+
+      // Countdown ETA
+      const eta = host.querySelector('[data-testid="publish-eta"]')
+      expect(eta).not.toBeNull()
+      expect(eta?.textContent).toContain('~15s remaining')
+    })
+
+    it('renders fps throughput when publishing progress is in rendering/upscaling phase', async () => {
+      const host = await render(
+        <UnifiedExportPublishModal
+          {...defaultProps()}
+          initialTab="publish"
+          isPublishing={true}
+          publishProgress={{
+            stage: 'Rendering video frames…',
+            stagePercent: 20,
+            detail: 'Compositing clips, camera motion, and visual layout…',
+            currentStep: 1,
+            totalSteps: 4,
+            fps: 30,
+            etaSeconds: 40,
+          }}
+        />,
+      )
+
+      expect(host.textContent).toContain('Step 1 of 4 · Rendering video frames…')
+      const throughput = host.querySelector('[data-testid="publish-throughput"]')
+      expect(throughput).not.toBeNull()
+      expect(throughput?.textContent).toContain('Throughput:')
+      expect(throughput?.textContent).toContain('~30 fps')
+    })
   })
 })

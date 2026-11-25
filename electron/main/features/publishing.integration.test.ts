@@ -227,6 +227,36 @@ describe('publish (mock API)', () => {
     expect(result.publication.hasCaptions).toBe(false)
     expect(result.publication.links.captionsDownloadUrl).toBeUndefined()
   }, 60_000)
+
+  it('emits detailed upload progress metrics during upload', async () => {
+    await setupServer()
+    const filePath = await writeFile('metrics.mp4', 6_000_000)
+
+    const progressUpdates: import('./publishing').PublishProgress[] = []
+    const result = await publish({
+      filePath,
+      kind: 'links',
+      storageDays: 30,
+      cancel: { cancelled: false },
+      onProgress: (p) => {
+        progressUpdates.push({ ...p })
+      },
+    })
+
+    expect(result.ok).toBe(true)
+    const uploadUpdates = progressUpdates.filter((p) => p.stage === 'Uploading')
+    expect(uploadUpdates.length).toBeGreaterThanOrEqual(2)
+    const firstUpload = uploadUpdates[0]
+    expect(firstUpload.bytesSent).toBe(0)
+    expect(firstUpload.totalBytes).toBe(6_000_000)
+    expect(firstUpload.etaSeconds).toBeNull()
+
+    const lastUpload = uploadUpdates[uploadUpdates.length - 1]
+    expect(lastUpload.bytesSent).toBe(6_000_000)
+    expect(lastUpload.totalBytes).toBe(6_000_000)
+    expect(lastUpload.stagePercent).toBe(100)
+    expect(lastUpload.etaSeconds).toBe(0)
+  }, 60_000)
 })
 
 describe('captionsForPublication', () => {

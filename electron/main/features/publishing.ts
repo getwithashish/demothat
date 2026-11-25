@@ -188,6 +188,10 @@ export interface PublishProgress {
   stagePercent: number
   /** The server's quote from the declared size, once it has been created. */
   estimatedCost?: number
+  bytesSent?: number
+  totalBytes?: number
+  throughputBps?: number
+  etaSeconds?: number | null
 }
 
 export interface PublishRequest {
@@ -274,13 +278,64 @@ export async function publish(request: PublishRequest): Promise<PublishResult> {
     onProgress({ stage: 'Preparing', stagePercent: 100, estimatedCost: created.estimatedCost })
 
     // --- Upload ---------------------------------------------------------------
-    onProgress({ stage: 'Uploading', stagePercent: 0, estimatedCost: created.estimatedCost })
+    onProgress({
+      stage: 'Uploading',
+      stagePercent: 0,
+      estimatedCost: created.estimatedCost,
+      bytesSent: 0,
+      totalBytes: size,
+      throughputBps: undefined,
+      etaSeconds: null,
+    })
+
+    const uploadStartTime = Date.now()
+    let lastTime = uploadStartTime
+    let lastSent = 0
+    let smoothedBps: number | undefined
+
     const uploaded = await uploadIntermediate(created.upload as CloudUploadPlan, filePath, {
       cancel,
-      onProgress: (percent) =>
-        onProgress({ stage: 'Uploading', stagePercent: percent, estimatedCost: created.estimatedCost }),
+      onProgress: (percent, sentBytes, totalBytes) => {
+        const now = Date.now()
+        const dt = (now - lastTime) / 1000
+        const currentSent = sentBytes ?? Math.round((percent / 100) * (totalBytes ?? size))
+        const effectiveTotal = totalBytes ?? size
+        const dBytes = currentSent - lastSent
+        const totalElapsed = (now - uploadStartTime) / 1000
+
+        if (dt >= 0.1 && dBytes >= 0) {
+          const instantBps = dBytes / dt
+          smoothedBps = smoothedBps === undefined ? instantBps : 0.7 * smoothedBps + 0.3 * instantBps
+          lastTime = now
+          lastSent = currentSent
+        } else if (smoothedBps === undefined && totalElapsed > 0 && currentSent > 0) {
+          smoothedBps = currentSent / totalElapsed
+        }
+
+        const remaining = Math.max(0, effectiveTotal - currentSent)
+        const etaSeconds =
+          percent >= 100 ? 0 : smoothedBps && smoothedBps > 0 ? Math.max(0, Math.round(remaining / smoothedBps)) : null
+
+        onProgress({
+          stage: 'Uploading',
+          stagePercent: percent,
+          estimatedCost: created.estimatedCost,
+          bytesSent: currentSent,
+          totalBytes: effectiveTotal,
+          throughputBps: smoothedBps !== undefined ? Math.round(smoothedBps) : undefined,
+          etaSeconds,
+        })
+      },
     })
-    onProgress({ stage: 'Uploading', stagePercent: 100, estimatedCost: created.estimatedCost })
+    onProgress({
+      stage: 'Uploading',
+      stagePercent: 100,
+      estimatedCost: created.estimatedCost,
+      bytesSent: size,
+      totalBytes: size,
+      throughputBps: smoothedBps !== undefined ? Math.round(smoothedBps) : undefined,
+      etaSeconds: 0,
+    })
 
     // --- Activate -------------------------------------------------------------
     // The charge happens in here. Saying "Activating" rather than "Finishing" matters:

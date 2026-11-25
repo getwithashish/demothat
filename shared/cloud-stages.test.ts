@@ -14,6 +14,7 @@ describe('stageStep', () => {
     expect(CLOUD_WORK_STAGES).toHaveLength(6)
     expect(stageStep('Rendering locally')).toEqual({ index: 1, total: 6 })
     expect(stageStep('Validating')).toEqual({ index: 3, total: 6 })
+    expect(stageStep('Waiting for compute')).toEqual({ index: 4, total: 6 })
     expect(stageStep('Downloading')).toEqual({ index: 6, total: 6 })
   })
 
@@ -75,7 +76,7 @@ describe('stageFromJobStatus', () => {
     expect(stageFromJobStatus('uploading')).toBe('Uploading')
     expect(stageFromJobStatus('uploaded')).toBe('Uploading')
     expect(stageFromJobStatus('validating')).toBe('Validating')
-    expect(stageFromJobStatus('queued')).toBe('Waiting for GPU')
+    expect(stageFromJobStatus('queued')).toBe('Waiting for compute')
     expect(stageFromJobStatus('running')).toBe('Upscaling')
   })
 

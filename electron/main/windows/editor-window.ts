@@ -13,6 +13,7 @@ import { checkForUpdates } from '../features/update-checker'
 import { VITE_DEV_SERVER_URL, RENDERER_DIST, PRELOAD_SCRIPT } from '../lib/constants'
 import { createEditorMenu, clearMenu } from '../features/app-menu'
 import { confirmReplaceSession, isQuitApproved } from '../features/session-guard'
+import { getWindowControlsConfig } from '../features/window-controls'
 import { RecordingGeometry } from '../state'
 
 const store = new Store() // Can be configured with schema if needed
@@ -30,23 +31,6 @@ function setupEditorWindow(): BrowserWindow {
     height: number
   }
 
-  const isWindows = process.platform === 'win32'
-  let titleBarOptions = {}
-
-  if (isWindows) {
-    const appearance = store.get('appearance') as { mode?: 'light' | 'dark' } | undefined
-    const isDarkMode = appearance?.mode === 'dark'
-
-    titleBarOptions = {
-      titleBarStyle: 'hidden',
-      titleBarOverlay: {
-        color: isDarkMode ? '#17181b' : '#f6f5f2', // Paper tokens: --sa-panel (dark/light)
-        symbolColor: isDarkMode ? '#ebecee' : '#1d1d1b', // Paper tokens: --sa-text (dark/light)
-        height: 48, // h-12 in Tailwind
-      },
-    }
-  }
-
   log.info('[EditorWindow] Creating editor BrowserWindow with configured bounds:', bounds)
 
   const win = new BrowserWindow({
@@ -56,8 +40,7 @@ function setupEditorWindow(): BrowserWindow {
     minWidth: 1280,
     minHeight: 720,
     frame: false,
-    titleBarStyle: 'hidden', // Keep hidden for all platforms
-    ...titleBarOptions, // Apply Windows-specific overlay
+    titleBarStyle: 'hidden', // Custom adaptive titlebar controls render across all platforms
     show: false,
     webPreferences: {
       preload: PRELOAD_SCRIPT,
@@ -65,8 +48,21 @@ function setupEditorWindow(): BrowserWindow {
       backgroundThrottling: false,
     },
   })
+  // On macOS, hide the native traffic lights so the renderer's adaptive WindowControls
+  // handle close/minimize/maximize without duplicate buttons.
+  if (process.platform === 'darwin' && typeof win.setWindowButtonVisibility === 'function') {
+    win.setWindowButtonVisibility(false)
+  }
   appState.editorWin = win
   log.info(`[EditorWindow] BrowserWindow instance created (ID: ${win.id})`)
+
+  const pushWindowControlsConfig = () => {
+    void getWindowControlsConfig().then((config) => {
+      if (!win.isDestroyed() && win.webContents) {
+        win.webContents.send('window:controls-changed', config)
+      }
+    })
+  }
 
   // Set the application menu for the editor window
   createEditorMenu()
@@ -80,6 +76,7 @@ function setupEditorWindow(): BrowserWindow {
   })
   win.on('focus', () => {
     log.debug('[EditorWindow] Window event: focus')
+    pushWindowControlsConfig()
   })
   win.on('blur', () => {
     log.debug('[EditorWindow] Window event: blur')
@@ -111,6 +108,7 @@ function setupEditorWindow(): BrowserWindow {
   })
   win.webContents.on('did-finish-load', () => {
     log.info(`[EditorWindow] webContents: did-finish-load (URL: ${win.webContents.getURL()})`)
+    pushWindowControlsConfig()
   })
   win.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
     log.error(

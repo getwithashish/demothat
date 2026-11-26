@@ -87,6 +87,8 @@ export function registerIpcHandlers() {
   ipcMain.on('window:maximize', appHandlers.maximizeWindow)
   ipcMain.on('window:close', appHandlers.closeWindow)
   ipcMain.handle('window:isMaximized', appHandlers.handleIsMaximized)
+  ipcMain.handle('window:get-controls-config', appHandlers.handleGetWindowControlsConfig)
+  ipcMain.on('window:set-theme', appHandlers.handleSetWindowTheme)
   ipcMain.on('window:update-title-bar-overlay', appHandlers.updateTitleBarOverlay)
   ipcMain.on('app:show-recorder', appHandlers.showRecorderWindow)
 

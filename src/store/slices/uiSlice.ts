@@ -1,5 +1,6 @@
 import type { UIState, UIActions, Slice, CursorStyles, SidePanelTab } from '../../types'
 import type { CursorIconStyle } from '../../lib/cursor-icons'
+import type { WindowControlsConfig } from '../../../shared/window-controls'
 import { DEFAULTS } from '../../lib/constants'
 import {
   addRecentProject,
@@ -55,27 +56,31 @@ export const initialUIState: UIState = {
   autoSaveIntervalSec: DEFAULT_AUTO_SAVE_INTERVAL_SEC,
   recentProjects: [],
   toasts: [],
+  windowControls: null,
 }
 
-const updateWindowsTitleBar = (mode: 'light' | 'dark', platform: NodeJS.Platform | null) => {
-  if (platform !== 'win32') return
-
-  const options =
-    mode === 'dark'
-      ? { color: '#17181b', symbolColor: '#ebecee' } // Paper tokens: --sa-panel / --sa-text (dark)
-      : { color: '#f6f5f2', symbolColor: '#1d1d1b' } // Paper tokens: --sa-panel / --sa-text (light)
-  window.electronAPI.updateTitleBarOverlay(options)
+const syncWindowTheme = (mode: 'light' | 'dark') => {
+  if (typeof window === 'undefined') return
+  window.electronAPI?.setWindowTheme?.(mode)
 }
 
 export const createUISlice: Slice<UIState, UIActions> = (set, get) => ({
   ...initialUIState,
+  setWindowControls: (config: WindowControlsConfig) => {
+    set((state) => {
+      state.windowControls = config
+    })
+  },
   toggleMode: () => {
     const newMode = get().mode === 'dark' ? 'light' : 'dark'
     set((state) => {
       state.mode = newMode
+      if (state.windowControls) {
+        state.windowControls = { ...state.windowControls, appearance: newMode }
+      }
     })
-    window.electronAPI.setSetting('appearance.mode', newMode)
-    updateWindowsTitleBar(newMode, get().platform)
+    window.electronAPI?.setSetting?.('appearance.mode', newMode)
+    syncWindowTheme(newMode)
   },
   initializeSettings: async () => {
     try {
@@ -104,10 +109,11 @@ export const createUISlice: Slice<UIState, UIActions> = (set, get) => ({
           state.cursorStyles = { ...initialCursorStyles, ...appearance.cursorStyles }
         })
       }
-      const [autoSaveEnabled, autoSaveIntervalSec, autoApproveAI] = await Promise.all([
+      const [autoSaveEnabled, autoSaveIntervalSec, autoApproveAI, controlsConfig] = await Promise.all([
         window.electronAPI.getSetting<boolean>(AUTO_SAVE_ENABLED_KEY),
         window.electronAPI.getSetting<number>(AUTO_SAVE_INTERVAL_KEY),
         window.electronAPI.getSetting<boolean>('ai.autoApprove'),
+        window.electronAPI.getWindowControlsConfig?.() ?? Promise.resolve(null),
       ])
       set((state) => {
         state.autoSaveEnabled = autoSaveEnabled ?? initialUIState.autoSaveEnabled
@@ -118,8 +124,11 @@ export const createUISlice: Slice<UIState, UIActions> = (set, get) => ({
         if (typeof autoApproveAI === 'boolean') {
           state.autoApproveAI = autoApproveAI
         }
+        if (controlsConfig) {
+          state.windowControls = { ...controlsConfig, appearance: finalMode }
+        }
       })
-      updateWindowsTitleBar(finalMode, get().platform)
+      syncWindowTheme(finalMode)
     } catch (error) {
       console.error('Could not load app settings:', error)
     }

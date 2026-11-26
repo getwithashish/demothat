@@ -179,7 +179,7 @@ export function ProjectMenu({
         <button
           type="button"
           aria-label="Project menu"
-          className="group pointer-events-auto flex max-w-[220px] items-center gap-1 rounded-ctl px-2 py-1 text-ui text-fg outline-none select-none transition-[background-color,transform] duration-120 active:scale-[0.97] hover:bg-ctl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent data-[state=open]:bg-ctl-hover"
+          className="group pointer-events-auto flex min-w-0 max-w-[220px] items-center gap-1 rounded-ctl px-2 py-1 text-ui text-fg outline-none select-none transition-[background-color,transform] duration-120 active:scale-[0.97] hover:bg-ctl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent data-[state=open]:bg-ctl-hover"
           style={{ WebkitAppRegion: 'no-drag' }}
         >
           <span className="truncate">{name}</span>

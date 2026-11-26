@@ -10,6 +10,7 @@ import type {
 } from '../shared/license'
 import type { Product } from '../shared/pricing'
 import type { SessionSummary } from '../shared/session'
+import type { WindowControlsAppearance, WindowControlsConfig } from '../shared/window-controls'
 import type { components } from '../shared/api-types'
 import type { AIChatRequest, ChatChunk, AIApprovalDecision } from '../shared/ai-types'
 import type {
@@ -759,11 +760,20 @@ export const electronAPI = {
       ipcRenderer.removeListener('window:state-changed', listener)
     }
   },
-  // --- START OF CHANGES ---
+  getWindowControlsConfig: (): Promise<WindowControlsConfig> => ipcRenderer.invoke('window:get-controls-config'),
+  onWindowControlsChange: (callback: (config: WindowControlsConfig) => void) => {
+    const listener = (_event: IpcRendererEvent, config: WindowControlsConfig) => callback(config)
+    ipcRenderer.on('window:controls-changed', listener)
+    return () => {
+      ipcRenderer.removeListener('window:controls-changed', listener)
+    }
+  },
+  setWindowTheme: (mode: WindowControlsAppearance) => {
+    ipcRenderer.send('window:set-theme', mode)
+  },
   updateTitleBarOverlay: (options: { color: string; symbolColor: string }) => {
     ipcRenderer.send('window:update-title-bar-overlay', options)
   },
-  // --- END OF CHANGES ---
   getVersion: (): Promise<string> => ipcRenderer.invoke('app:getVersion'),
   getPlatform: (): Promise<NodeJS.Platform> => ipcRenderer.invoke('app:getPlatform'),
   /**

@@ -1,8 +1,10 @@
 import { app, BrowserWindow, IpcMainEvent, IpcMainInvokeEvent } from 'electron'
 import type { SessionSummary } from '../../../../shared/session'
+import type { WindowControlsAppearance, WindowControlsConfig } from '../../../../shared/window-controls'
 import { usesRendererScreenCapture } from '../../lib/capture-backend'
 import { isCursorHelperAvailable } from '../../features/cursor-helper'
 import { isEmbeddedOnlyDesktop } from '../../features/cursor-helper-preference'
+import { getWindowControlsConfig, syncWindowControlsTheme } from '../../features/window-controls'
 import { detectSession } from '../../../../shared/session'
 import { appState } from '../../state'
 import { createRecorderWindow } from '../../windows/recorder-window'
@@ -69,13 +71,18 @@ export function handleIsMaximized(event: IpcMainInvokeEvent): boolean {
   return window?.isMaximized() ?? false
 }
 
-export function updateTitleBarOverlay(_event: IpcMainEvent, options: { color: string; symbolColor: string }) {
-  if (process.platform !== 'win32') return
+export function handleGetWindowControlsConfig(): Promise<WindowControlsConfig> {
+  return getWindowControlsConfig()
+}
 
-  const editorWindow = appState.editorWin
-  if (editorWindow && !editorWindow.isDestroyed()) {
-    editorWindow.setTitleBarOverlay(options)
-  }
+export function handleSetWindowTheme(event: IpcMainEvent, mode: WindowControlsAppearance) {
+  if (mode !== 'light' && mode !== 'dark') return
+  const win = BrowserWindow.fromWebContents(event.sender)
+  void syncWindowControlsTheme(mode, win)
+}
+
+export function updateTitleBarOverlay(_event: IpcMainEvent, _options: { color: string; symbolColor: string }) {
+  // Adaptive renderer WindowControls handle titlebar rendering across all platforms.
 }
 
 /**

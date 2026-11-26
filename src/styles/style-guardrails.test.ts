@@ -21,7 +21,6 @@ const DATA_COLOUR_MODULES = new Set([
   'lib/utils.ts', // hex/rgba parsing helpers
   'store/slices/frameSlice.ts', // user-editable frame/mask/border defaults
   'store/slices/webcamSlice.ts', // user-editable webcam shadow default
-  'store/slices/uiSlice.ts', // Windows native titlebar (Electron takes literals; mirrors --sa-panel/--sa-text)
   'components/editor/PresetPreview.tsx', // preset thumbnail mock of user content
   'components/editor/sidepanel/BackgroundSettings.tsx', // wallpaper + gradient preset palette
   'components/editor/sidepanel/VisualEffectsSettings.tsx', // fallback colour for a user-editable effect

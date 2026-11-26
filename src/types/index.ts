@@ -4,6 +4,7 @@ import type { TranscriptDocument } from '../../shared/transcript'
 import type { SubtitleCue, SubtitleFormat } from '../../shared/subtitles'
 import type { AudioTrack } from '../../shared/audio-tracks'
 import type { VirtualStudioStatus, TrayQuickAction } from '../../shared/virtual-camera-types'
+import type { WindowControlsConfig } from '../../shared/window-controls'
 
 export type BackgroundType = 'color' | 'gradient' | 'image' | 'wallpaper'
 export type AspectRatio = '16:9' | '9:16' | '4:3' | '3:4' | '1:1'
@@ -580,10 +581,13 @@ export interface UIState {
   recentProjects: RecentProject[]
   /** Corner messages, oldest first. */
   toasts: Toast[]
+  /** Platform & desktop-environment resolved window controls configuration. */
+  windowControls: WindowControlsConfig | null
 }
 export interface UIActions {
   toggleMode: () => void
   initializeSettings: () => Promise<void>
+  setWindowControls: (config: WindowControlsConfig) => void
   togglePreviewFullScreen: () => void
   setCursorThemeName: (themeName: string) => void
   updateCursorStyle: (style: Partial<CursorStyles>) => void

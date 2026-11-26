@@ -7,7 +7,8 @@ import { PreviewControls } from '../components/editor/PreviewControls'
 import { UpdateNotification } from '../components/editor/UpdateNotification'
 import { ExportButton } from '../components/editor/ExportButton'
 import { UnifiedExportPublishModal } from '../components/editor/export-publish/UnifiedExportPublishModal'
-import { WindowControls } from '../components/editor/WindowControls'
+import { EditorTitlebar } from '../components/editor/EditorTitlebar'
+import { resolveWindowControlsConfig } from '../../shared/window-controls'
 import { SaveStatusIndicator } from '../components/editor/SaveStatusIndicator'
 import { ProjectMenu } from '../components/editor/ProjectMenu'
 import { ToastViewport } from '../components/ui/toast'
@@ -73,6 +74,8 @@ export function EditorPage() {
     buyCreditsOpen,
     buyCreditsShortfall,
     waitingForPayment,
+    mode,
+    windowControls,
   } = useEditorStore(
     useShallow((state) => ({
       presetSaveStatus: state.presetSaveStatus,
@@ -83,6 +86,8 @@ export function EditorPage() {
       buyCreditsOpen: state.buyCreditsOpen,
       buyCreditsShortfall: state.buyCreditsShortfall,
       waitingForPayment: state.waitingForPayment,
+      mode: state.mode,
+      windowControls: state.windowControls,
     })),
   )
   // Top-bar meta (DESIGN_SPEC §5 shows "project | timecode · resolution"). Display only.
@@ -409,9 +414,12 @@ export function EditorPage() {
   }, [])
 
   useEffect(() => {
-    window.electronAPI.getPlatform().then(setPlatform)
+    window.electronAPI?.getPlatform?.().then(setPlatform)
     initializeSettings()
     void initializeRecentProjects()
+    const cleanupControls = window.electronAPI?.onWindowControlsChange?.((config) => {
+      useEditorStore.getState().setWindowControls(config)
+    })
     const cleanup = window.electronAPI.onProjectOpen(async (payload) => {
       await initializePresets()
       await loadProject(payload)
@@ -490,6 +498,7 @@ export function EditorPage() {
       }
     })
     return () => {
+      cleanupControls?.()
       cleanup()
       cleanupClip()
       cleanupRipple()
@@ -565,32 +574,33 @@ export function EditorPage() {
     await useEditorStore.getState().startPurchase(productId)
   }, [])
 
+  const effectiveControls = windowControls
+    ? { ...windowControls, appearance: mode }
+    : resolveWindowControlsConfig({
+        platform: platform ?? 'linux',
+        appearance: mode,
+      })
+
   const renderHeaderActions = () => {
-    const isWindows = platform === 'win32'
     const actions = [
-      <Button
-        key="ask-ed"
-        id="ed-command-trigger-btn"
-        variant="secondary"
-        size="sm"
-        onClick={() => setIsCommandBarOpen(true)}
-        className="h-8 gap-1.5 border-line bg-ctl text-fg hover:bg-ctl-hover shadow-sm"
-        title="Command Ed (Cmd+K)"
-      >
-        <img src="./demothat-mascot-ed-neutral.svg" alt="Ed" className="h-4 w-4 object-contain" />
-        <span>Ed</span>
-        <kbd className="hidden sm:inline-block rounded bg-panel px-1 py-0.5 font-mono text-[11px] text-muted">
-          {platform === 'darwin' ? '⌘K' : 'Ctrl+K'}
-        </kbd>
-      </Button>,
-      <VirtualStudioHeaderPill key="virtual-studio" />,
-      <ExportButton
-        key="export"
-        isExporting={isExporting}
-        isPublishing={isPublishing}
-        onClick={handleOpenExport}
-        disabled={duration <= 0 && !isOperationRunning}
+      <CreditCapsule
+        key="credits"
+        onBuyCredits={() => useEditorStore.getState().openBuyCredits()}
+        onGetPro={() => void startFirstPurchase()}
+        onEnterKey={() => setActivateOpen(true)}
       />,
+      updateInfo && <UpdateNotification key="update" info={updateInfo} />,
+      <Button
+        key="settings"
+        id="settings-trigger-btn"
+        variant="ghost"
+        size="icon"
+        onClick={() => setSettingsModalOpen(true)}
+        aria-label="Open Settings"
+        className={cn('h-8 w-8 rounded-ctl text-muted hover:bg-ctl hover:text-fg')}
+      >
+        <Settings size={ICON_SIZE} strokeWidth={ICON_STROKE} />
+      </Button>,
       <Button
         key="presets"
         id="presets-trigger-btn"
@@ -606,34 +616,32 @@ export function EditorPage() {
       >
         {getPresetButtonContent()}
       </Button>,
-      <Button
-        key="settings"
-        id="settings-trigger-btn"
-        variant="ghost"
-        size="icon"
-        onClick={() => setSettingsModalOpen(true)}
-        aria-label="Open Settings"
-        className={cn('h-8 w-8 rounded-ctl text-muted hover:bg-ctl hover:text-fg')}
-      >
-        <Settings size={ICON_SIZE} strokeWidth={ICON_STROKE} />
-      </Button>,
-      updateInfo && <UpdateNotification key="update" info={updateInfo} />,
-      // Appended last so the flex-row-reverse cluster shows it left-most, i.e.
-      // [capsule] [Presets] [Export] in the design reference §1.
-      <CreditCapsule
-        key="credits"
-        onBuyCredits={() => useEditorStore.getState().openBuyCredits()}
-        onGetPro={() => void startFirstPurchase()}
-        onEnterKey={() => setActivateOpen(true)}
+      <ExportButton
+        key="export"
+        isExporting={isExporting}
+        isPublishing={isPublishing}
+        onClick={handleOpenExport}
+        disabled={duration <= 0 && !isOperationRunning}
       />,
+      <VirtualStudioHeaderPill key="virtual-studio" />,
+      <Button
+        key="ask-ed"
+        id="ed-command-trigger-btn"
+        variant="secondary"
+        size="sm"
+        onClick={() => setIsCommandBarOpen(true)}
+        className="h-8 gap-1.5 border-line bg-ctl text-fg hover:bg-ctl-hover shadow-sm"
+        title={platform === 'darwin' ? 'Command Ed (⌘K)' : 'Command Ed (Ctrl+K)'}
+      >
+        <img src="./demothat-mascot-ed-neutral.svg" alt="Ed" className="h-4 w-4 object-contain" />
+        <span>Ed</span>
+        <kbd className="hidden sm:inline-block rounded bg-panel px-1 py-0.5 font-mono text-[11px] text-muted">
+          {platform === 'darwin' ? '⌘K' : 'Ctrl+K'}
+        </kbd>
+      </Button>,
     ].filter(Boolean)
 
-    if (isWindows) {
-      // For Windows, reverse the order
-      return actions
-    }
-    // For macOS/Linux, keep original order but reverse for flex-row-reverse
-    return actions.reverse()
+    return actions
   }
 
   return (
@@ -644,29 +652,11 @@ export function EditorPage() {
           and use CSS classes to hide/show elements and expand the preview for fullscreen.
           This prevents components like SidePanel from unmounting, preserving their internal state.
         */}
-        <header
-          className={cn(
-            'relative flex h-11 flex-shrink-0 items-center justify-between gap-3 border-b border-line bg-panel px-3',
-            isPreviewFullScreen && 'hidden', // Hide header in fullscreen
-          )}
-          style={{ WebkitAppRegion: 'drag' }}
-        >
-          {/* Left: window controls (Linux) / actions (Windows), then the app wordmark */}
-          <div className="flex min-w-0 items-center gap-3">
-            {platform === 'linux' && (
-              <div className="flex h-full items-center">
-                <WindowControls />
-              </div>
-            )}
-            {platform === 'win32' && (
-              <div
-                className="flex flex-row-reverse items-center gap-2" // Use flex-row-reverse to get desired order
-                style={{ WebkitAppRegion: 'no-drag' }}
-              >
-                {renderHeaderActions()}
-              </div>
-            )}
-            <div className="pointer-events-none flex min-w-0 items-center gap-2 pl-1">
+        <EditorTitlebar
+          controlsConfig={effectiveControls}
+          isHidden={isPreviewFullScreen}
+          projectCluster={
+            <>
               <ProjectMenu
                 onOpenProject={() => void openProject()}
                 onOpenRecent={(path) => void openProject(path)}
@@ -681,19 +671,10 @@ export function EditorPage() {
               />
               {metaLabel && <span className="truncate font-mono text-sm text-muted">{metaLabel}</span>}
               <SaveStatusIndicator />
-            </div>
-          </div>
-
-          {/* Right side controls (for non-Windows) */}
-          {platform !== 'win32' && (
-            <div
-              className="flex items-center gap-2" // Use flex-row-reverse to get desired order
-              style={{ WebkitAppRegion: 'no-drag' }}
-            >
-              {renderHeaderActions()}
-            </div>
-          )}
-        </header>
+            </>
+          }
+          actions={renderHeaderActions()}
+        />
 
         <div className={cn('flex flex-1 overflow-hidden', isPreviewFullScreen && 'h-full w-full')}>
           <div

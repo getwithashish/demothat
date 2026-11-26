@@ -18,7 +18,14 @@ export const ipcMain = {
   once: () => {},
 }
 
-export const BrowserWindow = class {}
+export const BrowserWindow = Object.assign(class {}, {
+  getAllWindows: () => [],
+  fromWebContents: () => null,
+})
+export const nativeTheme = {
+  shouldUseDarkColors: false,
+  themeSource: 'system',
+}
 export const Tray = class {}
 export const Menu = { buildFromTemplate: () => ({}), setApplicationMenu: () => {} }
 export const dialog = {

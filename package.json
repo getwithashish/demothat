@@ -61,6 +61,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
+    "electron-updater": "^6.3.4",
     "electron-audio-loopback": "^1.0.6",
     "electron-log": "^5.4.3",
     "electron-store": "^10.1.0",
@@ -121,6 +122,12 @@
   },
   "main": "dist-electron/index.cjs",
   "build": {
+    "publish": {
+      "provider": "github",
+      "owner": "getwithashish",
+      "repo": "DemoThat",
+      "releaseType": "release"
+    },
     "appId": "com.demothat.app",
     "productName": "DemoThat",
     "fileAssociations": [

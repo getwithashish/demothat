@@ -178,5 +178,5 @@ jobs:
           tag: ${{ needs.release.outputs.new_release_tag }}
           overwrite: true
           file_glob: true
-          file: dist/*.{AppImage,deb,rpm,zip,dmg,exe}
+          file: dist/*.{AppImage,deb,rpm,zip,dmg,exe,yml}
           make_latest: true

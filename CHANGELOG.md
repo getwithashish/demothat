@@ -1,3 +1,9 @@
+## [1.21.0-beta.36](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.35...v1.21.0-beta.36) (2026-11-26)
+
+### Features
+
+* **ui:** add adaptive platform and DE titlebar window controls ([f9cc5e4](https://github.com/getwithashish/DemoThat/commit/f9cc5e4782cce7b5457726d4a993cae5138cd0ea))
+
 ## [1.21.0-beta.35](https://github.com/getwithashish/DemoThat/compare/v1.21.0-beta.34...v1.21.0-beta.35) (2026-11-25)
 
 ### Features

@@ -1,4 +1,5 @@
 import { app, ipcMain } from 'electron'
+import { quitAndInstall } from '../features/update-checker'
 import log from 'electron-log/main'
 import * as appHandlers from './handlers/app'
 import * as checkoutHandlers from './handlers/checkout'
@@ -185,6 +186,12 @@ export function registerIpcHandlers() {
 
   // Virtual Camera & Microphone Studio
   virtualStudioHandlers.registerVirtualStudioHandlers()
+
+  // Auto-updater: renderer asks main to quit and install the downloaded update.
+  ipcMain.on('update:install', () => {
+    log.info('[IPC] update:install received — triggering quitAndInstall.')
+    quitAndInstall()
+  })
 
   log.info('[IPC] All IPC channels and handlers successfully registered.')
 }

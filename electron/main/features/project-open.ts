@@ -9,7 +9,6 @@ import { appState } from '../state'
 import { PROJECT_FILE_FILTERS, openProject, type OpenedProject } from './project-file'
 import { readProjectManifest } from '../lib/project-file-core'
 import { createEditorWindowForProject } from '../windows/editor-window'
-import { checkForUpdates } from './update-checker'
 import { confirmReplaceSession } from './session-guard'
 
 let appReady = false
@@ -106,6 +105,5 @@ function deliverProject(opened: OpenedProject): void {
   const win = createEditorWindowForProject()
   win.webContents.once('did-finish-load', () => {
     win.webContents.send('project:apply', opened)
-    checkForUpdates(win)
   })
 }

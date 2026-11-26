@@ -13,6 +13,7 @@ import { createRecorderWindow } from './windows/recorder-window'
 import { onAppQuit, startRecording, loadVideoFromFile } from './features/recording-manager'
 import { registerRecordingShortcuts, unregisterRecordingShortcuts } from './features/shortcuts'
 import { findProjectArg, markAppReadyForProjects, promptOpenProject, requestOpenProject } from './features/project-open'
+import { initAutoUpdater } from './features/update-checker'
 import { initializeMouseTrackerDependencies } from './features/mouse-tracker'
 import { confirmReplaceSession, isQuitApproved, markQuitApproved } from './features/session-guard'
 import { virtualStudioManager } from './features/virtual-studio/virtual-studio-manager'
@@ -422,6 +423,11 @@ app.whenReady().then(async () => {
   registerIpcHandlers()
   registerRecordingShortcuts()
   createRecorderWindow()
+
+  // Initialize the auto-updater now that the app is ready and the window
+  // exists. The getter is lazy so it always reads from appState, which is
+  // safe even if the editor window opens later.
+  initAutoUpdater(() => appState.editorWin ?? appState.recorderWin ?? null)
 
   // Flush any project queued before ready (open-file / argv) and open a `.dthat`
   // passed on this launch.

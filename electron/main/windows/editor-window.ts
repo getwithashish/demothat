@@ -9,7 +9,6 @@ import Store from 'electron-store'
 import { format as formatUrl } from 'node:url'
 import { appState } from '../state'
 import { cleanupOrphanedRecordings } from '../features/recording-manager'
-import { checkForUpdates } from '../features/update-checker'
 import { VITE_DEV_SERVER_URL, RENDERER_DIST, PRELOAD_SCRIPT } from '../lib/constants'
 import { createEditorMenu, clearMenu } from '../features/app-menu'
 import { confirmReplaceSession, isQuitApproved } from '../features/session-guard'
@@ -217,7 +216,6 @@ export function createEditorWindow(
   win.webContents.on('did-finish-load', () => {
     log.info(`[EditorWindow] Finished loading. Sending project data.`)
     win.webContents.send('project:open', { videoPath, metadataPath, webcamVideoPath })
-    checkForUpdates(win)
   })
 
   return win

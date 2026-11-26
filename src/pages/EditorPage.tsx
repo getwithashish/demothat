@@ -4,7 +4,7 @@ import { Preview } from '../components/editor/Preview'
 import { SidePanel } from '../components/editor/SidePanel'
 import { Timeline } from '../components/editor/Timeline'
 import { PreviewControls } from '../components/editor/PreviewControls'
-import { UpdateNotification } from '../components/editor/UpdateNotification'
+import { UpdateNotification, type UpdateState } from '../components/editor/UpdateNotification'
 import { ExportButton } from '../components/editor/ExportButton'
 import { UnifiedExportPublishModal } from '../components/editor/export-publish/UnifiedExportPublishModal'
 import { EditorTitlebar } from '../components/editor/EditorTitlebar'
@@ -178,7 +178,7 @@ export function EditorPage() {
   const [isActivateOpen, setActivateOpen] = useState(false)
   const [isDevicesOpen, setDevicesOpen] = useState(false)
   const [isCommandBarOpen, setIsCommandBarOpen] = useState(false)
-  const [updateInfo, setUpdateInfo] = useState<{ version: string; url: string } | null>(null)
+  const [updateState, setUpdateState] = useState<UpdateState | null>(null)
   const [platform, setPlatform] = useState<NodeJS.Platform | null>(null)
 
   // Unified Export & Publish modal state
@@ -407,10 +407,28 @@ export function EditorPage() {
   }, [isPreviewFullScreen, togglePreviewFullScreen])
 
   useEffect(() => {
-    const cleanup = window.electronAPI.onUpdateAvailable((info: { version: string; url: string }) => {
-      setUpdateInfo(info)
+    // Fallback: deb/rpm/macOS — electron-updater not supported; renderer opens GitHub.
+    const cleanupAvailable = window.electronAPI.onUpdateAvailable((info) => {
+      setUpdateState({ phase: 'available', version: info.version, url: info.url })
     })
-    return () => cleanup()
+    // electron-updater: download in progress (AppImage / Windows).
+    const cleanupProgress = window.electronAPI.onUpdateProgress?.((info) => {
+      setUpdateState((prev) => ({
+        phase: 'downloading',
+        // Keep the version from the 'checking' event if we have it.
+        version: prev && 'version' in prev ? prev.version : '',
+        percent: info.percent,
+      }))
+    })
+    // electron-updater: download complete — ready to install.
+    const cleanupReady = window.electronAPI.onUpdateReady?.((info) => {
+      setUpdateState({ phase: 'ready', version: info.version })
+    })
+    return () => {
+      cleanupAvailable()
+      cleanupProgress?.()
+      cleanupReady?.()
+    }
   }, [])
 
   useEffect(() => {
@@ -589,7 +607,7 @@ export function EditorPage() {
         onGetPro={() => void startFirstPurchase()}
         onEnterKey={() => setActivateOpen(true)}
       />,
-      updateInfo && <UpdateNotification key="update" info={updateInfo} />,
+      updateState && <UpdateNotification key="update" state={updateState} onDismiss={() => setUpdateState(null)} />,
       <Button
         key="settings"
         id="settings-trigger-btn"

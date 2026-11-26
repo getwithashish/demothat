@@ -61,6 +61,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
+    "electron-updater": "^6.3.4",
     "electron-audio-loopback": "^1.0.6",
     "electron-log": "^5.4.3",
     "electron-store": "^10.1.0",
@@ -121,6 +122,12 @@
   },
   "main": "dist-electron/index.cjs",
   "build": {
+    "publish": {
+      "provider": "github",
+      "owner": "getwithashish",
+      "repo": "DemoThat",
+      "releaseType": "release"
+    },
     "appId": "com.demothat.app",
     "productName": "DemoThat",
     "fileAssociations": [
@@ -153,7 +160,7 @@
         "nsis"
       ],
       "icon": "build/icon.ico",
-      "artifactName": "${productName} Setup ${version}.${ext}"
+      "artifactName": "${productName}-Setup-${arch}.${ext}"
     },
     "mac": {
       "hardenedRuntime": true,
@@ -185,7 +192,8 @@
           ]
         }
       ],
-      "icon": "build/icon.icns"
+      "icon": "build/icon.icns",
+      "artifactName": "${productName}-mac-${arch}.${ext}"
     },
     "dmg": {
       "sign": "false",
@@ -216,7 +224,7 @@
       "icon": "build/icons/512x512.png",
       "category": "Utility;AudioVideo;Recorder",
       "synopsis": "Screen recording and editing app",
-      "artifactName": "DemoThat-${version}-linux-x64.${ext}",
+      "artifactName": "DemoThat-linux-${arch}.${ext}",
       "description": "Free & Open Source Screen Recording and Editing App"
     },
     "nsis": {

@@ -15,6 +15,7 @@ export default defineConfig({
       'electron-log/main': path.resolve(__dirname, 'electron/test/stubs/electron-log-main.ts'),
       'electron-log/renderer': path.resolve(__dirname, 'electron/test/stubs/electron-log-main.ts'),
       'electron-log': path.resolve(__dirname, 'electron/test/stubs/electron-log-main.ts'),
+      'electron-updater': path.resolve(__dirname, 'electron/test/stubs/electron-updater.ts'),
       electron: path.resolve(__dirname, 'electron/test/stubs/electron.ts'),
     },
   },

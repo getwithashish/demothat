@@ -147,9 +147,28 @@ type DisplayInfo = {
 }
 
 // --- Update ---
-type UpdateInfo = {
+/**
+ * Sent by the GitHub API fallback for deb/rpm/macOS (no auto-update support).
+ * autoUpdate is always false here — the renderer should open the GitHub URL.
+ */
+type UpdateAvailableInfo = {
   version: string
   url: string
+  autoUpdate: false
+}
+/**
+ * Sent by electron-updater when it starts downloading a new version.
+ * The renderer shows a progress indicator.
+ */
+type UpdateProgressInfo = {
+  percent: number
+}
+/**
+ * Sent by electron-updater once the new binary is fully downloaded and
+ * ready to be installed on restart.
+ */
+type UpdateReadyInfo = {
+  version: string
 }
 
 // --- Dshow Devices ---
@@ -708,12 +727,32 @@ export const electronAPI = {
 
   showItemInFolder: (path: string): void => ipcRenderer.send('shell:showItemInFolder', path),
 
-  onUpdateAvailable: (callback: (info: UpdateInfo) => void) => {
-    const listener = (_event: IpcRendererEvent, info: UpdateInfo) => callback(info)
+  onUpdateAvailable: (callback: (info: UpdateAvailableInfo) => void) => {
+    const listener = (_event: IpcRendererEvent, info: UpdateAvailableInfo) => callback(info)
     ipcRenderer.on('update:available', listener)
     return () => {
       ipcRenderer.removeListener('update:available', listener)
     }
+  },
+  /** Fired while electron-updater is downloading; payload contains 0–100 percent. */
+  onUpdateProgress: (callback: (info: UpdateProgressInfo) => void) => {
+    const listener = (_event: IpcRendererEvent, info: UpdateProgressInfo) => callback(info)
+    ipcRenderer.on('update:progress', listener)
+    return () => {
+      ipcRenderer.removeListener('update:progress', listener)
+    }
+  },
+  /** Fired when the new binary is fully downloaded and ready for install. */
+  onUpdateReady: (callback: (info: UpdateReadyInfo) => void) => {
+    const listener = (_event: IpcRendererEvent, info: UpdateReadyInfo) => callback(info)
+    ipcRenderer.on('update:ready', listener)
+    return () => {
+      ipcRenderer.removeListener('update:ready', listener)
+    }
+  },
+  /** Ask the main process to quit and immediately install the downloaded update. */
+  installUpdate: (): void => {
+    ipcRenderer.send('update:install')
   },
   openExternal: (url: string): void => ipcRenderer.send('shell:openExternal', url),
 
